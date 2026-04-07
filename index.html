@@ -10,18 +10,7 @@
 <meta name="theme-color" content="#111111"/>
 <meta name="description" content="FlowOps — Training Operations Management Platform"/>
 
-<!-- PWA Manifest inline -->
-<link rel="manifest" href="data:application/json,{
-  &quot;name&quot;:&quot;FlowOps&quot;,
-  &quot;short_name&quot;:&quot;FlowOps&quot;,
-  &quot;description&quot;:&quot;Training Operations Management Platform&quot;,
-  &quot;start_url&quot;:&quot;./&quot;,
-  &quot;display&quot;:&quot;standalone&quot;,
-  &quot;background_color&quot;:&quot;#111111&quot;,
-  &quot;theme_color&quot;:&quot;#E8590C&quot;,
-  &quot;orientation&quot;:&quot;portrait-primary&quot;,
-  &quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='64' height='64' rx='14' fill='%231A1A1A'/%3E%3Ccircle cx='46' cy='38' r='9' fill='%23E8590C'/%3E%3C/svg%3E&quot;,&quot;sizes&quot;:&quot;64x64&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]
-}"/>
+
 
 <!-- iOS touch icon -->
 
@@ -693,15 +682,7 @@ async function doGoogleSignin(){
     const doc = await fbDb.collection('users').doc(user.uid).get();
     if(!doc.exists){
       // New Google user — need to pick role
-      const role = prompt('Welcome '+user.displayName+'!
-
-Please enter your role number:
-1 = Batch Coordinator
-2 = Batch Trainer
-3 = Batch Supervisor
-4 = Training Supervisor
-5 = Training Manager
-6 = Trainee');
+      const role = prompt('Enter your role: 1=Batch Coordinator, 2=Batch Trainer, 3=Batch Supervisor, 4=Training Supervisor, 5=Training Manager, 6=Trainee');
       const roleMap={'1':'coordinator','2':'trainer','3':'batchsup','4':'trainsup','5':'manager','6':'trainee'};
       const roleName = roleMap[role]||'coordinator';
       await fbDb.collection('users').doc(user.uid).set({
