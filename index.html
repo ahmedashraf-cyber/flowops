@@ -1,1 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" style="background:#111111">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="FlowOps"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#111111"/>
+<meta name="description" content="FlowOps — Training Operations Management Platform"/>
 
+<!-- PWA Manifest inline -->
+<link rel="manifest" href="data:application/json,{
+  &quot;name&quot;:&quot;FlowOps&quot;,
+  &quot;short_name&quot;:&quot;FlowOps&quot;,
+  &quot;description&quot;:&quot;Training Operations Management Platform&quot;,
+  &quot;start_url&quot;:&quot;./&quot;,
+  &quot;display&quot;:&quot;standalone&quot;,
+  &quot;background_color&quot;:&quot;#111111&quot;,
+  &quot;theme_color&quot;:&quot;#E8590C&quot;,
+  &quot;orientation&quot;:&quot;portrait-primary&quot;,
+  &quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,%3Csvg width='64' height='64' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='64' height='64' rx='14' fill='%231A1A1A'/%3E%3Ccircle cx='46' cy='38' r='9' fill='%23E8590C'/%3E%3C/svg%3E&quot;,&quot;sizes&quot;:&quot;64x64&quot;,&quot;type&quot;:&quot;image/svg+xml&quot;}]
+}"/>
+
+<!-- iOS touch icon -->
+
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="FlowOps"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="theme-color" content="#111111"/>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231A1A1A'/%3E%3Ccircle cx='46' cy='38' r='9' fill='%23E8590C'/%3E%3Ccircle cx='30' cy='28' r='6' fill='%23E8590C' opacity='.5'/%3E%3Cline x1='30' y1='28' x2='46' y2='38' stroke='%23E8590C' stroke-width='2.5'/%3E%3C/svg%3E"/>
+<title>FlowOps — Training Operations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400&family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --color-primary:#E8590C;
+  --color-primary-hover:#D14A08;
+  --color-primary-subtle:rgba(232,89,12,0.15);
+  --bg-app:#111111;
+  --bg-surface:#1A1A1A;
+  --bg-surface-hover:#222222;
+  --bg-overlay:#161616;
+  --border-default:#2A2A2A;
+  --border-strong:#3A3A3A;
+  --text-primary:#FFFFFF;
+  --text-secondary:#AAAAAA;
+  --text-muted:#666666;
+  --text-inverse:#111111;
+  --color-success:#28A064;
+  --color-success-subtle:rgba(40,160,100,0.15);
+  --color-warning:#F0A020;
+  --color-warning-subtle:rgba(240,160,32,0.15);
+  --color-danger:#E04040;
+  --color-danger-subtle:rgba(224,64,64,0.15);
+  --color-info:#3B8BD4;
+  --color-info-subtle:rgba(59,139,212,0.15);
+  --radius-sm:4px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;--radius-pill:999px;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;
+}
+body{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.65;color:var(--text-primary);background:var(--bg-app);min-height:100vh;-webkit-text-size-adjust:100%}
+[dir=rtl],[lang=ar]{font-family:'Cairo',sans-serif;direction:rtl;text-align:right}
+h1{font-family:'Inter',sans-serif;font-size:28px;font-weight:600;line-height:1.2}
+h2{font-family:'Inter',sans-serif;font-size:20px;font-weight:600;line-height:1.3}
+h3{font-family:'Inter',sans-serif;font-size:16px;font-weight:500;line-height:1.4}
+.label{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted)}
+code{font-family:'JetBrains Mono',monospace;font-size:12px}
+
+/* SCREENS */
+.screen{display:none!important;min-height:100vh}.screen.active{display:block!important}
+
+/* TOPBAR */
+.topbar{background:var(--bg-overlay);border-bottom:1px solid var(--border-default);height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:200;gap:12px}
+.topbar-brand{display:flex;align-items:center;gap:10px;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;color:var(--text-primary)}
+.topbar-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-md);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s;border:1px solid transparent;white-space:nowrap}
+.btn-primary{background:var(--color-primary);color:#fff;border-color:var(--color-primary)}.btn-primary:hover{background:var(--color-primary-hover);border-color:var(--color-primary-hover)}
+.btn-secondary{background:transparent;color:var(--text-primary);border-color:var(--border-strong)}.btn-secondary:hover{border-color:var(--color-primary);background:var(--color-primary-subtle)}
+.btn-ghost{background:transparent;color:var(--text-secondary);border-color:transparent}.btn-ghost:hover{background:var(--bg-surface-hover);color:var(--text-primary)}
+.btn-danger{background:var(--color-danger-subtle);color:var(--color-danger);border-color:var(--color-danger)}.btn-danger:hover{opacity:.85}
+.btn-success{background:var(--color-success-subtle);color:var(--color-success);border-color:var(--color-success)}
+.btn-warn{background:var(--color-warning-subtle);color:var(--color-warning);border-color:var(--color-warning)}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-full{width:100%;justify-content:center}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--radius-pill);font-size:11px;font-weight:500}
+.badge-success{background:var(--color-success-subtle);color:var(--color-success)}
+.badge-danger{background:var(--color-danger-subtle);color:var(--color-danger)}
+.badge-warning{background:var(--color-warning-subtle);color:var(--color-warning)}
+.badge-info{background:var(--color-info-subtle);color:var(--color-info)}
+.badge-orange{background:var(--color-primary-subtle);color:var(--color-primary)}
+.badge-neutral{background:rgba(136,136,136,0.15);color:#888}
+
+/* CARDS */
+.card{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:var(--space-5);margin-bottom:16px}
+.card-title{font-family:'Inter',sans-serif;font-size:15px;font-weight:600;margin-bottom:3px;color:var(--text-primary)}
+.card-sub{font-size:13px;color:var(--text-secondary);margin-bottom:14px}
+.card-stat{background:var(--bg-surface);border-radius:var(--radius-md);padding:var(--space-4)}
+.card-stat__label{font-size:11px;color:var(--text-muted);margin-bottom:4px;font-weight:500;text-transform:uppercase;letter-spacing:.04em}
+.card-stat__value{font-size:24px;font-weight:600;font-family:'Inter',sans-serif;color:var(--text-primary)}
+.card-stat__value.accent{color:var(--color-primary)}
+.card-stat__value.green{color:var(--color-success)}
+.card-stat__value.red{color:var(--color-danger)}
+.card-stat__sub{font-size:11px;color:var(--text-muted);margin-top:3px}
+
+/* METRICS GRID */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+
+/* FORMS */
+.field{margin-bottom:14px}
+.input-label{display:block;font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;letter-spacing:.01em}
+.input{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-md);color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;padding:9px 12px;width:100%;outline:none;transition:border-color .15s}
+.input::placeholder{color:var(--text-muted)}
+.input:focus{border-color:var(--color-primary)}
+.input-row{display:flex;gap:12px;flex-wrap:wrap}.input-row .field{flex:1;min-width:150px}
+
+/* AUTH */
+.auth-wrap{min-height:100vh;background:var(--bg-app);display:flex;flex-direction:column}
+.auth-bar{background:var(--bg-overlay);border-bottom:1px solid var(--border-default);padding:0 24px;height:52px;display:flex;align-items:center;justify-content:space-between}
+.auth-center{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.auth-card{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-xl);padding:36px;width:100%;max-width:440px}
+.auth-logo{display:flex;justify-content:center;margin-bottom:24px}
+.auth-title{font-family:'Inter',sans-serif;font-size:22px;font-weight:600;text-align:center;margin-bottom:4px}
+.auth-sub{font-size:13px;color:var(--text-secondary);text-align:center;margin-bottom:24px}
+.auth-switch{text-align:center;margin-top:16px;font-size:13px;color:var(--text-secondary)}
+.auth-switch a{color:var(--color-primary);cursor:pointer;font-weight:500}
+
+/* ALERTS */
+.alert{border-radius:var(--radius-md);padding:10px 14px;font-size:13px;margin-bottom:12px;display:none}
+.alert-err{background:var(--color-danger-subtle);color:var(--color-danger);border:1px solid rgba(224,64,64,0.25)}
+.alert-ok{background:var(--color-success-subtle);color:var(--color-success);border:1px solid rgba(40,160,100,0.25)}
+.alert-info{background:var(--color-info-subtle);color:var(--color-info);border:1px solid rgba(59,139,212,0.25)}
+.alert-warn{background:var(--color-warning-subtle);color:var(--color-warning);border:1px solid rgba(240,160,32,0.25)}
+
+/* APP SHELL */
+.app-shell{display:grid;grid-template-columns:220px 1fr;grid-template-rows:52px 1fr;min-height:100vh;background:var(--bg-app)}
+.app-shell .topbar{grid-column:1/-1}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg-overlay);border-inline-end:1px solid var(--border-default);padding:16px 12px;position:sticky;top:52px;height:calc(100vh - 52px);overflow-y:auto}
+.sidebar-section{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:10px 12px 5px}
+.sidebar-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-md);font-size:13px;color:var(--text-secondary);cursor:pointer;transition:background .12s,color .12s;margin-bottom:2px;border-inline-start:3px solid transparent;font-weight:500}
+.sidebar-item:hover{background:var(--bg-surface);color:var(--text-primary)}
+.sidebar-item.active{background:var(--bg-surface);color:var(--text-primary);border-inline-start-color:var(--color-primary)}
+.sidebar-badge{margin-inline-start:auto;background:var(--color-danger);color:#fff;border-radius:var(--radius-pill);padding:1px 7px;font-size:11px;font-weight:700}
+.sidebar-icon{font-size:15px;width:18px;text-align:center;flex-shrink:0}
+
+/* MAIN CONTENT */
+.main-content{overflow-x:hidden;min-width:0}
+.container{max-width:960px;margin:0 auto;padding:24px}
+.page-hdr{margin-bottom:24px}
+.page-hdr h2{color:var(--text-primary)}
+.page-hdr p{font-size:13px;color:var(--text-secondary);margin-top:4px}
+.divider{height:1px;background:var(--border-default);margin:20px 0}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead tr{background:var(--bg-overlay)}
+th{text-align:left;padding:9px 12px;color:var(--text-muted);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border-default);white-space:nowrap;font-family:'Inter',sans-serif}
+td{padding:9px 12px;border-bottom:1px solid var(--border-default);vertical-align:middle;color:var(--text-primary)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-surface-hover)}
+
+/* AVATAR */
+.av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;font-family:'Inter',sans-serif}
+.av-orange{background:var(--color-primary-subtle);color:var(--color-primary)}
+.av-green{background:var(--color-success-subtle);color:var(--color-success)}
+.av-red{background:var(--color-danger-subtle);color:var(--color-danger)}
+
+/* NOTIFICATION */
+.notif{padding:12px 14px;border-radius:var(--radius-md);margin-bottom:8px;border-inline-start:3px solid var(--color-primary);background:var(--bg-surface)}
+.notif-t{font-size:13px;font-weight:600;color:var(--text-primary)}
+.notif-b{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.notif-ts{font-size:11px;color:var(--text-muted);margin-top:4px}
+
+/* STEP */
+.step{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
+.step-n{width:26px;height:26px;border-radius:50%;background:var(--color-primary-subtle);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:1px;font-family:'Inter',sans-serif}
+.step-n.done{background:var(--color-success-subtle);color:var(--color-success)}
+
+/* MODAL */
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal-box{background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:var(--radius-xl);padding:28px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto}
+.modal-title{font-family:'Inter',sans-serif;font-size:17px;font-weight:600;margin-bottom:4px}
+.modal-sub{font-size:13px;color:var(--text-secondary);margin-bottom:20px}
+
+/* SEARCH ROW */
+.search-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.search-row .input{flex:1;min-width:180px}
+.search-row select{padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:'DM Sans',sans-serif;cursor:pointer;outline:none}
+.search-row select:focus{border-color:var(--color-primary)}
+
+/* BATCH BREAKDOWN */
+.batch-card{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-md);padding:12px 14px;min-width:110px;cursor:pointer;transition:border-color .15s}
+.batch-card:hover{border-color:var(--color-primary)}
+.batch-card-label{font-size:11px;font-weight:700;color:var(--color-primary);margin-bottom:5px;font-family:'Inter',sans-serif}
+.batch-card-total{font-size:15px;font-weight:600;font-family:'Inter',sans-serif}
+
+/* SCORE COLORS */
+.sc-hi{color:var(--color-success);font-weight:600}
+.sc-md{color:var(--color-warning);font-weight:600}
+.sc-lo{color:var(--color-danger);font-weight:600}
+
+/* CHART */
+.cgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.chart-label{font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;font-family:'Inter',sans-serif}
+
+/* MOBILE NAV */
+.mob-nav{display:none;overflow-x:auto;background:var(--bg-overlay);border-bottom:1px solid var(--border-default);padding:0 12px}
+.mob-nav-i{padding:10px 14px;font-size:12px;color:var(--text-secondary);white-space:nowrap;cursor:pointer;border-bottom:2px solid transparent;font-weight:500}
+.mob-nav-i.active{color:var(--color-primary);border-bottom-color:var(--color-primary)}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .app-shell{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .mob-nav{display:flex}
+  .metrics{grid-template-columns:1fr 1fr}
+  .cgrid{grid-template-columns:1fr}
+  .container{padding:16px}
+  .auth-card{padding:24px 20px}
+}
+@media print{.topbar,.sidebar,.mob-nav,.no-print{display:none!important}.card{break-inside:avoid}}
+</style>
+</head>
+<body>
+
+<!-- FLOWOPS LOGO SVG COMPONENT -->
+<template id="logoSVG">
+<svg width="160" height="44" viewBox="0 0 260 72" xmlns="http://www.w3.org/2000/svg">
+  <line x1="22" y1="20" x2="50" y2="20" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+  <line x1="50" y1="20" x2="36" y2="44" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <line x1="22" y1="20" x2="36" y2="44" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.25"/>
+  <line x1="36" y1="44" x2="56" y2="56" stroke="#E8590C" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>
+  <line x1="50" y1="20" x2="56" y2="56" stroke="#E8590C" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="22" cy="20" r="5" fill="#E8590C" opacity="0.22"/>
+  <circle cx="50" cy="20" r="7" fill="#E8590C" opacity="0.55"/>
+  <circle cx="36" cy="44" r="4.5" fill="#E8590C" opacity="0.35"/>
+  <circle cx="56" cy="56" r="9" fill="#E8590C"/>
+  <text x="82" y="38" font-family="Inter,Helvetica Neue,sans-serif" font-size="28" font-weight="600" letter-spacing="-0.5" fill="#FFFFFF">Flow</text>
+  <text x="83" y="58" font-family="Inter,Helvetica Neue,sans-serif" font-size="13" font-weight="400" letter-spacing="5" fill="#E8590C">OPS</text>
+</svg>
+</template>
+
+<!-- ICON SVG -->
+<template id="iconSVG">
+<svg width="32" height="32" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="#1A1A1A"/>
+  <line x1="16" y1="20" x2="30" y2="28" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+  <line x1="16" y1="20" x2="24" y2="42" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.18"/>
+  <line x1="30" y1="28" x2="24" y2="42" stroke="#E8590C" stroke-width="2" stroke-linecap="round" opacity="0.45"/>
+  <line x1="30" y1="28" x2="46" y2="38" stroke="#E8590C" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="24" y1="42" x2="46" y2="38" stroke="#E8590C" stroke-width="2.5" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="16" cy="20" r="4" fill="#E8590C" opacity="0.2"/>
+  <circle cx="30" cy="28" r="6" fill="#E8590C" opacity="0.5"/>
+  <circle cx="24" cy="42" r="3.5" fill="#E8590C" opacity="0.28"/>
+  <circle cx="46" cy="38" r="9" fill="#E8590C"/>
+</svg>
+</template>
+
+<!-- ===== SIGN UP ===== -->
+<div id="signupScreen" class="screen active">
+  <div class="auth-wrap">
+    <div class="auth-bar">
+      <div class="topbar-brand" id="su_logo"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN / عر</button>
+      </div>
+    </div>
+    <div class="auth-center">
+      <div class="auth-card">
+        <div class="auth-logo" id="su_icon"></div>
+        <div class="auth-title">Create your account</div>
+        <div class="auth-sub">Join FlowOps — @hudl.com email required</div>
+        <div class="input-row">
+          <div class="field"><label class="input-label">First Name</label><input class="input" type="text" id="suFirst" placeholder="Ahmed"/></div>
+          <div class="field"><label class="input-label">Last Name</label><input class="input" type="text" id="suLast" placeholder="Mohamed"/></div>
+        </div>
+        <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="suEmail" placeholder="yourname@hudl.com"/></div>
+        <div class="field"><label class="input-label">Phone Number</label><input class="input" type="tel" id="suPhone" placeholder="+201XXXXXXXXX"/></div>
+        <div class="field">
+          <label class="input-label">Your Role</label>
+          <select class="input" id="suRole">
+            <option value="">— Select your role —</option>
+            <option value="coordinator">Batch Coordinator</option>
+            <option value="trainer">Batch Trainer</option>
+            <option value="batchsup">Batch Supervisor</option>
+            <option value="trainsup">Training Supervisor</option>
+            <option value="manager">Training Manager</option>
+            <option value="trainee">Trainee</option>
+          </select>
+        </div>
+        <div class="field"><label class="input-label">Password (min 8 characters)</label><input class="input" type="password" id="suPass" placeholder="••••••••"/></div>
+        <div class="field"><label class="input-label">Confirm Password</label><input class="input" type="password" id="suPassC" placeholder="••••••••"/></div>
+        <button class="btn btn-primary btn-full" id="suBtn" onclick="doSignup()">Create Account →</button>
+        <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+          <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+          <span style="font-size:12px;color:var(--text-muted)">or</span>
+          <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+        </div>
+        <button class="btn btn-secondary btn-full" onclick="doGoogleSignin()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Continue with Google (@hudl.com)
+        </button>
+        <div class="alert alert-err" id="suErr"></div>
+        <div class="auth-switch">Already have an account? <a onclick="showScreen('signinScreen')">Sign in</a></div>
+        <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:12px">Only @hudl.com addresses are permitted</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SIGN IN ===== -->
+<div id="signinScreen" class="screen">
+  <div class="auth-wrap">
+    <div class="auth-bar">
+      <div class="topbar-brand" id="si_logo"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN / عر</button>
+      </div>
+    </div>
+    <div class="auth-center">
+      <div class="auth-card">
+        <div class="auth-logo" id="si_icon"></div>
+        <div class="auth-title">Welcome back</div>
+        <div class="auth-sub">Sign in to FlowOps</div>
+        <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email"/></div>
+        <div class="field"><label class="input-label">Password</label><input class="input" type="password" id="siPass" placeholder="••••••••" autocomplete="current-password"/></div>
+        <button class="btn btn-primary btn-full" id="siBtn" onclick="doSignin()">Sign in →</button>
+        <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+          <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+          <span style="font-size:12px;color:var(--text-muted)">or</span>
+          <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+        </div>
+        <button class="btn btn-secondary btn-full" id="googleBtn" onclick="doGoogleSignin()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Continue with Google (@hudl.com)
+        </button>
+        <div class="alert alert-err" id="siErr"></div>
+        <div class="auth-switch">No account yet? <a onclick="showScreen('signupScreen')">Create one</a></div>
+        <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:12px">Only @hudl.com addresses are permitted</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== COORDINATOR DASHBOARD ===== -->
+<div id="coordScreen" class="screen">
+  <div class="app-shell">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-brand" id="dash_logo"></div>
+      <div class="topbar-r">
+        <span class="badge badge-orange" id="userPill">Coordinator</span>
+        <button class="btn btn-ghost btn-sm" onclick="showTab('notifs')" style="position:relative">
+          🔔 <span id="nBadge" style="background:var(--color-danger);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-inline-start:2px">0</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN/عر</button>
+        <button class="btn btn-danger btn-sm" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section">Batch Coordinator</div>
+      <div class="sidebar-item active" onclick="showTab('overview')" id="nav_overview"><span class="sidebar-icon">📊</span>Overview</div>
+      <div class="sidebar-item" onclick="showTab('candidates')" id="nav_candidates"><span class="sidebar-icon">👥</span>Candidates</div>
+      <div class="sidebar-item" onclick="showTab('report')" id="nav_report"><span class="sidebar-icon">📋</span>Batch Report</div>
+      <div class="sidebar-item" onclick="showTab('notifs')" id="nav_notifs"><span class="sidebar-icon">🔔</span>Notifications<span class="sidebar-badge" id="nSide">0</span></div>
+      <div class="divider" style="margin:8px 0"></div>
+      <div class="sidebar-section">Coming Soon</div>
+      <div class="sidebar-item" style="opacity:.35;cursor:default"><span class="sidebar-icon">🎓</span>Trainee</div>
+      <div class="sidebar-item" style="opacity:.35;cursor:default"><span class="sidebar-icon">📚</span>Batch Trainer</div>
+      <div class="sidebar-item" style="opacity:.35;cursor:default"><span class="sidebar-icon">👔</span>Supervisors</div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content">
+
+      <!-- MOBILE NAV -->
+      <div class="mob-nav">
+        <div class="mob-nav-i active" onclick="showTab('overview')">Overview</div>
+        <div class="mob-nav-i" onclick="showTab('candidates')">Candidates</div>
+        <div class="mob-nav-i" onclick="showTab('report')">Report</div>
+        <div class="mob-nav-i" onclick="showTab('notifs')">Alerts</div>
+      </div>
+
+      <!-- OVERVIEW TAB -->
+      <div id="tab_overview" class="container">
+        <div class="page-hdr">
+          <h2>Dashboard Overview</h2>
+          <p>Interview batch management — live data from Google Sheet</p>
+        </div>
+
+        <div class="metrics">
+          <div class="card-stat"><div class="card-stat__label">Total</div><div class="card-stat__value accent" id="mTotal">—</div><div class="card-stat__sub">Interviewees</div></div>
+          <div class="card-stat"><div class="card-stat__label">Accepted</div><div class="card-stat__value green" id="mAcc">—</div><div class="card-stat__sub" id="mAccSub">Load data</div></div>
+          <div class="card-stat"><div class="card-stat__label">Rejected</div><div class="card-stat__value red" id="mRej">—</div><div class="card-stat__sub" id="mRejSub"></div></div>
+          <div class="card-stat"><div class="card-stat__label">Avg Points</div><div class="card-stat__value" id="mAvg">—</div><div class="card-stat__sub">Overall %</div></div>
+          <div class="card-stat"><div class="card-stat__label">Highest</div><div class="card-stat__value green" id="mTop">—</div><div class="card-stat__sub">Points %</div></div>
+          <div class="card-stat"><div class="card-stat__label">Lowest</div><div class="card-stat__value red" id="mLow">—</div><div class="card-stat__sub">Points %</div></div>
+        </div>
+
+        <div id="batchBreakdown" style="display:none;margin-bottom:16px">
+          <div class="label" style="margin-bottom:10px">Batch breakdown — column S</div>
+          <div id="batchBreakdownContent" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Batch Configuration</div>
+          <div class="card-sub">Select batch and load live data from Google Sheet</div>
+          <div class="input-row">
+            <div class="field">
+              <label class="input-label">Batch</label>
+              <select class="input" id="bName" onchange="onBatchChange()">
+                <option value="all">All Batches</option>
+              </select>
+            </div>
+            <div class="field"><label class="input-label">Start Date</label><input class="input" type="date" id="bStart"/></div>
+            <div class="field"><label class="input-label">Est. End Date</label><input class="input" type="date" id="bEnd"/></div>
+          </div>
+          <div id="batchFilterInfo" class="alert alert-info" style="display:none"></div>
+          <button class="btn btn-primary" onclick="saveBatchAndLoad()">💾 Save & Load Live Data</button>
+          <div id="batchSaved" class="alert alert-ok" style="margin-top:10px"></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+            <div>
+              <div class="card-title">Live Interview Data</div>
+              <div style="font-size:13px;color:var(--text-secondary)">Fetched directly from Google Sheets API</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="loadData()">🔄 Refresh</button>
+          </div>
+          <div id="loadMsg" class="alert alert-info" style="display:block">Click "Save & Load Live Data" to fetch candidates from your Google Sheet.</div>
+          <div id="loadedBlock" style="display:none">
+            <div class="alert alert-ok" id="loadedOk">✅ Loaded successfully</div>
+            <div style="position:relative;height:200px;margin-top:12px"><canvas id="ovChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px">Workflow</div>
+          <div class="step"><div class="step-n done">✓</div><div><strong>Account created</strong> — You are signed in to FlowOps</div></div>
+          <div class="step"><div class="step-n" id="s2">2</div><div>Select a batch and click <strong>Save & Load Live Data</strong></div></div>
+          <div class="step"><div class="step-n" id="s3">3</div><div>Review all candidates in the <strong>Candidates</strong> tab</div></div>
+          <div class="step"><div class="step-n" id="s4">4</div><div>Click <strong>End of Batch</strong> — accepted list auto-emailed to supervisors</div></div>
+          <div class="step"><div class="step-n" id="s5">5</div><div>Fill in and submit the <strong>Batch Report</strong></div></div>
+        </div>
+      </div>
+
+      <!-- CANDIDATES TAB -->
+      <div id="tab_candidates" class="container" style="display:none">
+        <div class="page-hdr"><h2>Candidates</h2><p id="candSub">All interviewees — live from sheet</p></div>
+        <div class="search-row no-print">
+          <input class="input" type="text" id="srch" placeholder="Search name, ID, notes..." oninput="renderTable()" style="flex:1;min-width:180px"/>
+          <select id="batchFilter" onchange="applyBatchFilter()">
+            <option value="all">All Batches</option>
+          </select>
+          <button class="btn btn-success btn-sm" onclick="setFilt('accepted')">✅ Accepted</button>
+          <button class="btn btn-danger btn-sm" onclick="setFilt('rejected')">❌ Rejected</button>
+          <button class="btn btn-secondary btn-sm" onclick="setFilt('all')">All</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV</button>
+          <button class="btn btn-warn btn-sm" onclick="showEndBatch()">🏁 End of Batch</button>
+        </div>
+        <div id="batchFilterBadge" style="margin-bottom:10px;display:none">
+          <span class="badge badge-orange" id="batchFilterLabel"></span>
+          <span style="font-size:12px;color:var(--text-muted);margin-inline-start:8px" id="batchFilterCount"></span>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Name</th><th>Batch</th><th>Points</th><th>Form</th><th>Interview</th><th>Knowledge</th><th>Tactics</th><th>Typing</th><th>Status</th><th>Rank</th><th></th></tr></thead>
+              <tbody id="tBody"><tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text-muted)">Load data from the Overview tab first</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="tFoot"></div>
+      </div>
+
+      <!-- REPORT TAB -->
+      <div id="tab_report" class="container" style="display:none">
+        <div class="page-hdr"><h2>Interview Collection Report</h2><p>Manual fields + auto-calculated statistics from live sheet data</p></div>
+        <div id="rSubmitted" class="alert alert-ok" style="display:none">✅ Report submitted & emailed to Training Manager, Training Supervisor & Batch Supervisor.</div>
+        <div class="card">
+          <div class="card-title">Report Fields</div>
+          <div class="card-sub">Fill in manually — statistics are auto-pulled from your sheet</div>
+          <div class="input-row">
+            <div class="field"><label class="input-label">Batch Name</label><input class="input" type="text" id="rBatch" value="Batch 81" readonly style="opacity:.7"/></div>
+            <div class="field"><label class="input-label">Days to collect batch</label><input class="input" type="number" id="rDays" placeholder="e.g. 12"/></div>
+          </div>
+          <div class="input-row">
+            <div class="field"><label class="input-label">Total interviewees</label><input class="input" type="number" id="rTotal" readonly style="opacity:.7"/></div>
+            <div class="field"><label class="input-label">Accepted</label><input class="input" type="number" id="rAcc" readonly style="opacity:.7"/></div>
+            <div class="field"><label class="input-label">Rejected</label><input class="input" type="number" id="rRej" readonly style="opacity:.7"/></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Auto-Calculated Averages</div>
+          <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
+            <div class="card-stat"><div class="card-stat__label">Avg — All</div><div class="card-stat__value accent" id="rAvgAll">—</div><div class="card-stat__sub">Points %</div></div>
+            <div class="card-stat"><div class="card-stat__label">Avg — Accepted</div><div class="card-stat__value green" id="rAvgAcc">—</div><div class="card-stat__sub">Points %</div></div>
+            <div class="card-stat"><div class="card-stat__label">Avg — Rejected</div><div class="card-stat__value red" id="rAvgRej">—</div><div class="card-stat__sub">Points %</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:4px">Score Distribution</div>
+          <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">Auto-generated histograms from live data</div>
+          <div class="cgrid" id="cGrid" style="display:none">
+            <div><div class="chart-label">All Interviewees</div><div style="position:relative;height:200px"><canvas id="rCA"></canvas></div></div>
+            <div><div class="chart-label">Accepted</div><div style="position:relative;height:200px"><canvas id="rCB"></canvas></div></div>
+            <div><div class="chart-label">Rejected</div><div style="position:relative;height:200px"><canvas id="rCC"></canvas></div></div>
+          </div>
+          <div id="cPlaceholder" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px">Load data first to generate charts</div>
+        </div>
+        <div class="card no-print">
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="submitReport()">📤 Submit & Email All</button>
+            <button class="btn btn-secondary" onclick="window.print()">🖨 Print / Save PDF</button>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Recipients: Training Manager · Training Supervisor · Batch Supervisor</p>
+        </div>
+      </div>
+
+      <!-- NOTIFICATIONS TAB -->
+      <div id="tab_notifs" class="container" style="display:none">
+        <div class="page-hdr"><h2>Notifications</h2><p>Activity log and system alerts</p></div>
+        <div id="notifList">
+          <div class="notif">
+            <div class="notif-t">Welcome to FlowOps</div>
+            <div class="notif-b">Your Batch Coordinator account is active. Start by loading batch data.</div>
+            <div class="notif-ts">Now · System</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /app-shell -->
+</div><!-- /coordScreen -->
+
+<!-- END OF BATCH MODAL -->
+<div id="endModal" class="modal-ov" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box">
+    <div class="modal-title">🏁 End of Batch</div>
+    <div class="modal-sub">Accepted candidates list will be emailed to both supervisors.</div>
+    <div id="endInfo" class="alert alert-info" style="display:block"></div>
+    <div style="margin-bottom:14px">
+      <div class="label" style="margin-bottom:8px">Accepted Candidates</div>
+      <div id="endList" style="max-height:200px;overflow-y:auto;font-size:12px;background:var(--bg-app);border-radius:var(--radius-md);padding:10px;border:1px solid var(--border-default)"></div>
+    </div>
+    <div class="input-row">
+      <div class="field"><label class="input-label">Training Supervisor Email</label><input class="input" type="email" id="supEmail" placeholder="supervisor@hudl.com"/></div>
+      <div class="field"><label class="input-label">Batch Supervisor Email</label><input class="input" type="email" id="bsupEmail" placeholder="bsupervisor@hudl.com"/></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn btn-primary" id="endConfirmBtn" onclick="confirmEndBatch()">✅ Confirm & Send Emails</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('endModal').style.display='none'">Cancel</button>
+    </div>
+    <div id="endDone" class="alert alert-ok" style="margin-top:10px"></div>
+    <div class="alert alert-err" id="endErr"></div>
+  </div>
+</div>
+
+<!-- CANDIDATE DETAIL MODAL -->
+<div id="candModal" class="modal-ov" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+      <div><div style="font-size:17px;font-weight:600;font-family:'Inter',sans-serif" id="cmName"></div><div style="font-size:13px;color:var(--text-secondary);direction:rtl" id="cmAr"></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('candModal').style.display='none'">✕</button>
+    </div>
+    <div id="cmContent"></div>
+  </div>
+</div>
+
+<script>
+
+// ============================================================
+// FLOWOPS — EmailJS + Google Sheets API
+// ============================================================
+const EJS={serviceId:'service_epfjr1r',templateId:'template_qusqjck',publicKey:'JPC_BMmjR0djRF2GD'};
+(function(){ try{ emailjs.init({publicKey:EJS.publicKey}); }catch(e){ console.warn('EmailJS init failed',e); } })();
+
+const GSHEETS={
+  apiKey:'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI',
+  sheetId:'197awgRVfLpF5Dnq6AYYTcNWbedCx7r2C8j-X9cvVqmc',
+  get url(){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent('Interviews score!A2:S')+'?key='+this.apiKey; }
+};
+
+// ============================================================
+// FIREBASE CONFIG & INIT
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB-HWh2kJgoPDwzYhZWgW6pi8uZK8u9K7U",
+  authDomain: "hudl-training-ops.firebaseapp.com",
+  projectId: "hudl-training-ops",
+  storageBucket: "hudl-training-ops.firebasestorage.app",
+  messagingSenderId: "1008124793031",
+  appId: "1:1008124793031:web:c828b01fa02373a8f16ee2"
+};
+
+let fbApp, fbAuth, fbDb;
+try {
+  fbApp = firebase.initializeApp(FIREBASE_CONFIG);
+  fbAuth = firebase.auth();
+  fbDb   = firebase.firestore();
+} catch(e) { console.error('Firebase init failed:', e); }
+
+// ============================================================
+// FIREBASE AUTH — works from ANY device, ANY browser
+// ============================================================
+async function doSignup(){
+  const first = document.getElementById('suFirst').value.trim();
+  const last  = document.getElementById('suLast').value.trim();
+  const email = document.getElementById('suEmail').value.trim();
+  const phone = document.getElementById('suPhone').value.trim();
+  const role  = document.getElementById('suRole').value;
+  const pass  = document.getElementById('suPass').value;
+  const passC = document.getElementById('suPassC').value;
+  const err   = document.getElementById('suErr');
+  const btn   = document.getElementById('suBtn');
+  err.style.display = 'none';
+  if(!first||!last||!email||!phone||!role||!pass){err.textContent='Please fill in all fields.';err.style.display='block';return;}
+  if(!email.toLowerCase().endsWith('@hudl.com')){err.textContent='Only @hudl.com email addresses are permitted.';err.style.display='block';return;}
+  if(pass.length<8){err.textContent='Password must be at least 8 characters.';err.style.display='block';return;}
+  if(pass!==passC){err.textContent='Passwords do not match.';err.style.display='block';return;}
+  btn.disabled=true; btn.textContent='⏳ Creating account...';
+  try {
+    const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
+    await cred.user.updateProfile({displayName: first+' '+last});
+    // Save full profile to Firestore — accessible from any device
+    await fbDb.collection('users').doc(cred.user.uid).set({
+      firstName:first, lastName:last, email, phone, role,
+      displayName:first+' '+last,
+      createdAt:new Date().toISOString()
+    });
+    // onAuthStateChanged will handle the redirect
+  } catch(e) {
+    let msg = e.message;
+    if(e.code==='auth/email-already-in-use') msg='This email already has an account. Sign in instead.';
+    if(e.code==='auth/weak-password') msg='Password is too weak. Use at least 8 characters.';
+    if(e.code==='auth/invalid-email') msg='Invalid email format.';
+    if(e.code==='auth/network-request-failed') msg='Network error. Check your connection.';
+    err.textContent=msg; err.style.display='block';
+    btn.disabled=false; btn.textContent='Create Account →';
+  }
+}
+
+async function doSignin(){
+  const email = document.getElementById('siEmail').value.trim();
+  const pass  = document.getElementById('siPass').value;
+  const err   = document.getElementById('siErr');
+  const btn   = document.getElementById('siBtn');
+  err.style.display='none';
+  if(!email||!pass){err.textContent='Please fill in all fields.';err.style.display='block';return;}
+  if(!email.toLowerCase().endsWith('@hudl.com')){err.textContent='Only @hudl.com email addresses are permitted.';err.style.display='block';return;}
+  btn.disabled=true; btn.textContent='⏳ Signing in...';
+  try {
+    await fbAuth.signInWithEmailAndPassword(email, pass);
+    // onAuthStateChanged handles redirect
+  } catch(e) {
+    let msg = e.message;
+    if(e.code==='auth/user-not-found'||e.code==='auth/wrong-password'||e.code==='auth/invalid-credential')
+      msg='Incorrect email or password.';
+    if(e.code==='auth/too-many-requests') msg='Too many attempts. Please wait a few minutes.';
+    if(e.code==='auth/network-request-failed') msg='Network error. Check your connection.';
+    err.textContent=msg; err.style.display='block';
+    btn.disabled=false; btn.textContent='Sign in →';
+  }
+}
+
+async function doGoogleSignin(){
+  const err = document.getElementById('siErr') || document.getElementById('suErr');
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({hd:'hudl.com'}); // restrict to @hudl.com accounts
+    const result = await fbAuth.signInWithPopup(provider);
+    const user   = result.user;
+    // Check if profile exists in Firestore, if not prompt for role
+    const doc = await fbDb.collection('users').doc(user.uid).get();
+    if(!doc.exists){
+      // New Google user — need to pick role
+      const role = prompt('Welcome '+user.displayName+'!
+
+Please enter your role number:
+1 = Batch Coordinator
+2 = Batch Trainer
+3 = Batch Supervisor
+4 = Training Supervisor
+5 = Training Manager
+6 = Trainee');
+      const roleMap={'1':'coordinator','2':'trainer','3':'batchsup','4':'trainsup','5':'manager','6':'trainee'};
+      const roleName = roleMap[role]||'coordinator';
+      await fbDb.collection('users').doc(user.uid).set({
+        firstName: user.displayName.split(' ')[0],
+        lastName:  user.displayName.split(' ').slice(1).join(' '),
+        email:     user.email,
+        phone:     '',
+        role:      roleName,
+        displayName: user.displayName,
+        createdAt: new Date().toISOString()
+      });
+    }
+    // onAuthStateChanged handles redirect
+  } catch(e) {
+    if(e.code==='auth/popup-closed-by-user') return;
+    if(e.code==='auth/unauthorized-domain'){
+      if(err){ err.textContent='This domain is not authorized. Make sure your GitHub Pages URL is added to Firebase authorized domains.'; err.style.display='block'; }
+    } else {
+      if(err){ err.textContent=e.message; err.style.display='block'; }
+    }
+  }
+}
+
+async function doSignOut(){
+  try{ await fbAuth.signOut(); }catch(e){}
+  A.user=null; A.cands=[];
+  showScreen('signinScreen');
+}
+
+// ============================================================
+// AUTH STATE OBSERVER — fires on every page load, any device
+// ============================================================
+function initFirebaseAuth(){
+  if(!fbAuth) return;
+  fbAuth.onAuthStateChanged(async user => {
+    if(user){
+      // Load full profile from Firestore
+      try {
+        const doc = await fbDb.collection('users').doc(user.uid).get();
+        const profile = doc.exists ? doc.data() : {};
+        const name = profile.displayName || user.displayName || user.email.split('@')[0];
+        const role = profile.role || 'coordinator';
+        A.user = {
+          uid:   user.uid,
+          email: user.email,
+          name,
+          role,
+          phone: profile.phone||''
+        };
+        document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
+        showScreen('coordScreen');
+        setTimeout(()=>{ loadData(); }, 300);
+      } catch(e){
+        console.error('Profile load failed:', e);
+        // Fallback — use Firebase Auth data
+        A.user = {uid:user.uid, email:user.email, name:user.displayName||user.email, role:'coordinator'};
+        document.getElementById('userPill').textContent = (user.displayName||user.email)+' · Coordinator';
+        showScreen('coordScreen');
+        setTimeout(()=>{ loadData(); }, 300);
+      }
+    } else {
+      // Not signed in — show sign in screen
+      if(document.querySelector('.screen.active')&&
+         document.querySelector('.screen.active').id==='coordScreen'){
+        showScreen('signinScreen');
+      }
+    }
+  });
+}
+
+// ============================================================
+// APP STATE
+// ============================================================
+const A={lang:'en',user:null,cands:[],filt:'all',batch:{id:'all',name:'All Batches',start:'',end:''},charts:{},notifN:0};
+
+// ============================================================
+// HELPERS
+// ============================================================
+function arToEn(s){
+  if(!s)return'';
+  if(!/[\u0600-\u06FF]/.test(s))return fmt(s);
+  const m={'أ':'a','ا':'a','إ':'i','آ':'aa','ب':'b','ت':'t','ث':'th','ج':'j','ح':'h','خ':'kh','د':'d','ذ':'dh','ر':'r','ز':'z','س':'s','ش':'sh','ص':'s','ض':'d','ط':'t','ظ':'z','ع':'a','غ':'gh','ف':'f','ق':'q','ك':'k','ل':'l','م':'m','ن':'n','ه':'h','و':'w','ي':'y','ى':'a','ة':'a','ء':'a','ئ':'y','ؤ':'w',' ':' '};
+  return fmt(s.split('').map(c=>m[c]!==undefined?m[c]:/[\u0600-\u06FF\u064B-\u0652]/.test(c)?'':c).join('').replace(/\s+/g,' ').trim());
+}
+function fmt(s){return s.replace(/\b\w/g,c=>c.toUpperCase()).replace(/\s+/g,' ').trim();}
+function isAr(s){return /[\u0600-\u06FF]/.test(s);}
+function scCol(p){return p>=75?'sc-hi':p>=50?'sc-md':'sc-lo';}
+function rankCls(r){const l=(r||'').toLowerCase();if(l.includes('outstanding'))return'sc-hi';if(l.includes('excellent')||l.includes('very good'))return'sc-hi';if(l.includes('good'))return'sc-md';return 'sc-lo';}
+function roleLabel(r){const m={coordinator:'Coordinator',trainer:'Trainer',batchsup:'Batch Supervisor',trainsup:'Training Supervisor',manager:'Manager',trainee:'Trainee'};return m[r]||r;}
+function batchVal(v){
+  if(!v||v.toString().trim()==='')return 'Unknown';
+  const s=v.toString().trim();
+  const n=parseInt(s);
+  return(!isNaN(n)&&n.toString()===s)?n:s;
+}
+
+// ============================================================
+// LOGO INJECTION
+// ============================================================
+function injectLogos(){
+  const logoHTML=document.getElementById('logoSVG').content.firstElementChild.outerHTML;
+  const iconHTML=document.getElementById('iconSVG').content.firstElementChild.outerHTML;
+  ['su_logo','si_logo','dash_logo'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=logoHTML;
+  });
+  ['su_icon','si_icon'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML=iconHTML;
+  });
+}
+
+// ============================================================
+// AUTH FUNCTIONS
+// ============================================================
+// ============================================================
+// LIVE DATA — Google Sheets API
+// ============================================================
+async function loadData(){
+  const loadMsg=document.getElementById('loadMsg');
+  const loadedBlock=document.getElementById('loadedBlock');
+  const loadedOk=document.getElementById('loadedOk');
+  loadMsg.style.display='block';loadMsg.className='alert alert-info';
+  loadMsg.textContent='⏳ Fetching live data from Google Sheet...';
+  loadedBlock.style.display='none';
+  try{
+    const res=await fetch(GSHEETS.url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const json=await res.json();
+    const rows=json.values||[];
+    if(!rows.length){loadMsg.textContent='⚠️ No data found in sheet.';return;}
+    function pct(v){if(!v||v==='#DIV/0!'||v==='-')return null;return parseFloat(v.replace('%','').trim())||0;}
+    function num(v){if(!v)return 0;return parseFloat(v)||0;}
+    A.cands=rows.filter(r=>r[2]&&r[2].trim()).map((r,i)=>{
+      const name=(r[2]||'').trim();
+      const nameEn=isAr(name)?arToEn(name):fmt(name);
+      const nameAr=isAr(name)?name:'';
+      const raw=(r[12]||'').trim(); // Column M
+      const status=raw.toLowerCase().startsWith('accepted')?'accepted':'rejected';
+      const batch=batchVal(r[18]); // Column S
+      return{id:i+1,nameEn,nameAr,nid:(r[1]||'').trim(),itvr:(r[0]||'').trim(),
+        form:pct(r[3]),iv:pct(r[4]),kn:pct(r[5]),tac:pct(r[6]),
+        tspd:num(r[7]),tacc:pct(r[8]),notes:(r[9]||'').trim(),
+        pts:pct(r[10])||0,raw,status,rank:(r[15]||'').trim(),batch};
+    });
+    updateMetrics();renderTable();updateReportStats();buildCharts();populateBatchDropdowns();
+    document.getElementById('s2').className='step-n done';document.getElementById('s2').textContent='✓';
+    document.getElementById('s3').className='step-n done';document.getElementById('s3').textContent='✓';
+    loadMsg.style.display='none';loadedBlock.style.display='block';
+    const batches=getUniqueBatches();
+    loadedOk.textContent='✅ '+A.cands.length+' candidates loaded · '+batches.length+' batch(es): '+batches.map(b=>typeof b==='number'?'Batch '+b:b).join(', ');
+    addNotif('Live data loaded',A.cands.length+' candidates fetched from Google Sheet','orange');
+  }catch(e){
+    loadMsg.className='alert alert-err';
+    loadMsg.innerHTML='❌ Could not load data: '+e.message+'<br><small>Make sure the sheet is set to "Anyone with link can view"</small> &nbsp;<button class="btn btn-secondary btn-sm" onclick="loadData()" style="margin-top:6px">🔄 Retry</button>';
+    loadMsg.style.display='block';
+  }
+}
+
+// ============================================================
+// BATCH
+// ============================================================
+function getUniqueBatches(){
+  const all=[...new Set(A.cands.map(c=>c.batch))];
+  const nums=all.filter(v=>typeof v==='number').sort((a,b)=>a-b);
+  const txts=all.filter(v=>typeof v==='string'&&v!=='Unknown').sort();
+  const unkn=all.includes('Unknown')?['Unknown']:[];
+  return [...nums,...txts,...unkn];
+}
+function populateBatchDropdowns(){
+  const batches=getUniqueBatches();
+  const opts='<option value="all">All Batches</option>'+batches.map(b=>{
+    const label=typeof b==='number'?'Batch '+b:b;
+    return '<option value="'+label+'">'+label+'</option>';
+  }).join('');
+  const bf=document.getElementById('batchFilter');if(bf)bf.innerHTML=opts;
+  const bn=document.getElementById('bName');if(bn)bn.innerHTML=opts;
+}
+function getBatchFiltered(){
+  const el=document.getElementById('batchFilter');
+  const bval=el?el.value:'all';
+  if(!bval||bval==='all')return A.cands;
+  const numMatch=bval.match(/^Batch\s*(\d+)$/i);
+  if(numMatch){const bnum=parseInt(numMatch[1]);return A.cands.filter(c=>Number(c.batch)===bnum);}
+  return A.cands.filter(c=>c.batch&&c.batch.toString().trim()===bval.trim());
+}
+function onBatchChange(){
+  const sel=document.getElementById('bName').value;
+  const info=document.getElementById('batchFilterInfo');
+  info.style.display=sel==='all'?'block':'none';
+  if(sel==='all') info.textContent='Showing all batches — '+A.cands.length+' total candidates';
+}
+function applyBatchFilter(){
+  const bval=document.getElementById('batchFilter')?document.getElementById('batchFilter').value:'all';
+  const badge=document.getElementById('batchFilterBadge');
+  const label=document.getElementById('batchFilterLabel');
+  const count=document.getElementById('batchFilterCount');
+  badge.style.display=bval==='all'?'none':'block';
+  if(bval!=='all'){ label.textContent=bval; }
+  renderTable();
+  const filtered=getBatchFiltered();
+  count.textContent=filtered.length+' candidates';
+}
+function filterByBatch(b){
+  showTab('candidates');
+  const bf=document.getElementById('batchFilter');
+  if(bf){
+    const label=typeof b==='number'?'Batch '+b:b.toString();
+    bf.value=label;applyBatchFilter();
+  }
+}
+async function saveBatchAndLoad(){
+  const sel=document.getElementById('bName').value;
+  const label=sel==='all'?'All Batches':sel;
+  A.batch={id:sel,name:label,start:document.getElementById('bStart').value,end:document.getElementById('bEnd').value};
+  document.getElementById('rBatch').value=label;
+  const bf=document.getElementById('batchFilter');if(bf)bf.value=sel;
+  await loadData();
+  const saved=document.getElementById('batchSaved');
+  saved.textContent='✅ Data loaded live from Google Sheet.';
+  saved.style.display='block';
+}
+
+// ============================================================
+// METRICS
+// ============================================================
+function updateMetrics(){
+  const c=A.cands,acc=c.filter(x=>x.status==='accepted'),rej=c.filter(x=>x.status==='rejected');
+  const pts=c.map(x=>x.pts).filter(x=>x>0);
+  const avg=pts.length?(pts.reduce((a,b)=>a+b,0)/pts.length).toFixed(1)+'%':'—';
+  document.getElementById('mTotal').textContent=c.length;
+  document.getElementById('mAcc').textContent=acc.length;
+  document.getElementById('mRej').textContent=rej.length;
+  document.getElementById('mAvg').textContent=avg;
+  document.getElementById('mTop').textContent=pts.length?Math.max(...pts).toFixed(1)+'%':'—';
+  document.getElementById('mLow').textContent=pts.length?Math.min(...pts).toFixed(1)+'%':'—';
+  document.getElementById('mAccSub').textContent=c.length?Math.round(acc.length/c.length*100)+'% acceptance':'';
+  document.getElementById('mRejSub').textContent=c.length?Math.round(rej.length/c.length*100)+'% rejection':'';
+  document.getElementById('candSub').textContent=c.length+' candidates · '+acc.length+' accepted · '+rej.length+' rejected';
+  document.getElementById('rTotal').value=c.length;
+  document.getElementById('rAcc').value=acc.length;
+  document.getElementById('rRej').value=rej.length;
+  // Batch breakdown
+  const batches=getUniqueBatches();
+  const bbDiv=document.getElementById('batchBreakdown');
+  const bbContent=document.getElementById('batchBreakdownContent');
+  if(batches.length>0){
+    bbDiv.style.display='block';
+    bbContent.innerHTML=batches.map((b,idx)=>{
+      const bc=c.filter(x=>Number(x.batch)===Number(b)||x.batch===b);
+      const ba=bc.filter(x=>x.status==='accepted');
+      const label=typeof b==='number'?'Batch '+b:b;
+      return '<div class="batch-card" data-bidx="'+idx+'"><div class="batch-card-label">'+label+'</div><div class="batch-card-total">'+bc.length+'</div><div style="font-size:11px;color:var(--color-success);margin-top:2px">'+ba.length+' accepted</div><div style="font-size:11px;color:var(--color-danger);">'+(bc.length-ba.length)+' rejected</div></div>';
+    }).join('');
+    bbContent.querySelectorAll('[data-bidx]').forEach(function(el){
+      el.addEventListener('click',function(){filterByBatch(batches[parseInt(el.getAttribute('data-bidx'))]);});
+    });
+  }
+}
+
+// ============================================================
+// TABLE
+// ============================================================
+let filt='all';
+function setFilt(f){filt=f;renderTable();}
+function renderTable(){
+  const srch=(document.getElementById('srch').value||'').toLowerCase();
+  let list=getBatchFiltered();
+  if(filt!=='all')list=list.filter(c=>c.status===filt);
+  if(srch)list=list.filter(c=>c.nameEn.toLowerCase().includes(srch)||c.nameAr.includes(srch)||c.nid.includes(srch)||(c.notes||'').toLowerCase().includes(srch)||(c.raw||'').toLowerCase().includes(srch));
+  const tb=document.getElementById('tBody');
+  if(!list.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text-muted)">No results match your filter</td></tr>';document.getElementById('tFoot').textContent='';return;}
+  tb.innerHTML=list.map(c=>`<tr>
+    <td style="color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px">${c.id}</td>
+    <td><div style="display:flex;align-items:center;gap:8px">
+      <div class="av ${c.status==='accepted'?'av-green':'av-red'}">${c.nameEn.replace(/[^a-zA-Z]/g,'').slice(0,2).toUpperCase()||'??'}</div>
+      <div><div style="font-weight:500;font-size:13px;font-family:'Inter',sans-serif">${c.nameEn}</div>${c.nameAr?'<div style="font-size:11px;color:var(--text-muted);direction:rtl">'+c.nameAr+'</div>':''}</div>
+    </div></td>
+    <td><span class="badge badge-orange" style="font-size:10px">${typeof c.batch==='number'?'B'+c.batch:c.batch||'—'}</span></td>
+    <td><span class="${scCol(c.pts)}">${c.pts.toFixed(1)}%</span></td>
+    <td style="color:var(--text-secondary)">${c.form!=null?c.form+'%':'—'}</td>
+    <td style="color:var(--text-secondary)">${c.iv!=null?c.iv.toFixed(1)+'%':'—'}</td>
+    <td style="color:var(--text-secondary)">${c.kn!=null?c.kn.toFixed(1)+'%':'—'}</td>
+    <td style="color:var(--text-secondary)">${c.tac!=null?c.tac.toFixed(1)+'%':'—'}</td>
+    <td style="color:var(--text-secondary)">${c.tspd?c.tspd+' wpm':'—'}</td>
+    <td><span class="badge ${c.status==='accepted'?'badge-success':'badge-danger'}">${c.status==='accepted'?'✅ Accepted':'❌ '+shortR(c.raw)}</span></td>
+    <td><span class="${rankCls(c.rank)}" style="font-size:11px">${c.rank||'—'}</span></td>
+    <td><button class="btn btn-ghost btn-sm" onclick="showCand(${c.id-1})">View</button></td>
+  </tr>`).join('');
+  document.getElementById('tFoot').textContent='Showing '+list.length+' of '+A.cands.length+' candidates';
+}
+function shortR(r){if(!r)return'Rejected';const s=r.replace(/^rejected\s*-?\s*/i,'').trim();return s.length>18?s.slice(0,16)+'…':s;}
+
+function showCand(i){
+  const c=A.cands[i];
+  document.getElementById('cmName').textContent=c.nameEn;
+  document.getElementById('cmAr').textContent=c.nameAr||'';
+  document.getElementById('cmContent').innerHTML=`
+    <div class="metrics" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px">
+      <div class="card-stat"><div class="card-stat__label">Points</div><div class="card-stat__value ${scCol(c.pts)}">${c.pts.toFixed(1)}%</div></div>
+      <div class="card-stat"><div class="card-stat__label">Form Test</div><div class="card-stat__value">${c.form!=null?c.form+'%':'—'}</div></div>
+      <div class="card-stat"><div class="card-stat__label">Interview</div><div class="card-stat__value">${c.iv!=null?c.iv.toFixed(1)+'%':'—'}</div></div>
+      <div class="card-stat"><div class="card-stat__label">Knowledge</div><div class="card-stat__value">${c.kn!=null?c.kn.toFixed(1)+'%':'—'}</div></div>
+      <div class="card-stat"><div class="card-stat__label">Tactics</div><div class="card-stat__value">${c.tac!=null?c.tac.toFixed(1)+'%':'—'}</div></div>
+      <div class="card-stat"><div class="card-stat__label">Typing</div><div class="card-stat__value">${c.tspd?c.tspd+' wpm':'—'}</div></div>
+    </div>
+    <table style="width:100%;font-size:13px">
+      <tr><td style="color:var(--text-muted);padding:5px 0;width:100px">Batch</td><td><span class="badge badge-orange">${typeof c.batch==='number'?'Batch '+c.batch:c.batch||'—'}</span></td></tr>
+      <tr><td style="color:var(--text-muted);padding:5px 0">Status</td><td><span class="badge ${c.status==='accepted'?'badge-success':'badge-danger'}">${c.raw}</span></td></tr>
+      <tr><td style="color:var(--text-muted);padding:5px 0">Rank</td><td class="${rankCls(c.rank)}">${c.rank||'—'}</td></tr>
+      <tr><td style="color:var(--text-muted);padding:5px 0">National ID</td><td style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.nid}</td></tr>
+      <tr><td style="color:var(--text-muted);padding:5px 0">Interviewer</td><td>${c.itvr}</td></tr>
+      ${c.notes?'<tr><td style="color:var(--text-muted);padding:5px 0">Notes</td><td style="color:var(--color-warning)">'+c.notes+'</td></tr>':''}
+    </table>`;
+  document.getElementById('candModal').style.display='flex';
+}
+
+// ============================================================
+// CHARTS
+// ============================================================
+function mkChart(id,cands,color){
+  if(A.charts[id])A.charts[id].destroy();
+  const bins=[[0,20],[20,30],[30,40],[40,50],[50,60],[60,70],[70,80],[80,90],[90,101]];
+  const labels=['0-20%','20-30%','30-40%','40-50%','50-60%','60-70%','70-80%','80-90%','90-100%'];
+  const data=bins.map(b=>cands.filter(c=>c.pts>=b[0]&&c.pts<b[1]).length);
+  const ctx=document.getElementById(id);if(!ctx)return;
+  A.charts[id]=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#666',font:{size:9},maxRotation:45,autoSkip:false},grid:{color:'rgba(255,255,255,0.05)'}},y:{ticks:{color:'#666',font:{size:10},stepSize:1},beginAtZero:true,grid:{color:'rgba(255,255,255,0.05)'}}}}});
+}
+function buildCharts(){
+  document.getElementById('cPlaceholder').style.display='none';
+  document.getElementById('cGrid').style.display='grid';
+  mkChart('ovChart',A.cands,'rgba(232,89,12,0.7)');
+  mkChart('rCA',A.cands,'rgba(232,89,12,0.7)');
+  mkChart('rCB',A.cands.filter(c=>c.status==='accepted'),'rgba(40,160,100,0.7)');
+  mkChart('rCC',A.cands.filter(c=>c.status==='rejected'),'rgba(224,64,64,0.7)');
+  document.getElementById('loadedBlock').style.display='block';
+}
+function updateReportStats(){
+  const a=A.cands,acc=a.filter(c=>c.status==='accepted'),rej=a.filter(c=>c.status==='rejected');
+  const avg=x=>x.length?(x.reduce((s,c)=>s+c.pts,0)/x.length).toFixed(1)+'%':'—';
+  document.getElementById('rAvgAll').textContent=avg(a);
+  document.getElementById('rAvgAcc').textContent=avg(acc);
+  document.getElementById('rAvgRej').textContent=avg(rej);
+}
+
+// ============================================================
+// END OF BATCH
+// ============================================================
+function showEndBatch(){
+  if(!A.cands.length){alert('Load data first.');return;}
+  const bval=document.getElementById('batchFilter')?document.getElementById('batchFilter').value:'all';
+  const batchLabel=bval==='all'?'All Batches':bval;
+  const accCands=getBatchFiltered().filter(c=>c.status==='accepted');
+  document.getElementById('endInfo').textContent=accCands.length+' accepted candidates from '+batchLabel+' will be emailed to both supervisors.';
+  document.getElementById('endInfo').style.display='block';
+  document.getElementById('endList').innerHTML=accCands.map((c,i)=>'<div style="padding:5px 0;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between"><span>'+(i+1)+'. '+c.nameEn+'</span><span class="badge badge-success" style="font-size:10px">'+c.pts.toFixed(1)+'%</span></div>').join('');
+  document.getElementById('endDone').style.display='none';
+  document.getElementById('endErr').style.display='none';
+  document.getElementById('endModal').style.display='flex';
+}
+
+async function confirmEndBatch(){
+  const supEmail=document.getElementById('supEmail').value.trim();
+  const bsupEmail=document.getElementById('bsupEmail').value.trim();
+  const errEl=document.getElementById('endErr');
+  const doneEl=document.getElementById('endDone');
+  const btn=document.getElementById('endConfirmBtn');
+  errEl.style.display='none';
+  if(!supEmail||!bsupEmail){errEl.textContent='Please enter both supervisor emails.';errEl.style.display='block';return;}
+  if(!supEmail.endsWith('@hudl.com')||!bsupEmail.endsWith('@hudl.com')){errEl.textContent='Both emails must be @hudl.com addresses.';errEl.style.display='block';return;}
+  const bval=document.getElementById('batchFilter')?document.getElementById('batchFilter').value:'all';
+  const batchName=bval==='all'?'All Batches':(bval||A.batch.name||'Batch 81');
+  const accCands=getBatchFiltered().filter(c=>c.status==='accepted');
+  const sentBy=A.user?A.user.email:'coordinator@hudl.com'; // Firebase Auth user
+  const ts=new Date().toLocaleString('en-EG');
+  const accList=accCands.map((c,i)=>(i+1)+'. '+c.nameEn+' | Points: '+c.pts.toFixed(1)+'% | Rank: '+(c.rank||'—')+' | NID: '+c.nid).join('\n');
+  const tableRows=accCands.map((c,i)=>
+    '<tr style="background:'+(i%2===0?'#1A1A1A':'#111111')+'">'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(i+1)+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;font-weight:600;color:#fff">'+c.nameEn+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;direction:rtl;text-align:right;color:#aaa">'+(c.nameAr||'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;font-weight:700;color:'+(c.pts>=75?'#28A064':c.pts>=50?'#F0A020':'#E04040')+'">'+c.pts.toFixed(1)+'%</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.form!=null?c.form+'%':'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.iv!=null?c.iv.toFixed(1)+'%':'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.kn!=null?c.kn.toFixed(1)+'%':'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.tac!=null?c.tac.toFixed(1)+'%':'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;color:#aaa">'+(c.rank||'—')+'</td>'+
+    '<td style="padding:8px 10px;border:1px solid #2A2A2A;font-size:11px;color:#666">'+c.nid+'</td>'+
+    '</tr>').join('');
+  const acceptedTable='<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;margin-top:12px"><thead><tr style="background:#E8590C;color:#fff"><th style="padding:10px;border:1px solid #D14A08;text-align:center">#</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">Name (EN)</th><th style="padding:10px;border:1px solid #D14A08;text-align:right">الاسم (AR)</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Points</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Form</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Interview</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Knowledge</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Tactics</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">Rank</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">National ID</th></tr></thead><tbody>'+tableRows+'</tbody></table>';
+  const params={
+    batch_name:batchName,accepted_count:accCands.length,
+    rejected_count:A.cands.length-accCands.length,total_count:A.cands.length,
+    sent_by:sentBy,timestamp:ts,
+    accepted_list:accList,accepted_table:acceptedTable,
+    full_body_en:'Dear Supervisor,\n\nThe interview collection phase for batch '+batchName+' has been completed.\n\nSummary:\n- Total Interviewees : '+A.cands.length+'\n- Accepted           : '+accCands.length+'\n- Rejected           : '+(A.cands.length-accCands.length)+'\n\nPlease find the full list of accepted candidates in the table below.\n\nBest regards,\nFlowOps — Training Operations',
+    full_body_ar:'عزيزي المشرف،\n\nتم الانتهاء من مرحلة جمع المقابلات للدفعة '+batchName+'.\n\nالملخص:\n- إجمالي المتقدمين  : '+A.cands.length+'\n- المقبولون         : '+accCands.length+'\n- المرفوضون         : '+(A.cands.length-accCands.length)+'\n\nيمكنك الاطلاع على قائمة المرشحين المقبولين كاملةً في الجدول أدناه.\n\nمع تحيات،\nFlowOps — منصة إدارة التدريب',
+    reply_to:sentBy
+  };
+  btn.disabled=true;btn.textContent='⏳ Sending...';
+  let sent=0,errors=[];
+  try{ await emailjs.send(EJS.serviceId,EJS.templateId,{...params,to_name:'Training Supervisor',to_email:supEmail,role_en:'Training Supervisor',role_ar:'المشرف التدريبي'}); sent++; }catch(e){ errors.push('Training Supervisor: '+(e.text||e.message||'failed')); }
+  try{ await emailjs.send(EJS.serviceId,EJS.templateId,{...params,to_name:'Batch Supervisor',to_email:bsupEmail,role_en:'Batch Supervisor',role_ar:'مشرف الدفعة'}); sent++; }catch(e){ errors.push('Batch Supervisor: '+(e.text||e.message||'failed')); }
+  btn.disabled=false;btn.textContent='✅ Confirm & Send Emails';
+  if(errors.length===0){
+    doneEl.innerHTML='✅ <strong>Emails sent successfully!</strong><br>• Training Supervisor: <strong>'+supEmail+'</strong> ✉️<br>• Batch Supervisor: <strong>'+bsupEmail+'</strong> ✉️<br><span style="font-size:12px;margin-top:4px;display:block">'+accCands.length+' accepted candidates · '+ts+'</span>';
+    doneEl.style.display='block';
+  }else if(sent>0){
+    doneEl.textContent='⚠️ '+sent+'/2 emails sent. Failed: '+errors.join('; ');doneEl.style.display='block';
+  }else{
+    errEl.innerHTML='❌ Emails failed. Check your EmailJS template "To Email" field = <code>{{to_email}}</code><br>Error: '+errors.join('; ');errEl.style.display='block';
+  }
+  addNotif('End of Batch',sent+'/2 emails sent for '+batchName+' ('+accCands.length+' accepted)','orange');
+  document.getElementById('s4').className='step-n done';document.getElementById('s4').textContent='✓';
+  A.notifN+=2;updateBadge();
+}
+
+// ============================================================
+// REPORT
+// ============================================================
+function submitReport(){
+  const n=document.getElementById('rBatch').value;
+  if(!n){alert('Enter batch name.');return;}
+  document.getElementById('rSubmitted').style.display='block';
+  document.getElementById('s5').className='step-n done';document.getElementById('s5').textContent='✓';
+  addNotif('Report submitted','Interview collection report ready for '+n,'orange');
+  A.notifN++;updateBadge();window.scrollTo(0,0);
+}
+function exportCSV(){
+  const list=filt==='all'?getBatchFiltered():getBatchFiltered().filter(c=>c.status===filt);
+  const hdr=['#','Name EN','Name AR','National ID','Batch','Points%','Form%','Interview%','Knowledge%','Tactics%','Typing Speed','Status','Rank','Reason'];
+  const rows=list.map(c=>[c.id,'"'+c.nameEn+'"','"'+c.nameAr+'"',c.nid,c.batch,c.pts,c.form,c.iv,c.kn,c.tac,c.tspd,c.status,'"'+(c.rank||'')+'"','"'+(c.raw||'')+'"']);
+  const csv=[hdr.join(','),...rows.map(r=>r.join(','))].join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='flowops_candidates.csv';a.click();
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+function addNotif(title,body,type){
+  const colors={orange:'var(--color-primary)',green:'var(--color-success)',red:'var(--color-danger)',warn:'var(--color-warning)'};
+  const d=document.createElement('div');d.className='notif';d.style.borderInlineStartColor=colors[type]||'var(--color-primary)';
+  d.innerHTML='<div class="notif-t">'+title+'</div><div class="notif-b">'+body+'</div><div class="notif-ts">'+new Date().toLocaleTimeString('en-EG',{hour:'2-digit',minute:'2-digit'})+' · Now</div>';
+  document.getElementById('notifList').prepend(d);
+  A.notifN++;updateBadge();
+}
+function updateBadge(){document.getElementById('nBadge').textContent=A.notifN;document.getElementById('nSide').textContent=A.notifN;}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function showTab(t){
+  ['overview','candidates','report','notifs'].forEach(x=>{
+    const el=document.getElementById('tab_'+x);if(el)el.style.display=x===t?'block':'none';
+    const n=document.getElementById('nav_'+x);if(n)n.classList.toggle('active',x===t);
+  });
+  document.querySelectorAll('.mob-nav-i').forEach(el=>el.classList.toggle('active',el.textContent.toLowerCase().trim().startsWith(t.slice(0,4))));
+  if(t==='report'){setTimeout(()=>{buildCharts();updateReportStats();},50);}
+  if(t==='notifs'){A.notifN=0;updateBadge();}
+}
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ============================================================
+// LANGUAGE
+// ============================================================
+function toggleLang(){
+  A.lang=A.lang==='en'?'ar':'en';
+  document.documentElement.lang=A.lang;
+  document.documentElement.dir=A.lang==='ar'?'rtl':'ltr';
+  localStorage.setItem('flowops-lang',A.lang);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  const s=document.querySelector('.screen.active');if(!s)return;
+  if(s.id==='signinScreen')doSignin();
+  if(s.id==='signupScreen')doSignup();
+});
+
+document.getElementById('bStart').value=new Date().toISOString().split('T')[0];
+
+// Restore saved language
+const savedLang=localStorage.getItem('flowops-lang');
+if(savedLang&&savedLang==='ar'){
+  A.lang='ar';document.documentElement.lang='ar';document.documentElement.dir='rtl';
+}
+
+// Inject logos
+injectLogos();
+
+// ============================================================
+// PWA — Service Worker + Install Banner
+// ============================================================
+
+
+// PWA install prompt
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const banner = document.getElementById('installBanner');
+  if(banner) banner.style.display = 'flex';
+});
+window.addEventListener('appinstalled', () => {
+  const banner = document.getElementById('installBanner');
+  if(banner) banner.style.display = 'none';
+  deferredPrompt = null;
+});
+function installPWA(){
+  if(deferredPrompt){
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(()=>{ deferredPrompt=null; });
+    const banner = document.getElementById('installBanner');
+    if(banner) banner.style.display = 'none';
+  }
+}
+
+// Initialize Firebase Auth — handles all devices automatically
+initFirebaseAuth();
+
+</script>
+
+<!-- PWA Install Banner -->
+<div id="installBanner" style="display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--bg-surface);border:1px solid var(--color-primary);border-radius:var(--radius-lg);padding:12px 20px;z-index:9999;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);max-width:340px;width:90%">
+  <div style="display:flex;align-items:center;gap:10px;flex:1">
+    <svg width="28" height="28" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="10" fill="#1A1A1A"/><circle cx="46" cy="38" r="9" fill="#E8590C"/><circle cx="30" cy="28" r="6" fill="#E8590C" opacity="0.5"/><circle cx="16" cy="20" r="4" fill="#E8590C" opacity="0.2"/></svg>
+    <div>
+      <div style="font-size:13px;font-weight:600;font-family:'Inter',sans-serif;color:var(--text-primary)">Install FlowOps</div>
+      <div style="font-size:11px;color:var(--text-muted)">Add to your home screen</div>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
+  <button class="btn btn-ghost btn-sm" onclick="document.getElementById('installBanner').style.display='none'" style="padding:5px 8px">✕</button>
+</div>
+
+</body>
+</html>
