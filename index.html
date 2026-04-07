@@ -25,6 +25,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400&family=Cairo:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -580,29 +581,15 @@ tbody tr:hover{background:var(--bg-surface-hover)}
 <script>
 
 // ============================================================
-// FLOWOPS — Resend Email + Google Sheets API
+// FLOWOPS — EmailJS + Google Sheets API
 // ============================================================
-// Resend API — free 3,000 emails/month, no credit card
-const RESEND = {
-  apiKey: 're_Art57yXN_PnjZsc3JcPP4mxjT2Bhj3sgg',
-  from:   'FlowOps <onboarding@resend.dev>',
-  // Send email via Resend API
-  async send(to, subject, html){
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + this.apiKey,
-        'Content-Type':  'application/json'
-      },
-      body: JSON.stringify({ from: this.from, to: [to], subject, html })
-    });
-    if(!res.ok){
-      const err = await res.json();
-      throw new Error(err.message || 'Resend API error '+res.status);
-    }
-    return await res.json();
-  }
+// EmailJS — works directly from browser, 200 emails/month free
+const EJS = {
+  serviceId:  'service_epfjr1r',
+  templateId: 'template_qusqjck',
+  publicKey:  'JPC_BMmjR0djRF2GD'
 };
+(function(){ try{ emailjs.init({publicKey: EJS.publicKey}); }catch(e){ console.warn('EmailJS init failed',e); } })();
 
 const GSHEETS={
   apiKey:'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI',
@@ -1165,7 +1152,7 @@ async function confirmEndBatch(){
   }else if(sent>0){
     doneEl.textContent='⚠️ '+sent+'/2 emails sent. Failed: '+errors.join('; ');doneEl.style.display='block';
   }else{
-    errEl.innerHTML='❌ Emails failed. Check your internet connection and try again.<br>Error: '+errors.join('; ');errEl.style.display='block';
+    errEl.innerHTML='❌ Emails failed. Check your EmailJS template has "To Email" set to {{to_email}}.<br>Error: '+errors.join('; ');errEl.style.display='block';
   }
   addNotif('End of Batch',sent+'/2 emails sent for '+batchName+' ('+accCands.length+' accepted)','orange');
   document.getElementById('s4').className='step-n done';document.getElementById('s4').textContent='✓';
