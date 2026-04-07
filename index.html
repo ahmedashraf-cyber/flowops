@@ -82,6 +82,9 @@ code{font-family:'JetBrains Mono',monospace;font-size:12px}
 .btn-sm{padding:5px 12px;font-size:12px}
 .btn-full{width:100%;justify-content:center}
 .btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.loading{position:relative;color:transparent!important}
+.btn.loading::after{content:'';position:absolute;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;left:50%;top:50%;transform:translate(-50%,-50%)}
+@keyframes spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 
 /* BADGES */
 .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--radius-pill);font-size:11px;font-weight:500}
@@ -644,7 +647,7 @@ async function doSignup(){
   if(!email.toLowerCase().endsWith('@hudl.com')){err.textContent='Only @hudl.com email addresses are permitted.';err.style.display='block';return;}
   if(pass.length<8){err.textContent='Password must be at least 8 characters.';err.style.display='block';return;}
   if(pass!==passC){err.textContent='Passwords do not match.';err.style.display='block';return;}
-  btn.disabled=true; btn.textContent='⏳ Creating account...';
+  btn.disabled=true; btn.classList.add('loading'); btn.textContent='Creating account...';
   try {
     const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
     await cred.user.updateProfile({displayName: first+' '+last});
@@ -674,7 +677,7 @@ async function doSignin(){
   err.style.display='none';
   if(!email||!pass){err.textContent='Please fill in all fields.';err.style.display='block';return;}
   if(!email.toLowerCase().endsWith('@hudl.com')){err.textContent='Only @hudl.com email addresses are permitted.';err.style.display='block';return;}
-  btn.disabled=true; btn.textContent='⏳ Signing in...';
+  btn.disabled=true; btn.classList.add('loading'); btn.textContent='Signing in...';
   try {
     await fbAuth.signInWithEmailAndPassword(email, pass);
     // onAuthStateChanged handles redirect
@@ -685,7 +688,7 @@ async function doSignin(){
     if(e.code==='auth/too-many-requests') msg='Too many attempts. Please wait a few minutes.';
     if(e.code==='auth/network-request-failed') msg='Network error. Check your connection.';
     err.textContent=msg; err.style.display='block';
-    btn.disabled=false; btn.textContent='Sign in →';
+    btn.disabled=false; btn.classList.remove('loading'); btn.textContent='Sign in →';
   }
 }
 
