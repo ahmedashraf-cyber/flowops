@@ -1090,61 +1090,30 @@ async function confirmEndBatch(){
     full_body_ar:'عزيزي المشرف،\n\nتم الانتهاء من مرحلة جمع المقابلات للدفعة '+batchName+'.\n\nالملخص:\n- إجمالي المتقدمين  : '+A.cands.length+'\n- المقبولون         : '+accCands.length+'\n- المرفوضون         : '+(A.cands.length-accCands.length)+'\n\nيمكنك الاطلاع على قائمة المرشحين المقبولين كاملةً في الجدول أدناه.\n\nمع تحيات،\nFlowOps — منصة إدارة التدريب',
     reply_to:sentBy
   };
-  btn.disabled=true; btn.textContent='⏳ Sending...';
+  btn.disabled=true; btn.classList.add('loading'); btn.textContent='Sending...';
   let sent=0, errors=[];
 
-  // Build bilingual HTML email body
-  function buildEmailHTML(toName, roleEn, roleAr){
-    return `
-    <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;color:#1a1a18">
-      <div style="background:#E8590C;padding:16px 24px;border-radius:8px 8px 0 0">
-        <h2 style="color:#fff;margin:0;font-size:18px">FlowOps — Interview Phase Complete</h2>
-      </div>
-      <div style="padding:24px;background:#1A1A1A;border:1px solid #2A2A2A;color:#fff">
-
-        <p style="margin:0 0 6px">Dear <strong>${toName}</strong>,</p>
-        <p style="margin:0 0 16px;color:#aaa">The interview collection phase for batch <strong>${params.batch_name}</strong> has been completed.</p>
-
-        <table style="width:100%;background:#111;border-radius:6px;padding:14px;margin-bottom:20px;border-collapse:collapse">
-          <tr><td style="padding:6px 10px;color:#888">Total Interviewees</td><td style="padding:6px 10px;font-weight:700;color:#fff">${params.total_count}</td></tr>
-          <tr><td style="padding:6px 10px;color:#888">Accepted</td><td style="padding:6px 10px;font-weight:700;color:#28A064">${params.accepted_count}</td></tr>
-          <tr><td style="padding:6px 10px;color:#888">Rejected</td><td style="padding:6px 10px;font-weight:700;color:#E04040">${params.rejected_count}</td></tr>
-          <tr><td style="padding:6px 10px;color:#888">Sent by</td><td style="padding:6px 10px;color:#aaa">${params.sent_by}</td></tr>
-          <tr><td style="padding:6px 10px;color:#888">Time</td><td style="padding:6px 10px;color:#aaa">${params.timestamp}</td></tr>
-        </table>
-
-        <hr style="border:none;border-top:1px solid #2A2A2A;margin:20px 0"/>
-
-        <div style="direction:rtl;text-align:right;background:#111;border-radius:6px;padding:16px;margin-bottom:20px">
-          <p style="margin:0 0 6px;color:#fff">عزيزي <strong>${toName}</strong>،</p>
-          <p style="margin:0 0 16px;color:#aaa">تم الانتهاء من مرحلة جمع المقابلات للدفعة <strong>${params.batch_name}</strong>.</p>
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:5px 8px;color:#888">إجمالي المتقدمين</td><td style="padding:5px 8px;font-weight:700;color:#fff">${params.total_count}</td></tr>
-            <tr><td style="padding:5px 8px;color:#28A064">المقبولون</td><td style="padding:5px 8px;font-weight:700;color:#28A064">${params.accepted_count}</td></tr>
-            <tr><td style="padding:5px 8px;color:#E04040">المرفوضون</td><td style="padding:5px 8px;font-weight:700;color:#E04040">${params.rejected_count}</td></tr>
-          </table>
-          <p style="margin:12px 0 0;color:#aaa">يمكنك الاطلاع على قائمة المرشحين المقبولين في الجدول أدناه.</p>
-        </div>
-
-        <hr style="border:none;border-top:1px solid #2A2A2A;margin:20px 0"/>
-        <p style="margin:0 0 12px;font-weight:600;color:#E8590C">Accepted Candidates / المرشحون المقبولون</p>
-        ${params.accepted_table}
-
-      </div>
-    </div>`;
-  }
-
-  const subjectLine = 'FlowOps — ' + params.batch_name + ' Interview Phase Complete (' + params.accepted_count + ' Accepted)';
+  try{
+    await emailjs.send(EJS.serviceId, EJS.templateId, {
+      ...params,
+      to_name: 'Training Supervisor',
+      to_email: supEmail,
+      role_en: 'Training Supervisor',
+      role_ar: 'المشرف التدريبي'
+    });
+    sent++;
+  }catch(e){ errors.push('Training Supervisor ('+supEmail+'): '+(e.text||e.message||'failed')); }
 
   try{
-    await RESEND.send(supEmail, subjectLine, buildEmailHTML('Training Supervisor','Training Supervisor','المشرف التدريبي'));
+    await emailjs.send(EJS.serviceId, EJS.templateId, {
+      ...params,
+      to_name: 'Batch Supervisor',
+      to_email: bsupEmail,
+      role_en: 'Batch Supervisor',
+      role_ar: 'مشرف الدفعة'
+    });
     sent++;
-  }catch(e){ errors.push('Training Supervisor ('+supEmail+'): '+e.message); }
-
-  try{
-    await RESEND.send(bsupEmail, subjectLine, buildEmailHTML('Batch Supervisor','Batch Supervisor','مشرف الدفعة'));
-    sent++;
-  }catch(e){ errors.push('Batch Supervisor ('+bsupEmail+'): '+e.message); }
+  }catch(e){ errors.push('Batch Supervisor ('+bsupEmail+'): '+(e.text||e.message||'failed')); }
   btn.disabled=false;btn.textContent='✅ Confirm & Send Emails';
   if(errors.length===0){
     doneEl.innerHTML='✅ <strong>Emails sent successfully!</strong><br>• Training Supervisor: <strong>'+supEmail+'</strong> ✉️<br>• Batch Supervisor: <strong>'+bsupEmail+'</strong> ✉️<br><span style="font-size:12px;margin-top:4px;display:block">'+accCands.length+' accepted candidates · '+ts+'</span>';
