@@ -1940,6 +1940,7 @@ function renderAttGrid(){
     // No groups yet — show flat list sorted by training code
     const sorted = BSUP.trainees.filter(t=>t.trainingCode).sort((a,b)=>a.trainingCode-b.trainingCode);
     grid.innerHTML = renderGroupAttCard(sorted, 'All Trainees', 'All', isLocked, dayKey);
+    attachAttendanceClicks();
     updateAttSummaryLine();
     return;
   }
@@ -1954,6 +1955,7 @@ function renderAttGrid(){
     return renderGroupAttCard(sorted, 'Group '+(gi+1), trainer, isLocked, dayKey);
   }).join('');
 
+  attachAttendanceClicks();
   updateAttSummaryLine();
 }
 
@@ -1969,9 +1971,9 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
     const code = t.trainingCode;
     const status = (ATT.records[dayKey]||{})[code] || 'M';
     const col = ATT_COLORS[status];
-    const clickable = !isLocked ? 'cursor:pointer;user-select:none' : 'cursor:default;opacity:.7';
-    const onclick = !isLocked ? 'onclick="cycleStatus('+code+',''+dayKey+'')"' : '';
-    return '<div '+onclick+' style="'+clickable+';background:'+col.bg+';border:2px solid '+col.border+';border-radius:var(--radius-md);padding:10px 8px;text-align:center;transition:all 0.15s;min-width:0">'+
+    const pointer = !isLocked ? 'cursor:pointer;user-select:none' : 'cursor:default;opacity:.7';
+    const dataAttr = !isLocked ? 'data-attcode="'+code+'" data-attday="'+dayKey+'"' : '';
+    return '<div '+dataAttr+' style="'+pointer+';background:'+col.bg+';border:2px solid '+col.border+';border-radius:var(--radius-md);padding:10px 8px;text-align:center;transition:all 0.15s;min-width:0">'+
       '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);margin-bottom:3px">#'+code+'</div>'+
       '<div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px">'+(t.name||t.nameEn||'').split(' ')[0]+'</div>'+
       '<div style="font-size:16px;font-weight:800;color:'+col.text+'">'+status+'</div>'+
@@ -1996,6 +1998,18 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px">'+cards+'</div>'+
   '</div>';
+}
+
+function attachAttendanceClicks(){
+  const grid = document.getElementById('attGroupsGrid');
+  if(!grid) return;
+  grid.querySelectorAll('[data-attcode]').forEach(function(el){
+    el.addEventListener('click', function(){
+      const code = parseInt(el.getAttribute('data-attcode'));
+      const dayKey = el.getAttribute('data-attday');
+      cycleStatus(code, dayKey);
+    });
+  });
 }
 
 function cycleStatus(code, dayKey){
