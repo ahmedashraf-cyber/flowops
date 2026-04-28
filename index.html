@@ -1149,6 +1149,42 @@ async function confirmEndBatch(){
   }else{
     errEl.innerHTML='❌ Emails failed. Check your EmailJS template has "To Email" set to {{to_email}}.<br>Error: '+errors.join('; ');errEl.style.display='block';
   }
+  // Save to Firestore so Batch Supervisor can see the data
+  if(fbDb){
+    try{
+      await fbDb.collection('batch_notifications').add({
+        type:            'end_of_batch',
+        batchName:       batchName,
+        totalAccepted:   accCands.length,
+        totalRejected:   A.cands.length - accCands.length,
+        totalCandidates: A.cands.length,
+        sentBy:          sentBy,
+        timestamp:       new Date().toISOString(),
+        recipients: {
+          trainingSupervisor: supEmail,
+          batchSupervisor:    bsupEmail
+        },
+        acceptedCandidates: accCands.map(c=>({
+          name:          c.nameEn,
+          nameAr:        c.nameAr||'',
+          nid:           c.nid,
+          pts:           c.pts,
+          form:          c.form,
+          interviewScore:c.iv,
+          knowledge:     c.kn,
+          tactics:       c.tac,
+          typingSpeed:   c.tspd,
+          rank:          c.rank||'',
+          status:        c.raw||'Accepted',
+          batch:         c.batch
+        }))
+      });
+      console.log('Batch notification saved to Firestore ✓');
+    }catch(e){
+      console.warn('Firestore save failed:', e.message);
+    }
+  }
+
   addNotif('End of Batch',sent+'/2 emails sent for '+batchName+' ('+accCands.length+' accepted)','orange');
   document.getElementById('s4').className='step-n done';document.getElementById('s4').textContent='✓';
   A.notifN+=2;updateBadge();
