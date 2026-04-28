@@ -1437,9 +1437,22 @@ function generateTrainingCodes(){
   const bar = document.getElementById('bsupProgressBar');
   const txt = document.getElementById('bsupProgressText');
 
-  // Shuffle trainees randomly for code assignment
-  const shuffled = [...BSUP.trainees].sort(() => Math.random() - 0.5);
+  // Apply batch filter — only code trainees from selected batch
+  const batchF = document.getElementById('bsupBatchFilter') ? document.getElementById('bsupBatchFilter').value : 'all';
+  const pool = batchF === 'all' ? BSUP.trainees : BSUP.trainees.filter(t => (t.batchName||'') === batchF);
 
+  if(!pool.length){
+    alert('No trainees found for the selected batch.');
+    btn.disabled = false; btn.textContent = '🎲 Generate Training Codes';
+    document.getElementById('bsupCodeProgress').style.display = 'none';
+    return;
+  }
+
+  // Shuffle only the filtered pool
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+
+  // Start codes after existing max code to avoid duplicates
+  const existingMax = Math.max(0, ...BSUP.trainees.map(t => t.trainingCode||0));
   let i = 0;
   const total = shuffled.length;
 
@@ -1451,7 +1464,7 @@ function generateTrainingCodes(){
       btn.style.display = 'none';
       document.getElementById('bsupResetBtn').style.display = 'inline-flex';
       document.getElementById('bsupCodeStatus').textContent =
-        total + ' training codes assigned successfully';
+        total + ' training codes assigned successfully' + (batchF !== 'all' ? ' for ' + batchF : '');
 
       // Save to localStorage
       const saved = {};
@@ -1477,9 +1490,9 @@ function generateTrainingCodes(){
       return;
     }
 
-    // Find the original trainee and assign code
+    // Find the original trainee and assign code (continuing from existing max)
     const t = BSUP.trainees.find(x => x.name === shuffled[i].name && x.batchName === shuffled[i].batchName);
-    if(t) t.trainingCode = i + 1;
+    if(t) t.trainingCode = existingMax + i + 1;
 
     i++;
     const pct = Math.round((i/total)*100);
