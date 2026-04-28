@@ -1260,6 +1260,16 @@ function installPWA(){
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
 
+// Fallback: show admin switcher after auth loads (in case timing was off)
+setTimeout(function(){
+  if(A.user && A.user.email === 'ahmed.ashraf@hudl.com'){
+    const sw = document.getElementById('roleSwitcher');
+    if(sw) sw.style.display = 'block';
+  }
+}, 3000);
+
+
+
 
 
 // ============================================================
