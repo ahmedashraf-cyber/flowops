@@ -740,9 +740,32 @@ function initFirebaseAuth(){
           role,
           phone: profile.phone||''
         };
-        document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
-        showScreen('coordScreen');
-        setTimeout(()=>{ loadData(); }, 300);
+
+        // Special access for ahmed.ashraf@hudl.com — can use any role
+        const isAdmin = user.email === 'ahmed.ashraf@hudl.com';
+
+        // Route to correct dashboard based on role
+        if(role === 'batchsup' || (isAdmin && A.requestedRole === 'batchsup')){
+          document.getElementById('bsupPill').textContent = name + ' · Batch Supervisor';
+          const logoEl = document.getElementById('bsup_logo');
+          if(logoEl){ const tmpl = document.getElementById('logoSVG'); if(tmpl) logoEl.innerHTML = tmpl.content.firstElementChild.outerHTML; }
+          showScreen('bsupScreen');
+          setTimeout(()=>{ initBsupDashboard(); }, 300);
+          // Show admin role switcher
+          if(user.email === 'ahmed.ashraf@hudl.com'){
+            const sw = document.getElementById('roleSwitcher');
+            if(sw) sw.style.display = 'block';
+          }
+        } else {
+          document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
+          showScreen('coordScreen');
+          setTimeout(()=>{ loadData(); }, 300);
+          // Show admin role switcher for ahmed.ashraf
+          if(user.email === 'ahmed.ashraf@hudl.com'){
+            const sw = document.getElementById('roleSwitcher');
+            if(sw) sw.style.display = 'block';
+          }
+        }
       } catch(e){
         console.error('Profile load failed:', e);
         // Fallback — use Firebase Auth data
@@ -1237,6 +1260,527 @@ function installPWA(){
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
 
+
+
+// ============================================================
+// BATCH SUPERVISOR — State & Data
+// ============================================================
+const BSUP = {
+  trainees:     [],   // accepted trainees from Firestore
+  traineesFilt: 'all',
+  codes:        {},   // uid -> training code mapping
+  groups:       [],   // generated groups
+  groupAssign:  {},   // groupIndex -> trainerCode
+  notifN:       0
+};
+
+const TRAINER_CODES = ['A-043', 'A-145', 'A-162', 'A-411', 'A-566', 'A-721', 'A-779', 'A-999', 'A-1262', 'A-1350', 'A-1373', 'A-1440', 'A-1643', 'A-2064', 'A-2082', 'A-2136'];
+
+// ============================================================
+// INIT BATCH SUPERVISOR DASHBOARD
+// ============================================================
+async function initBsupDashboard(){
+  await loadBsupTrainees();
+  listenForBatchNotifications();
+  loadSavedCodes();
+}
+
+// Load accepted trainees from Firestore (saved by coordinator on End of Batch)
+async function loadBsupTrainees(){
+  if(!fbDb) return;
+  try {
+    const snap = await fbDb.collection('batch_notifications')
+      .where('type','==','end_of_batch')
+      .get();
+
+    let allTrainees = [];
+    snap.forEach(doc => {
+      const data = doc.data();
+      if(data.acceptedCandidates && Array.isArray(data.acceptedCandidates)){
+        data.acceptedCandidates.forEach(t => {
+          allTrainees.push({
+            ...t,
+            batchName: data.batchName,
+            notifId:   doc.id,
+            trainingCode: null
+          });
+        });
+      }
+    });
+
+    // Remove duplicates by name+batch
+    const seen = new Set();
+    BSUP.trainees = allTrainees.filter(t => {
+      const key = t.name + '|' + t.batchName;
+      if(seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+
+    updateBsupMetrics();
+    renderBsupTable();
+    populateBsupBatchFilter();
+    populateBsupGroupBatch();
+    if(BSUP.trainees.length > 0){
+      addBsupNotif('Data loaded', BSUP.trainees.length + ' accepted trainees loaded across all batches', 'orange');
+    }
+  } catch(e){
+    console.error('loadBsupTrainees failed:', e);
+  }
+}
+
+// Listen for new batch completion notifications in real-time
+function listenForBatchNotifications(){
+  if(!fbDb) return;
+  fbDb.collection('batch_notifications')
+    .where('type','==','end_of_batch')
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if(change.type === 'added'){
+          const data = change.doc.data();
+          document.getElementById('bsupNewBatchAlert').style.display = 'block';
+          document.getElementById('bsupNewBatchAlert').textContent =
+            '🎉 New batch ready! Batch "' + data.batchName + '" — ' +
+            (data.totalAccepted||0) + ' accepted trainees are waiting for you.';
+          addBsupNotif(
+            'New Batch Ready: ' + data.batchName,
+            (data.totalAccepted||0) + ' accepted candidates are ready for training code assignment.',
+            'orange'
+          );
+          BSUP.notifN++;
+          updateBsupBadge();
+          // Reload trainees
+          loadBsupTrainees();
+        }
+      });
+    });
+}
+
+// ============================================================
+// TRAINING CODES
+// ============================================================
+function loadSavedCodes(){
+  try {
+    const saved = JSON.parse(localStorage.getItem('flowops_training_codes') || '{}');
+    BSUP.codes = saved;
+    // Apply saved codes to trainees
+    BSUP.trainees.forEach((t, i) => {
+      const key = t.name + '|' + (t.batchName||'');
+      if(saved[key]) t.trainingCode = saved[key];
+    });
+    updateBsupMetrics();
+    renderBsupTable();
+  } catch(e){}
+}
+
+function generateTrainingCodes(){
+  if(!BSUP.trainees.length){
+    alert('No trainees loaded yet.');return;
+  }
+  const btn = document.getElementById('bsupGenBtn');
+  btn.disabled = true; btn.textContent = '⏳ Generating...';
+
+  // Show progress bar
+  document.getElementById('bsupCodeProgress').style.display = 'block';
+  const bar = document.getElementById('bsupProgressBar');
+  const txt = document.getElementById('bsupProgressText');
+
+  // Shuffle trainees randomly for code assignment
+  const shuffled = [...BSUP.trainees].sort(() => Math.random() - 0.5);
+
+  let i = 0;
+  const total = shuffled.length;
+
+  function assignNext(){
+    if(i >= total){
+      // Done
+      bar.style.width = '100%';
+      txt.textContent = 'Complete! ' + total + ' codes assigned.';
+      btn.style.display = 'none';
+      document.getElementById('bsupResetBtn').style.display = 'inline-flex';
+      document.getElementById('bsupCodeStatus').textContent =
+        total + ' training codes assigned successfully';
+
+      // Save to localStorage
+      const saved = {};
+      BSUP.trainees.forEach(t => {
+        const key = t.name + '|' + (t.batchName||'');
+        if(t.trainingCode) saved[key] = t.trainingCode;
+      });
+      localStorage.setItem('flowops_training_codes', JSON.stringify(saved));
+      BSUP.codes = saved;
+
+      updateBsupMetrics();
+      renderBsupTable();
+      updateBsupGroupsAvailability();
+
+      // Save to Firestore too
+      if(fbDb && A.user){
+        fbDb.collection('training_codes').doc('batch_codes').set({
+          codes: saved,
+          assignedBy: A.user.email,
+          assignedAt: new Date().toISOString()
+        }).catch(e => console.warn('Firestore save failed:', e));
+      }
+      return;
+    }
+
+    // Find the original trainee and assign code
+    const t = BSUP.trainees.find(x => x.name === shuffled[i].name && x.batchName === shuffled[i].batchName);
+    if(t) t.trainingCode = i + 1;
+
+    i++;
+    const pct = Math.round((i/total)*100);
+    bar.style.width = pct + '%';
+    txt.textContent = 'Assigning codes... ' + i + ' / ' + total;
+
+    // Render table every 10 assignments for smooth animation
+    if(i % 10 === 0 || i === total) renderBsupTable();
+
+    setTimeout(assignNext, 30); // smooth animation
+  }
+
+  assignNext();
+}
+
+function resetTrainingCodes(){
+  if(!confirm('Reset all training codes? This cannot be undone.')) return;
+  BSUP.trainees.forEach(t => { t.trainingCode = null; });
+  BSUP.codes = {};
+  localStorage.removeItem('flowops_training_codes');
+  document.getElementById('bsupGenBtn').style.display = 'inline-flex';
+  document.getElementById('bsupGenBtn').disabled = false;
+  document.getElementById('bsupGenBtn').textContent = '🎲 Generate Training Codes';
+  document.getElementById('bsupResetBtn').style.display = 'none';
+  document.getElementById('bsupCodeProgress').style.display = 'none';
+  document.getElementById('bsupCodeStatus').textContent = 'Generate sequential training codes for all accepted trainees';
+  updateBsupMetrics();
+  renderBsupTable();
+  updateBsupGroupsAvailability();
+}
+
+// ============================================================
+// BSUP TABLE
+// ============================================================
+let bsupFilt = 'all';
+function setTraineeFilter(f){ bsupFilt = f; renderBsupTable(); }
+
+function renderBsupTable(){
+  const srch = (document.getElementById('bsupSearch').value||'').toLowerCase();
+  const batchF = document.getElementById('bsupBatchFilter') ? document.getElementById('bsupBatchFilter').value : 'all';
+
+  let list = BSUP.trainees;
+  if(batchF !== 'all') list = list.filter(t => (t.batchName||'').toLowerCase().includes(batchF.toLowerCase()) || String(t.batch||'') === batchF.replace(/\\D/g,''));
+  if(bsupFilt === 'coded') list = list.filter(t => t.trainingCode);
+  if(bsupFilt === 'uncoded') list = list.filter(t => !t.trainingCode);
+  if(srch) list = list.filter(t =>
+    (t.name||'').toLowerCase().includes(srch) ||
+    (t.nameAr||'').includes(srch) ||
+    String(t.trainingCode||'').includes(srch)
+  );
+
+  const tb = document.getElementById('bsupTableBody');
+  if(!list.length){
+    tb.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">No trainees found</td></tr>';
+    document.getElementById('bsupTableFoot').textContent = '';
+    return;
+  }
+
+  tb.innerHTML = list.map((t,idx) => {
+    const code = t.trainingCode;
+    const pts = parseFloat(t.pts)||0;
+    const ptsColor = pts>=75?'var(--color-success)':pts>=50?'var(--color-warning)':'var(--color-danger)';
+    return '<tr style="transition:all 0.3s">' +
+      '<td>' + (code ?
+        '<span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:3px 10px;border-radius:var(--radius-pill);font-weight:700;font-family:JetBrains Mono,monospace;font-size:12px;transition:all 0.4s">#' + code + '</span>' :
+        '<span style="color:var(--text-muted);font-size:11px">—</span>') + '</td>' +
+      '<td><div style="font-weight:500;font-size:13px">' + (t.name||'') + '</div>' +
+        (t.nameAr?'<div style="font-size:11px;color:var(--text-muted);direction:rtl">'+t.nameAr+'</div>':'') + '</td>' +
+      '<td><span class="badge badge-orange" style="font-size:10px">' + (t.batchName||'—') + '</span></td>' +
+      '<td><span style="color:'+ptsColor+';font-weight:600">' + (pts?pts.toFixed(1)+'%':'—') + '</span></td>' +
+      '<td style="color:var(--text-secondary)">' + (t.form!=null?t.form+'%':'—') + '</td>' +
+      '<td style="color:var(--text-secondary)">' + (t.interviewScore!=null?parseFloat(t.interviewScore).toFixed(1)+'%':'—') + '</td>' +
+      '<td style="color:var(--text-secondary)">' + (t.knowledge!=null?parseFloat(t.knowledge).toFixed(1)+'%':'—') + '</td>' +
+      '<td style="color:var(--text-secondary)">' + (t.tactics!=null?parseFloat(t.tactics).toFixed(1)+'%':'—') + '</td>' +
+      '<td style="color:var(--text-secondary)">' + (t.typingSpeed?t.typingSpeed+' wpm':'—') + '</td>' +
+      '<td style="font-size:11px;color:var(--text-secondary)">' + (t.rank||'—') + '</td>' +
+      '<td><span class="badge badge-success">✅ Accepted</span></td>' +
+      '</tr>';
+  }).join('');
+
+  document.getElementById('bsupTableFoot').textContent =
+    'Showing ' + list.length + ' of ' + BSUP.trainees.length + ' trainees';
+}
+
+function updateBsupMetrics(){
+  const total = BSUP.trainees.length;
+  const coded = BSUP.trainees.filter(t => t.trainingCode).length;
+  const batches = new Set(BSUP.trainees.map(t => t.batchName)).size;
+  document.getElementById('bsupTotal').textContent   = total||'—';
+  document.getElementById('bsupCoded').textContent   = coded||'0';
+  document.getElementById('bsupPending').textContent = (total-coded)||'0';
+  document.getElementById('bsupBatchCount').textContent = batches||'—';
+  document.getElementById('bsupTraineeSub').textContent =
+    total + ' accepted trainees · ' + coded + ' coded · ' + batches + ' batch(es)';
+}
+
+function populateBsupBatchFilter(){
+  const batches = [...new Set(BSUP.trainees.map(t => t.batchName).filter(Boolean))];
+  const el = document.getElementById('bsupBatchFilter');
+  if(!el) return;
+  el.innerHTML = '<option value="all">All Batches</option>' +
+    batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+}
+
+function populateBsupGroupBatch(){
+  const batches = [...new Set(BSUP.trainees.map(t => t.batchName).filter(Boolean))];
+  const el = document.getElementById('bsupGroupBatch');
+  if(!el) return;
+  el.innerHTML = '<option value="all">All Batches</option>' +
+    batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+}
+
+function updateBsupGroupsAvailability(){
+  const coded = BSUP.trainees.filter(t => t.trainingCode).length;
+  if(coded > 0){
+    document.getElementById('bsupGroupsEmpty').style.display = 'none';
+    document.getElementById('bsupGroupsContent').style.display = 'block';
+  } else {
+    document.getElementById('bsupGroupsEmpty').style.display = 'block';
+    document.getElementById('bsupGroupsContent').style.display = 'none';
+  }
+}
+
+// ============================================================
+// GROUP GENERATION — Balanced 5-per-group
+// Rule: 2 top10% + 1 mid80% + 2 bottom10%
+// ============================================================
+function generateGroups(){
+  const batchF = document.getElementById('bsupGroupBatch').value;
+  let pool = BSUP.trainees.filter(t => t.trainingCode);
+  if(batchF !== 'all') pool = pool.filter(t => t.batchName === batchF);
+
+  if(pool.length < 5){
+    alert('Need at least 5 coded trainees to create groups. Currently have: ' + pool.length);
+    return;
+  }
+
+  // Sort by points
+  const sorted = [...pool].sort((a,b) => (parseFloat(b.pts)||0) - (parseFloat(a.pts)||0));
+  const total = sorted.length;
+
+  const top10pct    = Math.max(1, Math.floor(total * 0.10));
+  const bot10pct    = Math.max(1, Math.floor(total * 0.10));
+
+  const topTier    = sorted.slice(0, top10pct);
+  const botTier    = sorted.slice(total - bot10pct);
+  const midTier    = sorted.slice(top10pct, total - bot10pct);
+
+  // Shuffle each tier
+  const shuffle = arr => [...arr].sort(() => Math.random() - 0.5);
+  const topShuf = shuffle(topTier);
+  const botShuf = shuffle(botTier);
+  const midShuf = shuffle(midTier);
+
+  // Build groups of 5: 2 top + 1 mid + 2 bot
+  const groups = [];
+  let ti=0, mi=0, bi=0;
+
+  while(true){
+    const g = [];
+
+    // 2 from top
+    for(let x=0;x<2;x++){
+      if(ti < topShuf.length){ g.push({...topShuf[ti++], tier:'top'}); }
+      else if(mi < midShuf.length){ g.push({...midShuf[mi++], tier:'mid'}); }
+      else if(bi < botShuf.length){ g.push({...botShuf[bi++], tier:'bot'}); }
+    }
+    // 1 from mid
+    if(mi < midShuf.length){ g.push({...midShuf[mi++], tier:'mid'}); }
+    else if(ti < topShuf.length){ g.push({...topShuf[ti++], tier:'top'}); }
+    else if(bi < botShuf.length){ g.push({...botShuf[bi++], tier:'bot'}); }
+
+    // 2 from bot
+    for(let x=0;x<2;x++){
+      if(bi < botShuf.length){ g.push({...botShuf[bi++], tier:'bot'}); }
+      else if(mi < midShuf.length){ g.push({...midShuf[mi++], tier:'mid'}); }
+      else if(ti < topShuf.length){ g.push({...topShuf[ti++], tier:'top'}); }
+    }
+
+    if(g.length === 0) break;
+    groups.push(g);
+
+    // Stop if all assigned
+    if(ti >= topShuf.length && mi >= midShuf.length && bi >= botShuf.length) break;
+  }
+
+  BSUP.groups = groups;
+  renderGroups();
+  document.getElementById('bsupSaveGroups').style.display = 'inline-flex';
+
+  // Show stats
+  const statsEl = document.getElementById('bsupGroupStats');
+  statsEl.style.display = 'grid';
+  statsEl.innerHTML =
+    '<div class="card-stat"><div class="card-stat__label">Groups</div><div class="card-stat__value accent">' + groups.length + '</div></div>' +
+    '<div class="card-stat"><div class="card-stat__label">Trainees</div><div class="card-stat__value">' + pool.length + '</div></div>' +
+    '<div class="card-stat"><div class="card-stat__label">Full Groups</div><div class="card-stat__value green">' + groups.filter(g=>g.length===5).length + '</div></div>' +
+    '<div class="card-stat"><div class="card-stat__label">Partial</div><div class="card-stat__value" style="color:var(--color-warning)">' + groups.filter(g=>g.length<5).length + '</div></div>';
+}
+
+function renderGroups(){
+  const grid = document.getElementById('bsupGroupsGrid');
+  const tierColors = {
+    top: {bg:'rgba(40,160,100,0.1)', border:'rgba(40,160,100,0.3)', label:'🔥 Top 10%', color:'var(--color-success)'},
+    mid: {bg:'rgba(59,139,212,0.1)', border:'rgba(59,139,212,0.3)', label:'⚡ Middle 80%', color:'var(--color-info)'},
+    bot: {bg:'rgba(240,160,32,0.1)', border:'rgba(240,160,32,0.3)', label:'🌱 Bottom 10%', color:'var(--color-warning)'}
+  };
+
+  grid.innerHTML = BSUP.groups.map((group, gi) => {
+    const assigned = BSUP.groupAssign[gi];
+    const avgPts = group.length ? (group.reduce((s,t)=>s+(parseFloat(t.pts)||0),0)/group.length).toFixed(1) : 0;
+
+    const memberRows = group.map(t => {
+      const tc = tierColors[t.tier]||tierColors.mid;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius-sm);background:'+tc.bg+';border:1px solid '+tc.border+';margin-bottom:6px">' +
+        '<div style="font-size:10px;font-weight:700;font-family:JetBrains Mono,monospace;color:var(--color-primary);min-width:28px">#'+t.trainingCode+'</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t.name||'') + '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;font-weight:600;color:'+tc.color+'">' + (parseFloat(t.pts)||0).toFixed(1) + '%</div>' +
+        '<div style="font-size:10px;color:'+tc.color+';background:'+tc.bg+';padding:2px 6px;border-radius:var(--radius-pill);white-space:nowrap">' + tc.label + '</div>' +
+        '</div>';
+    }).join('');
+
+    const trainerOpts = TRAINER_CODES.map(c =>
+      '<option value="'+c+'"'+(assigned===c?' selected':'')+'>'+c+'</option>'
+    ).join('');
+
+    return '<div class="card" style="border:1px solid var(--border-strong)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<div>' +
+          '<div style="font-family:Inter,sans-serif;font-size:15px;font-weight:700">Group ' + (gi+1) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + group.length + ' trainees · Avg: ' + avgPts + '%</div>' +
+        '</div>' +
+        '<div style="background:var(--color-primary-subtle);color:var(--color-primary);border-radius:var(--radius-pill);padding:4px 12px;font-size:12px;font-weight:700">' +
+          (assigned ? '✅ '+assigned : '⚠️ Unassigned') +
+        '</div>' +
+      '</div>' +
+      memberRows +
+      '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-default)">' +
+        '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Assign Trainer</div>' +
+        '<div style="display:flex;gap:8px">' +
+          '<select style="flex:1;padding:7px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none" onchange="assignTrainer('+gi+',this.value)">' +
+            '<option value="">— Select trainer —</option>' +
+            trainerOpts +
+          '</select>' +
+          '<input type="text" placeholder="Or type code" style="width:110px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none" onchange="assignTrainer('+gi+',this.value)" />' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function assignTrainer(groupIdx, code){
+  if(!code) return;
+  BSUP.groupAssign[groupIdx] = code.trim().toUpperCase();
+  renderGroups();
+}
+
+async function saveGroupAssignments(){
+  const unassigned = BSUP.groups.filter((_,i) => !BSUP.groupAssign[i]).length;
+  if(unassigned > 0){
+    if(!confirm(unassigned + ' group(s) have no trainer assigned. Save anyway?')) return;
+  }
+  try {
+    if(fbDb && A.user){
+      await fbDb.collection('group_assignments').doc('current').set({
+        groups: BSUP.groups.map((g,i) => ({
+          groupIndex: i+1,
+          trainer: BSUP.groupAssign[i]||'Unassigned',
+          trainees: g.map(t => ({
+            trainingCode: t.trainingCode,
+            name: t.name,
+            pts: t.pts,
+            tier: t.tier
+          }))
+        })),
+        savedBy: A.user.email,
+        savedAt: new Date().toISOString()
+      });
+    }
+    addBsupNotif('Groups saved', BSUP.groups.length + ' groups assigned to trainers', 'green');
+    alert('✅ Group assignments saved successfully!');
+  } catch(e){
+    alert('Saved locally. Firestore: ' + e.message);
+  }
+}
+
+// ============================================================
+// BSUP NAVIGATION & NOTIFICATIONS
+// ============================================================
+function showBsupTab(tab){
+  ['bsupTrainees','bsupGroups','bsupNotifs'].forEach(t => {
+    const el = document.getElementById(t);
+    if(el) el.style.display = t===tab ? 'block' : 'none';
+    const nav = document.getElementById('bsupNav_'+t.replace('bsup','').toLowerCase());
+    if(nav) nav.classList.toggle('active', t===tab);
+  });
+  const navMap = {bsupTrainees:'bsupNav_trainees', bsupGroups:'bsupNav_groups', bsupNotifs:'bsupNav_notifs'};
+  Object.entries(navMap).forEach(([k,v]) => {
+    const el = document.getElementById(v);
+    if(el) el.classList.toggle('active', k===tab);
+  });
+  if(tab === 'bsupGroups') updateBsupGroupsAvailability();
+  if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
+}
+
+function addBsupNotif(title, body, type){
+  const colors = {orange:'var(--color-primary)',green:'var(--color-success)',warn:'var(--color-warning)',red:'var(--color-danger)'};
+  const d = document.createElement('div');
+  d.className = 'notif';
+  d.style.borderInlineStartColor = colors[type]||'var(--color-primary)';
+  d.innerHTML = '<div class="notif-t">'+title+'</div><div class="notif-b">'+body+'</div><div class="notif-ts">'+new Date().toLocaleTimeString('en-EG',{hour:'2-digit',minute:'2-digit'})+' · Now</div>';
+  document.getElementById('bsupNotifList').prepend(d);
+  BSUP.notifN++; updateBsupBadge();
+}
+
+function updateBsupBadge(){
+  const b1 = document.getElementById('bsupNBadge');
+  const b2 = document.getElementById('bsupNSide');
+  if(b1) b1.textContent = BSUP.notifN;
+  if(b2) b2.textContent = BSUP.notifN;
+}
+
+
+// ============================================================
+// ADMIN ROLE SWITCHER — ahmed.ashraf@hudl.com only
+// ============================================================
+function switchRole(role){
+  if(!A.user) return;
+  A.requestedRole = role;
+  A.user.role = role;
+
+  if(role === 'batchsup'){
+    const logoEl = document.getElementById('bsup_logo');
+    if(logoEl){ const tmpl = document.getElementById('logoSVG'); if(tmpl) logoEl.innerHTML = tmpl.content.firstElementChild.outerHTML; }
+    document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
+    showScreen('bsupScreen');
+    setTimeout(()=>{ initBsupDashboard(); }, 200);
+  } else if(role === 'coordinator'){
+    document.getElementById('userPill').textContent = A.user.name + ' · Coordinator';
+    showScreen('coordScreen');
+    setTimeout(()=>{ loadData(); }, 200);
+  } else {
+    alert('This role dashboard is coming soon!');
+    return;
+  }
+}
+
+function showAdminSwitcher(){
+  const el = document.getElementById('roleSwitcher');
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 </script>
 
 <!-- PWA Install Banner -->
@@ -1250,6 +1794,189 @@ initFirebaseAuth();
   </div>
   <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
   <button class="btn btn-ghost btn-sm" onclick="document.getElementById('installBanner').style.display='none'" style="padding:5px 8px">✕</button>
+</div>
+
+
+<!-- ===== BATCH SUPERVISOR DASHBOARD ===== -->
+<div id="bsupScreen" class="screen">
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="topbar-brand" id="bsup_logo"></div>
+      <div class="topbar-r">
+        <span class="badge badge-orange" id="bsupPill">Batch Supervisor</span>
+        <button class="btn btn-ghost btn-sm" onclick="showBsupTab('bsupNotifs')" style="position:relative">
+          🔔 <span id="bsupNBadge" style="background:var(--color-danger);color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-inline-start:2px">0</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN/عر</button>
+        <button class="btn btn-danger btn-sm" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-section">Batch Supervisor</div>
+      <div class="sidebar-item active" onclick="showBsupTab('bsupTrainees')" id="bsupNav_trainees"><span class="sidebar-icon">👥</span>Accepted Trainees</div>
+      <div class="sidebar-item" onclick="showBsupTab('bsupGroups')" id="bsupNav_groups"><span class="sidebar-icon">🗂</span>Group Assignment</div>
+      <div class="sidebar-item" onclick="showBsupTab('bsupNotifs')" id="bsupNav_notifs"><span class="sidebar-icon">🔔</span>Notifications<span class="sidebar-badge" id="bsupNSide">0</span></div>
+    </div>
+    <div class="content">
+      <!-- MOBILE NAV -->
+      <div class="mob-nav">
+        <div class="mob-nav-i active" onclick="showBsupTab('bsupTrainees')">Trainees</div>
+        <div class="mob-nav-i" onclick="showBsupTab('bsupGroups')">Groups</div>
+        <div class="mob-nav-i" onclick="showBsupTab('bsupNotifs')">Alerts</div>
+      </div>
+
+      <!-- PAGE 1: ACCEPTED TRAINEES -->
+      <div id="bsupTrainees" class="container">
+        <div class="page-hdr">
+          <h2>Accepted Trainees</h2>
+          <p id="bsupTraineeSub">Trainees from completed batches</p>
+        </div>
+
+        <!-- STATUS BAR -->
+        <div id="bsupNewBatchAlert" class="alert alert-info" style="display:none">
+          🎉 New batch ready! The Batch Coordinator has finished the interview phase.
+        </div>
+
+        <!-- METRICS -->
+        <div class="metrics">
+          <div class="card-stat"><div class="card-stat__label">Total Trainees</div><div class="card-stat__value accent" id="bsupTotal">—</div><div class="card-stat__sub">Accepted</div></div>
+          <div class="card-stat"><div class="card-stat__label">Coded</div><div class="card-stat__value green" id="bsupCoded">—</div><div class="card-stat__sub">Have training code</div></div>
+          <div class="card-stat"><div class="card-stat__label">Pending Code</div><div class="card-stat__value" id="bsupPending">—</div><div class="card-stat__sub">Awaiting code</div></div>
+          <div class="card-stat"><div class="card-stat__label">Batches</div><div class="card-stat__value accent" id="bsupBatchCount">—</div><div class="card-stat__sub">Active</div></div>
+        </div>
+
+        <!-- FILTERS + ACTIONS -->
+        <div class="search-row no-print" style="margin-bottom:16px">
+          <input class="input" type="text" id="bsupSearch" placeholder="Search trainee name or code..." oninput="renderBsupTable()" style="flex:1;min-width:180px"/>
+          <select id="bsupBatchFilter" onchange="renderBsupTable()" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;cursor:pointer;outline:none">
+            <option value="all">All Batches</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="setTraineeFilter('all')" id="bsupFAll">All</button>
+          <button class="btn btn-success btn-sm" onclick="setTraineeFilter('coded')" id="bsupFCoded">✅ Coded</button>
+          <button class="btn btn-warn btn-sm" onclick="setTraineeFilter('uncoded')" id="bsupFUncoded">⏳ Pending</button>
+        </div>
+
+        <!-- GENERATE CODES BUTTON -->
+        <div id="bsupCodeSection" class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div>
+              <div class="card-title">Training Codes</div>
+              <div style="font-size:13px;color:var(--text-secondary)" id="bsupCodeStatus">Generate sequential training codes for all accepted trainees</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="bsupGenBtn" onclick="generateTrainingCodes()">
+                🎲 Generate Training Codes
+              </button>
+              <button class="btn btn-secondary btn-sm" id="bsupResetBtn" onclick="resetTrainingCodes()" style="display:none">
+                ↺ Reset Codes
+              </button>
+            </div>
+          </div>
+          <div id="bsupCodeProgress" style="display:none;margin-top:12px">
+            <div style="height:4px;background:var(--border-default);border-radius:2px;overflow:hidden">
+              <div id="bsupProgressBar" style="height:100%;background:var(--color-primary);border-radius:2px;width:0%;transition:width 0.8s ease"></div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="bsupProgressText"></div>
+          </div>
+        </div>
+
+        <!-- TRAINEES TABLE -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Batch</th>
+                  <th>Points</th>
+                  <th>Form</th>
+                  <th>Interview</th>
+                  <th>Knowledge</th>
+                  <th>Tactics</th>
+                  <th>Typing</th>
+                  <th>Rank</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="bsupTableBody">
+                <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">
+                  Waiting for batch coordinator to complete a batch...
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px" id="bsupTableFoot"></div>
+      </div>
+
+      <!-- PAGE 2: GROUP ASSIGNMENT -->
+      <div id="bsupGroups" class="container" style="display:none">
+        <div class="page-hdr">
+          <h2>Group Assignment</h2>
+          <p>Auto-balanced groups of 5 — assign a trainer to each group</p>
+        </div>
+
+        <div id="bsupGroupsEmpty" class="alert alert-warn">
+          Generate training codes first (Page 1) before creating groups.
+        </div>
+
+        <div id="bsupGroupsContent" style="display:none">
+          <!-- GROUP CONTROLS -->
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+              <div>
+                <div class="card-title">Group Configuration</div>
+                <div style="font-size:13px;color:var(--text-secondary)">
+                  Each group: 2 top 10% · 1 middle 80% · 2 bottom 10% · 5 trainees total
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <select id="bsupGroupBatch" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none">
+                  <option value="all">All Batches</option>
+                </select>
+                <button class="btn btn-primary" onclick="generateGroups()">⚡ Generate Groups</button>
+                <button class="btn btn-success btn-sm" onclick="saveGroupAssignments()" id="bsupSaveGroups" style="display:none">💾 Save Assignments</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- GROUP STATS -->
+          <div id="bsupGroupStats" class="metrics" style="display:none"></div>
+
+          <!-- GROUPS GRID -->
+          <div id="bsupGroupsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px"></div>
+        </div>
+      </div>
+
+      <!-- NOTIFICATIONS -->
+      <div id="bsupNotifs" class="container" style="display:none">
+        <div class="page-hdr"><h2>Notifications</h2><p>Batch updates and system alerts</p></div>
+        <div id="bsupNotifList">
+          <div class="notif">
+            <div class="notif-t">Welcome — Batch Supervisor</div>
+            <div class="notif-b">You will receive automatic notifications when the Batch Coordinator completes a batch.</div>
+            <div class="notif-ts">Now · System</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ROLE SWITCHER - Admin only -->
+<div id="roleSwitcher" style="display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--bg-surface);border:1px solid var(--color-primary);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:220px">
+  <div style="font-size:11px;font-weight:700;color:var(--color-primary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛠 Admin Role Switcher</div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('coordinator')" style="justify-content:flex-start">📊 Batch Coordinator</button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('batchsup')" style="justify-content:flex-start">👔 Batch Supervisor</button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainer')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">📚 Batch Trainer <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainee')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🏃 Trainee <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+  </div>
 </div>
 
 </body>
