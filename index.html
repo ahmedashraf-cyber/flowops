@@ -741,30 +741,33 @@ function initFirebaseAuth(){
           phone: profile.phone||''
         };
 
-        // Special access for ahmed.ashraf@hudl.com — can use any role
-        const isAdmin = user.email === 'ahmed.ashraf@hudl.com';
-
         // Route to correct dashboard based on role
-        if(role === 'batchsup' || (isAdmin && A.requestedRole === 'batchsup')){
+        // Training Manager gets super access to ALL dashboards
+        const isManager = role === 'manager';
+        const isBsup = role === 'batchsup';
+        const isCoord = role === 'coordinator' || role === 'trainer' || role === 'trainsup' || role === 'trainee';
+
+        if(isBsup || (isManager && A.requestedRole === 'batchsup')){
           document.getElementById('bsupPill').textContent = name + ' · Batch Supervisor';
           const logoEl = document.getElementById('bsup_logo');
           if(logoEl){ const tmpl = document.getElementById('logoSVG'); if(tmpl) logoEl.innerHTML = tmpl.content.firstElementChild.outerHTML; }
           showScreen('bsupScreen');
           setTimeout(()=>{ initBsupDashboard(); }, 300);
-          // Show admin role switcher
-          if(user.email === 'ahmed.ashraf@hudl.com'){
-            const sw = document.getElementById('roleSwitcher');
-            if(sw) sw.style.display = 'block';
-          }
+        } else if(isManager && !A.requestedRole){
+          // Training Manager default: show coordinator dashboard + role switcher
+          document.getElementById('userPill').textContent = name + ' · Training Manager';
+          showScreen('coordScreen');
+          setTimeout(()=>{ loadData(); }, 300);
         } else {
           document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
           showScreen('coordScreen');
           setTimeout(()=>{ loadData(); }, 300);
-          // Show admin role switcher for ahmed.ashraf
-          if(user.email === 'ahmed.ashraf@hudl.com'){
-            const sw = document.getElementById('roleSwitcher');
-            if(sw) sw.style.display = 'block';
-          }
+        }
+
+        // Show role switcher for Training Manager
+        if(isManager){
+          const sw = document.getElementById('roleSwitcher');
+          if(sw) sw.style.display = 'block';
         }
       } catch(e){
         console.error('Profile load failed:', e);
@@ -1260,13 +1263,7 @@ function installPWA(){
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
 
-// Fallback: show admin switcher after auth loads (in case timing was off)
-setTimeout(function(){
-  if(A.user && A.user.email === 'ahmed.ashraf@hudl.com'){
-    const sw = document.getElementById('roleSwitcher');
-    if(sw) sw.style.display = 'block';
-  }
-}, 3000);
+
 
 
 
@@ -1768,20 +1765,30 @@ function updateBsupBadge(){
 function switchRole(role){
   if(!A.user) return;
   A.requestedRole = role;
-  A.user.role = role;
 
   if(role === 'batchsup'){
     const logoEl = document.getElementById('bsup_logo');
     if(logoEl){ const tmpl = document.getElementById('logoSVG'); if(tmpl) logoEl.innerHTML = tmpl.content.firstElementChild.outerHTML; }
     document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
     showScreen('bsupScreen');
+    // Keep switcher visible
+    const sw = document.getElementById('roleSwitcher');
+    if(sw) sw.style.display = 'block';
     setTimeout(()=>{ initBsupDashboard(); }, 200);
   } else if(role === 'coordinator'){
-    document.getElementById('userPill').textContent = A.user.name + ' · Coordinator';
+    document.getElementById('userPill').textContent = A.user.name + ' · Batch Coordinator';
     showScreen('coordScreen');
+    const sw = document.getElementById('roleSwitcher');
+    if(sw) sw.style.display = 'block';
+    setTimeout(()=>{ loadData(); }, 200);
+  } else if(role === 'manager'){
+    document.getElementById('userPill').textContent = A.user.name + ' · Training Manager';
+    showScreen('coordScreen');
+    const sw = document.getElementById('roleSwitcher');
+    if(sw) sw.style.display = 'block';
     setTimeout(()=>{ loadData(); }, 200);
   } else {
-    alert('This role dashboard is coming soon!');
+    alert('This role dashboard is coming soon! We are building it.');
     return;
   }
 }
@@ -1978,13 +1985,13 @@ function showAdminSwitcher(){
 
 <!-- ROLE SWITCHER - Admin only -->
 <div id="roleSwitcher" style="display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--bg-surface);border:1px solid var(--color-primary);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:220px">
-  <div style="font-size:11px;font-weight:700;color:var(--color-primary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🛠 Admin Role Switcher</div>
+  <div style="font-size:11px;font-weight:700;color:var(--color-primary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">⚙️ Training Manager — All Roles</div>
   <div style="display:flex;flex-direction:column;gap:6px">
     <button class="btn btn-secondary btn-sm" onclick="switchRole('coordinator')" style="justify-content:flex-start">📊 Batch Coordinator</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('batchsup')" style="justify-content:flex-start">👔 Batch Supervisor</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainer')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">📚 Batch Trainer <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
-    <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Current</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainee')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🏃 Trainee <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
   </div>
 </div>
