@@ -1522,7 +1522,7 @@ function renderBsupTable(){
   const batchF = document.getElementById('bsupBatchFilter') ? document.getElementById('bsupBatchFilter').value : 'all';
 
   let list = BSUP.trainees;
-  if(batchF !== 'all') list = list.filter(t => (t.batchName||'').toLowerCase().includes(batchF.toLowerCase()) || String(t.batch||'') === batchF.replace(/\\D/g,''));
+  if(batchF !== 'all') list = list.filter(t => (t.batchName||'') === batchF);
   if(bsupFilt === 'coded') list = list.filter(t => t.trainingCode);
   if(bsupFilt === 'uncoded') list = list.filter(t => !t.trainingCode);
   if(srch) list = list.filter(t =>
