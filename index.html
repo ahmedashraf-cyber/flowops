@@ -1093,28 +1093,38 @@ async function confirmEndBatch(){
   const sentBy=A.user?A.user.email:'coordinator@hudl.com'; // Firebase Auth user
   const ts=new Date().toLocaleString('en-EG');
   const accList=accCands.map((c,i)=>(i+1)+'. '+c.nameEn+' | Points: '+c.pts.toFixed(1)+'% | Rank: '+(c.rank||'—')+' | NID: '+c.nid).join('\n');
-  const tableRows=accCands.map((c,i)=>
-    '<tr style="background:'+(i%2===0?'#1A1A1A':'#111111')+'">'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(i+1)+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;font-weight:600;color:#fff">'+c.nameEn+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;direction:rtl;text-align:right;color:#aaa">'+(c.nameAr||'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;font-weight:700;color:'+(c.pts>=75?'#28A064':c.pts>=50?'#F0A020':'#E04040')+'">'+c.pts.toFixed(1)+'%</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.form!=null?c.form+'%':'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.iv!=null?c.iv.toFixed(1)+'%':'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.kn!=null?c.kn.toFixed(1)+'%':'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;text-align:center;color:#aaa">'+(c.tac!=null?c.tac.toFixed(1)+'%':'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;color:#aaa">'+(c.rank||'—')+'</td>'+
-    '<td style="padding:8px 10px;border:1px solid #2A2A2A;font-size:11px;color:#666">'+c.nid+'</td>'+
-    '</tr>').join('');
-  const acceptedTable='<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px;margin-top:12px"><thead><tr style="background:#E8590C;color:#fff"><th style="padding:10px;border:1px solid #D14A08;text-align:center">#</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">Name (EN)</th><th style="padding:10px;border:1px solid #D14A08;text-align:right">الاسم (AR)</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Points</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Form</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Interview</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Knowledge</th><th style="padding:10px;border:1px solid #D14A08;text-align:center">Tactics</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">Rank</th><th style="padding:10px;border:1px solid #D14A08;text-align:left">National ID</th></tr></thead><tbody>'+tableRows+'</tbody></table>';
+  // Table removed to stay within EmailJS 50KB limit
+  // Keep email params small (EmailJS 50KB limit)
+  // Send summary only — full list available in the app
   const params={
-    batch_name:batchName,accepted_count:accCands.length,
-    rejected_count:A.cands.length-accCands.length,total_count:A.cands.length,
-    sent_by:sentBy,timestamp:ts,
-    accepted_list:accList,accepted_table:acceptedTable,
-    full_body_en:'Dear Supervisor,\n\nThe interview collection phase for batch '+batchName+' has been completed.\n\nSummary:\n- Total Interviewees : '+A.cands.length+'\n- Accepted           : '+accCands.length+'\n- Rejected           : '+(A.cands.length-accCands.length)+'\n\nPlease find the full list of accepted candidates in the table below.\n\nBest regards,\nFlowOps — Training Operations',
-    full_body_ar:'عزيزي المشرف،\n\nتم الانتهاء من مرحلة جمع المقابلات للدفعة '+batchName+'.\n\nالملخص:\n- إجمالي المتقدمين  : '+A.cands.length+'\n- المقبولون         : '+accCands.length+'\n- المرفوضون         : '+(A.cands.length-accCands.length)+'\n\nيمكنك الاطلاع على قائمة المرشحين المقبولين كاملةً في الجدول أدناه.\n\nمع تحيات،\nFlowOps — منصة إدارة التدريب',
-    reply_to:sentBy
+    batch_name:      batchName,
+    accepted_count:  accCands.length,
+    rejected_count:  A.cands.length - accCands.length,
+    total_count:     A.cands.length,
+    sent_by:         sentBy,
+    timestamp:       ts,
+    reply_to:        sentBy,
+    full_body_en:
+      'Dear Supervisor,\n\n' +
+      'The interview collection phase for batch ' + batchName + ' has been completed.\n\n' +
+      'Summary:\n' +
+      '- Total Interviewees : ' + A.cands.length + '\n' +
+      '- Accepted           : ' + accCands.length + '\n' +
+      '- Rejected           : ' + (A.cands.length - accCands.length) + '\n\n' +
+      'Please log in to FlowOps to view the full accepted candidates list.\n\n' +
+      'Best regards,\nFlowOps — Training Operations',
+    full_body_ar:
+      'عزيزي المشرف،\n\n' +
+      'تم الانتهاء من مرحلة جمع المقابلات للدفعة ' + batchName + '.\n\n' +
+      'الملخص:\n' +
+      '- إجمالي المتقدمين  : ' + A.cands.length + '\n' +
+      '- المقبولون         : ' + accCands.length + '\n' +
+      '- المرفوضون         : ' + (A.cands.length - accCands.length) + '\n\n' +
+      'يمكنك الاطلاع على القائمة الكاملة من خلال تطبيق FlowOps.\n\n' +
+      'مع تحيات،\nFlowOps — منصة إدارة التدريب',
+    accepted_list: accCands.slice(0,20).map((c,i)=>
+      (i+1)+'. '+c.nameEn+' | '+c.pts.toFixed(1)+'%'
+    ).join('\n') + (accCands.length>20 ? '\n... and '+(accCands.length-20)+' more. See full list in FlowOps.' : '')
   };
   btn.disabled=true; btn.classList.add('loading'); btn.textContent='Sending...';
   let sent=0, errors=[];
