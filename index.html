@@ -1885,6 +1885,22 @@ function initAttendance(){
     sel.innerHTML += '<option value="'+d+'">Day '+d+'</option>';
   }
 
+  // Populate batch filter
+  const batchSel = document.getElementById('attBatchFilter');
+  if(batchSel){
+    const batches = [...new Set(BSUP.trainees.map(t=>t.batchName).filter(Boolean))];
+    batchSel.innerHTML = '<option value="all">All Batches</option>' +
+      batches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  }
+
+  // Populate trainer filter from group assignments
+  const trainerSel = document.getElementById('attTrainerFilter');
+  if(trainerSel){
+    const trainers = [...new Set(Object.values(BSUP.groupAssign).filter(Boolean))].sort();
+    trainerSel.innerHTML = '<option value="all">All Trainers</option>' +
+      trainers.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
+  }
+
   // Auto-detect today's day based on batch start
   autoDetectDay();
   loadAttendanceDay();
@@ -1933,28 +1949,41 @@ function renderAttGrid(){
   const grid = document.getElementById('attGroupsGrid');
   if(!grid) return;
 
+  // Get active filters
+  const batchF   = (document.getElementById('attBatchFilter')  ||{}).value || 'all';
+  const trainerF = (document.getElementById('attTrainerFilter')||{}).value || 'all';
+
   // Get groups from BSUP or create flat group
   let groups = BSUP.groups.length > 0 ? BSUP.groups : null;
 
   if(!groups || groups.length === 0){
-    // No groups yet — show flat list sorted by training code
-    const sorted = BSUP.trainees.filter(t=>t.trainingCode).sort((a,b)=>a.trainingCode-b.trainingCode);
-    grid.innerHTML = renderGroupAttCard(sorted, 'All Trainees', 'All', isLocked, dayKey);
+    let sorted = BSUP.trainees.filter(t=>t.trainingCode);
+    if(batchF !== 'all') sorted = sorted.filter(t=>(t.batchName||'')===batchF);
+    sorted = sorted.sort((a,b)=>a.trainingCode-b.trainingCode);
+    grid.innerHTML = sorted.length ? renderGroupAttCard(sorted, 'All Trainees', 'All', isLocked, dayKey) : '<div class="card" style="text-align:center;padding:32px;color:var(--text-muted)">No trainees match the selected filter.</div>';
     attachAttendanceClicks();
     updateAttSummaryLine();
     return;
   }
 
-  // Render by group, sorted by batch then code
-  grid.innerHTML = groups.map((group, gi) => {
+  // Render by group, applying filters
+  let rendered = '';
+  groups.forEach((group, gi) => {
     const trainer = BSUP.groupAssign[gi] || 'Unassigned';
-    const sorted = [...group].sort((a,b) => {
+    // Apply trainer filter
+    if(trainerF !== 'all' && trainer !== trainerF) return;
+    let sorted = [...group];
+    // Apply batch filter
+    if(batchF !== 'all') sorted = sorted.filter(t=>(t.batchName||'')===batchF);
+    if(!sorted.length) return;
+    sorted = sorted.sort((a,b) => {
       if(a.batchName !== b.batchName) return (a.batchName||'').localeCompare(b.batchName||'');
       return (a.trainingCode||0) - (b.trainingCode||0);
     });
-    return renderGroupAttCard(sorted, 'Group '+(gi+1), trainer, isLocked, dayKey);
-  }).join('');
+    rendered += renderGroupAttCard(sorted, 'Group '+(gi+1), trainer, isLocked, dayKey);
+  });
 
+  grid.innerHTML = rendered || '<div class="card" style="text-align:center;padding:32px;color:var(--text-muted)">No groups match the selected filter.</div>';
   attachAttendanceClicks();
   updateAttSummaryLine();
 }
@@ -1971,12 +2000,14 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
     const code = t.trainingCode;
     const status = (ATT.records[dayKey]||{})[code] || 'M';
     const col = ATT_COLORS[status];
-    const pointer = !isLocked ? 'cursor:pointer;user-select:none' : 'cursor:default;opacity:.7';
-    const dataAttr = !isLocked ? 'data-attcode="'+code+'" data-attday="'+dayKey+'"' : '';
-    return '<div '+dataAttr+' style="'+pointer+';background:'+col.bg+';border:2px solid '+col.border+';border-radius:var(--radius-md);padding:10px 8px;text-align:center;transition:all 0.15s;min-width:0">'+
+    const disabledAttr = isLocked ? 'disabled' : '';
+    const opts = ATT_STATUS.map(s =>
+      '<option value="'+s+'"'+(s===status?' selected':'')+'>'+s+'</option>'
+    ).join('');
+    return '<div style="background:'+col.bg+';border:2px solid '+col.border+';border-radius:var(--radius-md);padding:10px 8px;text-align:center;transition:all 0.15s;min-width:0">'+
       '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);margin-bottom:3px">#'+code+'</div>'+
-      '<div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px">'+(t.name||t.nameEn||'').split(' ')[0]+'</div>'+
-      '<div style="font-size:16px;font-weight:800;color:'+col.text+'">'+status+'</div>'+
+      '<div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px">'+(t.name||t.nameEn||'').split(' ')[0]+'</div>'+
+      '<select '+disabledAttr+' data-attcode="'+code+'" data-attday="'+dayKey+'" style="width:100%;padding:4px 2px;border:1px solid '+col.border+';border-radius:var(--radius-sm);background:'+col.bg+';color:'+col.text+';font-size:13px;font-weight:800;font-family:JetBrains Mono,monospace;text-align:center;cursor:'+(isLocked?'default':'pointer')+';outline:none">'+opts+'</select>'+
     '</div>';
   }).join('');
 
@@ -2003,13 +2034,23 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
 function attachAttendanceClicks(){
   const grid = document.getElementById('attGroupsGrid');
   if(!grid) return;
-  grid.querySelectorAll('[data-attcode]').forEach(function(el){
-    el.addEventListener('click', function(){
+  grid.querySelectorAll('select[data-attcode]').forEach(function(el){
+    el.addEventListener('change', function(){
       const code = parseInt(el.getAttribute('data-attcode'));
       const dayKey = el.getAttribute('data-attday');
-      cycleStatus(code, dayKey);
+      const newStatus = el.value;
+      setStatus(code, dayKey, newStatus);
     });
   });
+}
+
+function setStatus(code, dayKey, newStatus){
+  if(ATT.locked[dayKey]) return;
+  if(!ATT.records[dayKey]) ATT.records[dayKey] = {};
+  ATT.records[dayKey][code] = newStatus;
+  saveAttendanceLocal();
+  renderAttGrid();
+  updateAttStats();
 }
 
 function cycleStatus(code, dayKey){
@@ -2458,7 +2499,7 @@ function exportAttendanceExcel(){
 
           <!-- LEGEND -->
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-            <span style="font-size:12px;color:var(--text-muted)">Tap to cycle status:</span>
+            <span style="font-size:12px;color:var(--text-muted)">Use dropdown to change status:</span>
             <span style="background:rgba(40,160,100,0.2);color:var(--color-success);padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">M — Attended</span>
             <span style="background:rgba(224,64,64,0.2);color:var(--color-danger);padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">UL — Absent</span>
             <span style="background:rgba(59,139,212,0.2);color:var(--color-info);padding:4px 12px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">WV — Vacation</span>
@@ -2563,5 +2604,3 @@ function exportAttendanceExcel(){
 
 </body>
 </html>
-
-<!-- FlowOps v2 Tue Apr 28 15:24:49 UTC 2026 -->
