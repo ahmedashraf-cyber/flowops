@@ -535,14 +535,15 @@ tbody tr:hover{background:var(--bg-surface-hover)}
 
         <!-- FILTERS -->
         <div class="card" style="margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <div style="font-size:13px;font-weight:600;color:var(--text-secondary)">Filter by Batch:</div>
-            <select id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:7px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Filters:</div>
+            <select id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:140px">
               <option value="all">All Batches</option>
             </select>
-            <div id="coordAttFilterBadge" style="display:none">
-              <span class="badge badge-orange" id="coordAttFilterLabel"></span>
-            </div>
+            <select id="coordAttDay" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px">
+              <option value="all">All Days</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('coordAttBatch').value='all';document.getElementById('coordAttDay').value='all';coordAttApplyFilter()">✕ Clear</button>
             <div style="margin-inline-start:auto;display:flex;gap:8px">
               <button class="btn btn-secondary btn-sm" onclick="coordAttExportExcel()">⬇ Export Excel</button>
               <button class="btn btn-secondary btn-sm" onclick="loadCoordAttData()">🔄 Refresh</button>
@@ -2477,33 +2478,43 @@ async function loadCoordAttData(){
 }
 
 function coordAttApplyFilter(){
-  const batchF = document.getElementById('coordAttBatch') ? document.getElementById('coordAttBatch').value : 'all';
+  const batchF = (document.getElementById('coordAttBatch')||{}).value || 'all';
+  const dayF   = (document.getElementById('coordAttDay')||{}).value   || 'all';
 
-  // Filter badge
-  const badge = document.getElementById('coordAttFilterBadge');
-  const label = document.getElementById('coordAttFilterLabel');
-  if(badge){ badge.style.display = batchF === 'all' ? 'none' : 'block'; }
-  if(label){ label.textContent = batchF; }
-
-  // Filter trainees
+  // Filter trainees by batch
   const trainees = batchF === 'all'
     ? COORD_ATT.trainees
     : COORD_ATT.trainees.filter(t => t.batchName === batchF);
 
-  if(!trainees.length && !Object.keys(COORD_ATT.data).length){
+  if(!Object.keys(COORD_ATT.data).length){
     document.getElementById('coordAttEmpty').style.display = 'block';
     return;
   }
 
-  // Get recorded days sorted
-  const days = Object.keys(COORD_ATT.data).sort((a,b) => {
-    const na = parseInt(a.replace('day_',''));
-    const nb = parseInt(b.replace('day_',''));
-    return na - nb;
-  });
+  // Get all recorded days sorted
+  const allDays = Object.keys(COORD_ATT.data).sort((a,b) =>
+    parseInt(a.replace('day_','')) - parseInt(b.replace('day_',''))
+  );
 
-  if(!days.length){
+  // Populate day filter dropdown once
+  const daySel = document.getElementById('coordAttDay');
+  if(daySel && daySel.options.length <= 1){
+    allDays.forEach(dk => {
+      const opt = document.createElement('option');
+      opt.value = dk;
+      opt.textContent = COORD_ATT.data[dk].dayLabel || dk;
+      daySel.appendChild(opt);
+    });
+  }
+
+  // Apply day filter
+  const days = dayF === 'all' ? allDays : allDays.filter(dk => dk === dayF);
+
+  if(!days.length || !trainees.length){
     document.getElementById('coordAttEmpty').style.display = 'block';
+    document.getElementById('coordAttMetrics').style.display = 'none';
+    document.getElementById('coordAttChartsRow').style.display = 'none';
+    document.getElementById('coordAttTableCard').style.display = 'none';
     return;
   }
 
@@ -2512,37 +2523,36 @@ function coordAttApplyFilter(){
   document.getElementById('coordAttChartsRow').style.display = 'block';
   document.getElementById('coordAttTableCard').style.display = 'block';
 
-  // Build filtered data — normalize keys to handle string/int mismatch
+  // Build filtered data — only for trainees in selected batch
+  const traineeCodes = new Set(trainees.map(t => t.trainingCode).filter(Boolean).map(c => parseInt(c)));
   const filteredData = {};
   days.forEach(dk => {
     const rec = COORD_ATT.data[dk].records || {};
     filteredData[dk] = {};
-    // Normalize all keys to integers
     Object.keys(rec).forEach(k => {
-      filteredData[dk][parseInt(k)] = rec[k];
+      const code = parseInt(k);
+      if(batchF === 'all' || traineeCodes.has(code)) filteredData[dk][code] = rec[k];
     });
   });
 
   // Calculate metrics
   const allRates = days.map(dk => {
     const vals = Object.values(filteredData[dk]);
-    const total = vals.length;
-    const m = vals.filter(v=>v==='M').length;
-    return total ? Math.round(m/total*100) : 0;
-  }).filter(r => r > 0);
+    return vals.length ? Math.round(vals.filter(v=>v==='M').length/vals.length*100) : null;
+  }).filter(r => r !== null);
 
-  const avgRate = allRates.length ? Math.round(allRates.reduce((a,b)=>a+b,0)/allRates.length) : 0;
-  const bestRate = allRates.length ? Math.max(...allRates) : 0;
+  const avgRate   = allRates.length ? Math.round(allRates.reduce((a,b)=>a+b,0)/allRates.length) : 0;
+  const bestRate  = allRates.length ? Math.max(...allRates) : 0;
   const worstRate = allRates.length ? Math.min(...allRates) : 0;
-  const bestDay = days[allRates.indexOf(bestRate)];
-  const worstDay = days[allRates.indexOf(worstRate)];
+  const bestIdx   = allRates.indexOf(bestRate);
+  const worstIdx  = allRates.indexOf(worstRate);
 
-  document.getElementById('coordAttDays').textContent = days.length;
+  document.getElementById('coordAttDays').textContent     = days.length;
   document.getElementById('coordAttTrainees').textContent = trainees.length;
-  document.getElementById('coordAttAvg').textContent = avgRate + '%';
-  document.getElementById('coordAttBest').textContent = bestRate + '% (' + (bestDay ? COORD_ATT.data[bestDay].dayLabel : '—') + ')';
-  document.getElementById('coordAttWorst').textContent = worstRate + '% (' + (worstDay ? COORD_ATT.data[worstDay].dayLabel : '—') + ')';
-  document.getElementById('coordAttTableSub').textContent = days.length + ' days · ' + trainees.length + ' trainees';
+  document.getElementById('coordAttAvg').textContent      = avgRate + '%';
+  document.getElementById('coordAttBest').textContent     = bestRate+'% ('+(days[bestIdx]?COORD_ATT.data[days[bestIdx]].dayLabel:'—')+')';
+  document.getElementById('coordAttWorst').textContent    = worstRate+'% ('+(days[worstIdx]?COORD_ATT.data[days[worstIdx]].dayLabel:'—')+')';
+  document.getElementById('coordAttTableSub').textContent = days.length+' day(s) · '+trainees.length+' trainees';
 
   buildCoordAttCharts(days, filteredData, trainees);
   buildCoordAttTable(days, filteredData, trainees);
@@ -2691,7 +2701,7 @@ function buildCoordAttTable(days, filteredData, trainees){
   const dayLabels = days.map(dk => COORD_ATT.data[dk].dayLabel || dk.replace('day_','D'));
 
   // Header
-  thead.innerHTML = '<tr><th>#</th><th>Name</th><th>Batch</th>' +
+  thead.innerHTML = '<tr><th>Code</th><th>Name</th><th>Batch</th>' +
     dayLabels.map(l=>'<th style="min-width:60px;text-align:center">'+l+'</th>').join('') +
     '<th style="text-align:center">M Total</th><th style="text-align:center">Rate</th></tr>';
 
@@ -2703,22 +2713,24 @@ function buildCoordAttTable(days, filteredData, trainees){
   }).map((t,idx) => {
     // Try both string and integer keys since Firestore may store either
     const code = t.trainingCode;
+    const codeInt = parseInt(code);
     const cells = days.map(dk => {
       const rec = filteredData[dk]||{};
-      const s = rec[code] || rec[String(code)] || rec[parseInt(code)] || '';
+      const s = rec[codeInt] || rec[String(codeInt)] || '';
       const col = STATUS_COLORS[s]||'var(--text-muted)';
-      return '<td style="text-align:center"><span style="color:'+col+';font-weight:700;font-size:12px">'+(s||'—')+'</span></td>';
+      const bg = s==='M'?'rgba(40,160,100,0.1)':s==='UL'?'rgba(224,64,64,0.1)':s==='WV'?'rgba(59,139,212,0.1)':s==='H'?'rgba(240,160,32,0.1)':'transparent';
+      return '<td style="text-align:center;background:'+bg+'"><span style="color:'+col+';font-weight:700;font-size:12px">'+(s||'—')+'</span></td>';
     }).join('');
     const allStatus = days.map(dk => {
       const rec = filteredData[dk]||{};
-      return rec[code] || rec[String(code)] || rec[parseInt(code)] || '';
+      return rec[codeInt] || rec[String(codeInt)] || '';
     });
     const totalM = allStatus.filter(s=>s==='M').length;
     const taken = allStatus.filter(s=>s!=='').length;
     const rate = taken ? Math.round(totalM/taken*100) : 0;
     const rateColor = rate>=80?'var(--color-success)':rate>=60?'var(--color-warning)':'var(--color-danger)';
     return '<tr>'+
-      '<td style="color:var(--text-muted);font-size:11px;font-family:JetBrains Mono,monospace">'+(t.trainingCode?'#'+t.trainingCode:'—')+'</td>'+
+      '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-weight:700;font-family:JetBrains Mono,monospace;font-size:11px">'+(t.trainingCode?'#'+t.trainingCode:'—')+'</span></td>'+
       '<td style="font-weight:500;font-size:13px">'+(t.name||'')+'</td>'+
       '<td><span class="badge badge-orange" style="font-size:10px">'+(t.batchName||'—')+'</span></td>'+
       cells+
