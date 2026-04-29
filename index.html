@@ -2437,7 +2437,7 @@ async function loadCoordAttData(){
   if(charts) charts.style.display = 'none';
   if(tableCard) tableCard.style.display = 'none';
 
-  if(!fbDb){ return; }
+  if(!fbDb) return;
 
   try {
     // Load attendance records from Firestore
@@ -2458,10 +2458,35 @@ async function loadCoordAttData(){
         const key = t.name + '|' + d.batchName;
         if(!seen.has(key)){
           seen.add(key);
-          COORD_ATT.trainees.push({ ...t, batchName: d.batchName });
+          COORD_ATT.trainees.push({ ...t, batchName: d.batchName, trainingCode: null });
         }
       });
     });
+
+    // Load training codes and match to trainees
+    const codeSnap = await fbDb.collection('training_codes').get();
+    const allCodes = {};
+    codeSnap.forEach(doc => {
+      const d = doc.data();
+      if(d.codes) Object.assign(allCodes, d.codes);
+    });
+
+    // allCodes is { "name|batch": code }
+    COORD_ATT.trainees.forEach(t => {
+      const key = t.name + '|' + (t.batchName||'');
+      if(allCodes[key]) t.trainingCode = parseInt(allCodes[key]);
+    });
+
+    // Also match from ATT localStorage as fallback
+    try {
+      const localCodes = JSON.parse(localStorage.getItem('flowops_training_codes')||'{}');
+      COORD_ATT.trainees.forEach(t => {
+        if(!t.trainingCode){
+          const key = t.name + '|' + (t.batchName||'');
+          if(localCodes[key]) t.trainingCode = parseInt(localCodes[key]);
+        }
+      });
+    } catch(e){}
 
     // Populate batch filter
     COORD_ATT.batches = [...new Set(COORD_ATT.trainees.map(t => t.batchName).filter(Boolean))];
@@ -2471,12 +2496,15 @@ async function loadCoordAttData(){
         COORD_ATT.batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
     }
 
+    // Reset day filter
+    const daySel = document.getElementById('coordAttDay');
+    if(daySel) daySel.innerHTML = '<option value="all">All Days</option>';
+
     coordAttApplyFilter();
   } catch(e){
     console.error('loadCoordAttData failed:', e);
   }
 }
-
 function coordAttApplyFilter(){
   const batchF = (document.getElementById('coordAttBatch')||{}).value || 'all';
   const dayF   = (document.getElementById('coordAttDay')||{}).value   || 'all';
