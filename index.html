@@ -374,7 +374,6 @@ tbody tr:hover{background:var(--bg-surface-hover)}
       <div class="sidebar-item" onclick="showTab('report')" id="nav_report"><span class="sidebar-icon">📋</span>Batch Report</div>
       <div class="sidebar-item" onclick="showTab('notifs')" id="nav_notifs"><span class="sidebar-icon">🔔</span>Notifications<span class="sidebar-badge" id="nSide">0</span></div>
       <div class="divider" style="margin:8px 0"></div>
-      <div class="sidebar-item" onclick="showTab('attendance')" id="nav_attendance"><span class="sidebar-icon">📅</span>Attendance View</div><div class="divider" style="margin:8px 0"></div>
       <div class="sidebar-item" onclick="showTab('attendance')" id="nav_attendance"><span class="sidebar-icon">📅</span>Attendance View</div>
     </div>
 
@@ -2197,24 +2196,40 @@ function updateAttSummaryLine(){
   if(el) el.textContent = total+' trainees · M:'+m+' · UL:'+ul+' · WV:'+wv+' · H:'+h+' · Rate: '+Math.round(m/total*100)+'%';
 }
 
-function submitAttendance(){
+async function submitAttendance(){
   const dayKey = 'day_' + ATT.currentDay;
   const dayLabel = ATT.currentDay === 0 ? 'Orientation Day' : 'Day ' + ATT.currentDay;
   if(!confirm('Submit and lock attendance for '+dayLabel+'? This cannot be undone.')) return;
 
+  const btn = document.getElementById('attSubmitBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Submitting...'; }
+
   ATT.locked[dayKey] = true;
   saveAttendanceLocal();
 
-  // Save to Firestore
+  // Save to Firestore — coordinator can read this immediately
   if(fbDb && A.user){
-    fbDb.collection('attendance').doc(dayKey).set({
-      dayKey, dayLabel,
-      records: ATT.records[dayKey],
-      submittedBy: A.user.email,
-      submittedAt: new Date().toISOString(),
-      locked: true
-    }).catch(e => console.warn('Firestore attendance save:', e));
+    try {
+      await fbDb.collection('attendance').doc(dayKey).set({
+        dayKey,
+        dayLabel,
+        records: ATT.records[dayKey],
+        submittedBy: A.user.email,
+        submittedAt: new Date().toISOString(),
+        locked: true,
+        totalTrainees: Object.keys(ATT.records[dayKey]).length,
+        totalM:  Object.values(ATT.records[dayKey]).filter(v=>v==='M').length,
+        totalUL: Object.values(ATT.records[dayKey]).filter(v=>v==='UL').length,
+        totalWV: Object.values(ATT.records[dayKey]).filter(v=>v==='WV').length,
+        totalH:  Object.values(ATT.records[dayKey]).filter(v=>v==='H').length
+      });
+      console.log('Attendance saved to Firestore ✓ — visible to coordinator now');
+    } catch(e) {
+      console.warn('Firestore attendance save failed:', e.message);
+    }
   }
+
+  if(btn){ btn.disabled = false; btn.textContent = '✅ Submit & Lock Day'; }
 
   // Show summary modal
   showAttSummaryModal(dayKey, dayLabel);
@@ -2222,7 +2237,7 @@ function submitAttendance(){
   renderAttCalendar();
   document.getElementById('attLockedBanner').style.display = 'block';
   document.getElementById('attSubmitSection').style.display = 'none';
-  addBsupNotif('Attendance Locked', dayLabel + ' attendance submitted and locked.', 'green');
+  addBsupNotif('Attendance Submitted', dayLabel + ' attendance locked and sent to Coordinator.', 'green');
 }
 
 function showAttSummaryModal(dayKey, dayLabel){
@@ -2957,7 +2972,7 @@ function coordAttExportExcel(){
                   <div style="font-size:13px;color:var(--text-secondary)" id="attSubmitSummary"></div>
                 </div>
                 <button class="btn btn-primary" onclick="submitAttendance()" id="attSubmitBtn">
-                  ✅ Submit & Lock Day
+                  ✅ End Day & Send to Coordinator
                 </button>
               </div>
             </div>
