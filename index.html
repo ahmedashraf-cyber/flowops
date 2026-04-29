@@ -1950,7 +1950,7 @@ async function saveGroupAssignments(){
 // BSUP NAVIGATION & NOTIFICATIONS
 // ============================================================
 function showBsupTab(tab){
-  ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupNotifs'].forEach(t => {
+  ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupMatches','bsupNotifs'].forEach(t => {
     const el = document.getElementById(t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
     const nav = document.getElementById('bsupNav_'+t.replace('bsup','').toLowerCase());
@@ -1961,6 +1961,7 @@ function showBsupTab(tab){
     bsupGroups:'bsupNav_groups',
     bsupAttendance:'bsupNav_attendance',
     bsupStatus:'bsupNav_status',
+    bsupMatches:'bsupNav_matches',
     bsupNotifs:'bsupNav_notifs'
   };
   Object.entries(navMap).forEach(([k,v]) => {
@@ -1970,6 +1971,7 @@ function showBsupTab(tab){
   if(tab === 'bsupGroups') updateBsupGroupsAvailability();
   if(tab === 'bsupAttendance'){ initAttendance(); }
   if(tab === 'bsupStatus'){ initTrainingStatus(); }
+  if(tab === 'bsupMatches'){ initMatchAssignment(); }
   if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
 }
 
@@ -3248,6 +3250,409 @@ function tsExportExcel(){
   a.click();
 }
 
+
+// ============================================================
+// MATCH ASSIGNMENT SYSTEM
+// ============================================================
+const MA = {
+  allMatches:   [],   // raw from sheet
+  filtered:     [],   // after filters
+  selected:     new Set(), // selected match indices
+  assignments:  {},   // { groupIdx: [ {match, assignedAt, reason} ] }
+  editTarget:   null, // { groupIdx, matchIdx }
+  charts:       {}
+};
+
+const MATCHES_SHEET_ID = '1dPwnYhIOiLUy_aBuVijPH3xtU6kxnEu-8FF115kXjSc';
+const MATCHES_API_KEY  = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
+const MATCHES_TAB      = 'Training Matches';
+
+async function initMatchAssignment(){
+  // Load saved assignments from Firestore
+  if(fbDb){
+    try {
+      const snap = await fbDb.collection('match_assignments').get();
+      MA.assignments = {};
+      snap.forEach(doc => {
+        MA.assignments[parseInt(doc.id)] = doc.data().matches || [];
+      });
+    } catch(e){ console.warn('MA load error:', e); }
+  }
+
+  // Populate group selectors
+  maPopulateGroups();
+  maRenderAssignedSummary();
+  maRenderAssignedTable();
+
+  // Auto-load matches
+  if(!MA.allMatches.length) await loadMatchesData();
+}
+
+async function loadMatchesData(){
+  const btn = document.querySelector('[onclick="loadMatchesData()"]');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Loading...'; }
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${MATCHES_SHEET_ID}/values/${encodeURIComponent(MATCHES_TAB+'!A2:L')}?key=${MATCHES_API_KEY}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const rows = data.values || [];
+
+    MA.allMatches = rows.filter(r => r[3] || r[6] || r[7]).map((r, i) => ({
+      idx:         i,
+      productionId: (r[0]||'').trim(),
+      stagingId:    (r[1]||'').trim(),
+      gameWeek:     (r[2]||'').trim(),
+      competition:  (r[3]||'').trim(),
+      country:      (r[4]||'').trim(),
+      matchDate:    (r[5]||'').trim(),
+      homeTeam:     (r[6]||'').trim(),
+      awayTeam:     (r[7]||'').trim(),
+      season:       (r[8]||'').trim(),
+      trainer:      (r[9]||'').trim(),
+      project:      (r[10]||'').trim(),
+      issue:        (r[11]||'').trim(),
+    }));
+
+    // Populate filter dropdowns
+    const comps   = [...new Set(MA.allMatches.map(m=>m.competition).filter(Boolean))].sort();
+    const weeks   = [...new Set(MA.allMatches.map(m=>m.gameWeek).filter(Boolean))].sort((a,b)=>parseInt(a)-parseInt(b));
+    const countries = [...new Set(MA.allMatches.map(m=>m.country).filter(Boolean))].sort();
+
+    const compSel = document.getElementById('maFilterComp');
+    if(compSel) compSel.innerHTML = '<option value="all">All Competitions</option>' + comps.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+
+    const weekSel = document.getElementById('maFilterWeek');
+    if(weekSel) weekSel.innerHTML = '<option value="all">All Game Weeks</option>' + weeks.map(w=>'<option value="'+w+'">GW '+w+'</option>').join('');
+
+    const countrySel = document.getElementById('maFilterCountry');
+    if(countrySel) countrySel.innerHTML = '<option value="all">All Countries</option>' + countries.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+
+    maApplyFilters();
+    addBsupNotif('Matches Loaded', MA.allMatches.length + ' matches loaded from database', 'green');
+  } catch(e){
+    addBsupNotif('Load Failed', 'Could not load matches: ' + e.message, 'warn');
+  }
+
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Load / Refresh Matches'; }
+}
+
+function maApplyFilters(){
+  const compF    = (document.getElementById('maFilterComp')||{}).value || 'all';
+  const weekF    = (document.getElementById('maFilterWeek')||{}).value || 'all';
+  const countryF = (document.getElementById('maFilterCountry')||{}).value || 'all';
+  const search   = (document.getElementById('maSearch')||{}).value?.toLowerCase() || '';
+
+  MA.filtered = MA.allMatches.filter(m => {
+    if(compF !== 'all' && m.competition !== compF) return false;
+    if(weekF !== 'all' && m.gameWeek !== weekF) return false;
+    if(countryF !== 'all' && m.country !== countryF) return false;
+    if(search && !m.homeTeam.toLowerCase().includes(search) && !m.awayTeam.toLowerCase().includes(search) && !m.competition.toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const countEl = document.getElementById('maMatchCount');
+  if(countEl) countEl.textContent = MA.filtered.length + ' matches';
+
+  // Clear selection when filters change
+  MA.selected.clear();
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+}
+
+function maClearFilters(){
+  ['maFilterComp','maFilterWeek','maFilterCountry'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = 'all';
+  });
+  const s = document.getElementById('maSearch');
+  if(s) s.value = '';
+  maApplyFilters();
+}
+
+function maRenderMatchesList(){
+  const list = document.getElementById('maMatchesList');
+  if(!list) return;
+
+  if(!MA.filtered.length){
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">No matches found. Try adjusting filters or load data.</div>';
+    return;
+  }
+
+  // Check which matches are already assigned (to show badge)
+  const allAssigned = new Set();
+  Object.values(MA.assignments).forEach(matches => matches.forEach(m => allAssigned.add(m.productionId)));
+
+  list.innerHTML = MA.filtered.map(m => {
+    const isSelected  = MA.selected.has(m.idx);
+    const isAssigned  = allAssigned.has(m.productionId);
+    const border = isSelected ? 'var(--color-primary)' : isAssigned ? 'rgba(59,139,212,0.4)' : 'var(--border-default)';
+    const bg     = isSelected ? 'var(--color-primary-subtle)' : isAssigned ? 'rgba(59,139,212,0.06)' : 'var(--bg-surface)';
+
+    return '<div onclick="maToggleMatch('+m.idx+')" style="background:'+bg+';border:1.5px solid '+border+';border-radius:var(--radius-md);padding:10px 12px;cursor:pointer;transition:all .12s;display:flex;align-items:center;gap:10px">'+
+      '<div style="width:18px;height:18px;border-radius:4px;border:2px solid '+(isSelected?'var(--color-primary)':'var(--border-strong)')+';background:'+(isSelected?'var(--color-primary)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(isSelected?'<svg width="10" height="8" viewBox="0 0 10 8"><path d="M1 4l3 3 5-6" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>':'')+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">'+
+          '<span style="font-weight:600;font-size:13px">' + m.homeTeam + '</span>'+
+          '<span style="color:var(--text-muted);font-size:11px">vs</span>'+
+          '<span style="font-weight:600;font-size:13px">' + m.awayTeam + '</span>'+
+          (isAssigned?'<span style="background:rgba(59,139,212,0.15);color:var(--color-info);padding:1px 6px;border-radius:var(--radius-pill);font-size:10px;font-weight:600">Assigned</span>':'')+
+        '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<span style="font-size:11px;color:var(--color-primary);font-weight:600">'+m.competition+'</span>'+
+          (m.gameWeek?'<span style="font-size:11px;color:var(--text-muted)">GW '+m.gameWeek+'</span>':'')+
+          (m.matchDate?'<span style="font-size:11px;color:var(--text-muted)">'+m.matchDate+'</span>':'')+
+          (m.country?'<span style="font-size:11px;color:var(--text-muted)">'+m.country+'</span>':'')+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function maToggleMatch(idx){
+  if(MA.selected.has(idx)) MA.selected.delete(idx);
+  else MA.selected.add(idx);
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+  maUpdatePreview();
+}
+
+function maSelectAll(){
+  MA.filtered.forEach(m => MA.selected.add(m.idx));
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+  maUpdatePreview();
+}
+
+function maClearSelection(){
+  MA.selected.clear();
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+  maUpdatePreview();
+}
+
+function maUpdateSelectedCount(){
+  const el = document.getElementById('maSelectedCount');
+  if(el) el.textContent = MA.selected.size + ' selected';
+}
+
+function maAutoSelect(){
+  const count = parseInt(document.getElementById('maMatchCount2').value) || 0;
+  if(!count){ alert('Enter a match count first.'); return; }
+  MA.selected.clear();
+  MA.filtered.slice(0, count).forEach(m => MA.selected.add(m.idx));
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+  maUpdatePreview();
+}
+
+function maUpdatePreview(){
+  const preview = document.getElementById('maSelectionPreview');
+  const list    = document.getElementById('maPreviewList');
+  if(!preview || !list) return;
+  if(!MA.selected.size){ preview.style.display='none'; return; }
+  preview.style.display = 'block';
+  const matches = MA.allMatches.filter(m => MA.selected.has(m.idx));
+  list.innerHTML = matches.map(m =>
+    '<div style="padding:3px 0;border-bottom:1px solid var(--border-default);font-size:12px">'+
+    '<span style="color:var(--text-primary);font-weight:500">'+m.homeTeam+' vs '+m.awayTeam+'</span>'+
+    '<span style="color:var(--text-muted);margin-inline-start:6px">'+m.competition+(m.gameWeek?' · GW'+m.gameWeek:'')+'</span>'+
+    '</div>'
+  ).join('');
+}
+
+function maPopulateGroups(){
+  const sels = ['maTargetGroup', 'maViewGroup'];
+  sels.forEach(id => {
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const isView = id === 'maViewGroup';
+    sel.innerHTML = (isView ? '<option value="all">All Groups</option>' : '<option value="">— Select group —</option>') +
+      BSUP.groups.map((g, i) => {
+        const trainer = BSUP.groupAssign[i] || 'Unassigned';
+        return '<option value="'+i+'">Group '+(i+1)+' — '+trainer+'</option>';
+      }).join('');
+  });
+}
+
+async function maAssignMatches(){
+  if(!MA.selected.size){ alert('Select at least one match first.'); return; }
+  const groupIdxStr = document.getElementById('maTargetGroup').value;
+  if(groupIdxStr === ''){ alert('Select a training group.'); return; }
+  const groupIdx = parseInt(groupIdxStr);
+
+  const selectedMatches = MA.allMatches.filter(m => MA.selected.has(m.idx));
+  const now = new Date().toISOString();
+
+  if(!MA.assignments[groupIdx]) MA.assignments[groupIdx] = [];
+
+  // Add new matches (avoid duplicates by productionId)
+  const existingIds = new Set(MA.assignments[groupIdx].map(m => m.productionId));
+  const newMatches  = selectedMatches.filter(m => !existingIds.has(m.productionId));
+  const dupeCount   = selectedMatches.length - newMatches.length;
+
+  newMatches.forEach(m => {
+    MA.assignments[groupIdx].push({ ...m, assignedAt: now, assignedBy: A.user?.email || '', editHistory: [] });
+  });
+
+  // Save to Firestore
+  if(fbDb && A.user){
+    try {
+      await fbDb.collection('match_assignments').doc(String(groupIdx)).set({
+        groupIdx, matches: MA.assignments[groupIdx],
+        updatedAt: now, updatedBy: A.user.email
+      });
+    } catch(e){ console.warn('MA save error:', e); }
+  }
+
+  MA.selected.clear();
+  maUpdateSelectedCount();
+  maRenderMatchesList();
+  maUpdatePreview();
+  maRenderAssignedSummary();
+  maRenderAssignedTable();
+
+  let msg = newMatches.length + ' matches assigned to Group ' + (groupIdx+1);
+  if(dupeCount) msg += ' (' + dupeCount + ' duplicates skipped)';
+  addBsupNotif('Matches Assigned', msg, 'green');
+  alert('✅ ' + msg);
+}
+
+function maRenderAssignedSummary(){
+  const el = document.getElementById('maAssignedSummary');
+  if(!el) return;
+  const keys = Object.keys(MA.assignments).filter(k => MA.assignments[k].length > 0);
+  if(!keys.length){ el.innerHTML = '<div style="color:var(--text-muted)">No assignments yet</div>'; return; }
+  el.innerHTML = keys.map(k => {
+    const gi = parseInt(k);
+    const trainer = BSUP.groupAssign[gi] || 'Unassigned';
+    const count = MA.assignments[gi].length;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-default)">'+
+      '<div>'+
+        '<div style="font-weight:600;font-size:13px">Group '+(gi+1)+'</div>'+
+        '<div style="font-size:11px;color:var(--color-primary)">'+trainer+'</div>'+
+      '</div>'+
+      '<span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">'+count+' match'+(count!==1?'es':'')+'</span>'+
+    '</div>';
+  }).join('');
+}
+
+function maRenderAssignedTable(){
+  const tbody   = document.getElementById('maAssignedBody');
+  const viewGrp = (document.getElementById('maViewGroup')||{}).value || 'all';
+  if(!tbody) return;
+
+  const rows = [];
+  Object.keys(MA.assignments).forEach(k => {
+    const gi = parseInt(k);
+    if(viewGrp !== 'all' && gi !== parseInt(viewGrp)) return;
+    const trainer = BSUP.groupAssign[gi] || '—';
+    MA.assignments[gi].forEach((m, mi) => {
+      rows.push({ gi, mi, trainer, m });
+    });
+  });
+
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(({gi, mi, trainer, m}) =>
+    '<tr>'+
+    '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700">G'+(gi+1)+'</span></td>'+
+    '<td style="font-size:12px;color:var(--color-primary);font-weight:600">'+trainer+'</td>'+
+    '<td style="font-size:12px;color:var(--text-secondary)">'+(m.gameWeek?'GW'+m.gameWeek:'—')+'</td>'+
+    '<td style="font-size:12px;font-weight:500">'+m.competition+'</td>'+
+    '<td style="font-size:11px;color:var(--text-muted)">'+m.matchDate+'</td>'+
+    '<td style="font-size:13px;font-weight:500">'+m.homeTeam+'</td>'+
+    '<td style="font-size:13px;font-weight:500">'+m.awayTeam+'</td>'+
+    '<td style="font-size:11px;color:var(--text-muted)">'+m.country+'</td>'+
+    '<td style="font-size:11px;color:var(--text-muted)">'+new Date(m.assignedAt).toLocaleDateString('en-EG')+'</td>'+
+    '<td><button class="btn btn-ghost btn-sm" onclick="maOpenEdit('+gi+','+mi+')" style="font-size:11px">✏️ Edit</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="maRemoveMatch('+gi+','+mi+')" style="font-size:11px;color:var(--color-danger)">✕</button></td>'+
+    '</tr>'
+  ).join('');
+}
+
+function maOpenEdit(gi, mi){
+  MA.editTarget = { gi, mi };
+  document.getElementById('maEditReason').value = '';
+  document.getElementById('maEditDetails').value = '';
+  document.getElementById('maEditModal').style.display = 'flex';
+}
+
+async function maConfirmEdit(){
+  const reason  = document.getElementById('maEditReason').value;
+  const details = document.getElementById('maEditDetails').value;
+  if(!reason){ alert('Please select a reason.'); return; }
+
+  const { gi, mi } = MA.editTarget;
+  const match = MA.assignments[gi][mi];
+
+  // Log the edit
+  if(!match.editHistory) match.editHistory = [];
+  match.editHistory.push({ reason, details, editedAt: new Date().toISOString(), editedBy: A.user?.email || '' });
+  match.lastEditReason = reason;
+
+  // Save to Firestore
+  if(fbDb && A.user){
+    try {
+      await fbDb.collection('match_assignments').doc(String(gi)).set({
+        groupIdx: gi, matches: MA.assignments[gi],
+        updatedAt: new Date().toISOString(), updatedBy: A.user.email
+      });
+    } catch(e){}
+  }
+
+  document.getElementById('maEditModal').style.display = 'none';
+  maRenderAssignedTable();
+  addBsupNotif('Assignment Edited', 'Reason: ' + reason, 'warn');
+}
+
+async function maRemoveMatch(gi, mi){
+  const m = MA.assignments[gi][mi];
+  if(!confirm('Remove ' + m.homeTeam + ' vs ' + m.awayTeam + ' from Group ' + (gi+1) + '?')) return;
+
+  MA.assignments[gi].splice(mi, 1);
+
+  if(fbDb && A.user){
+    try {
+      await fbDb.collection('match_assignments').doc(String(gi)).set({
+        groupIdx: gi, matches: MA.assignments[gi],
+        updatedAt: new Date().toISOString(), updatedBy: A.user.email
+      });
+    } catch(e){}
+  }
+
+  maRenderAssignedSummary();
+  maRenderAssignedTable();
+  maRenderMatchesList();
+}
+
+function maExportExcel(){
+  const headers = ['Group','Trainer','Game Week','Competition','Country','Match Date','Home Team','Away Team','Production ID','Assigned Date','Last Edit Reason'];
+  const rows = [];
+  Object.keys(MA.assignments).forEach(k => {
+    const gi = parseInt(k);
+    const trainer = BSUP.groupAssign[gi] || '—';
+    MA.assignments[gi].forEach(m => {
+      rows.push([
+        'Group '+(gi+1), trainer,
+        m.gameWeek||'—', '"'+m.competition+'"', m.country||'—', m.matchDate||'—',
+        '"'+m.homeTeam+'"', '"'+m.awayTeam+'"', m.productionId||'—',
+        new Date(m.assignedAt).toLocaleDateString('en-EG'),
+        '"'+(m.lastEditReason||'—')+'"'
+      ]);
+    });
+  });
+  const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'flowops_match_assignments_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+}
+
 </script>
 
 <!-- PWA Install Banner -->
@@ -3284,6 +3689,7 @@ function tsExportExcel(){
       <div class="sidebar-item" onclick="showBsupTab('bsupGroups')" id="bsupNav_groups"><span class="sidebar-icon">🗂</span>Group Assignment</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupAttendance')" id="bsupNav_attendance"><span class="sidebar-icon">📅</span>Attendance</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupStatus')" id="bsupNav_status"><span class="sidebar-icon">📊</span>Training Status</div>
+      <div class="sidebar-item" onclick="showBsupTab('bsupMatches')" id="bsupNav_matches"><span class="sidebar-icon">⚽</span>Match Assignment</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupNotifs')" id="bsupNav_notifs"><span class="sidebar-icon">🔔</span>Notifications<span class="sidebar-badge" id="bsupNSide">0</span></div>
     </div>
     <div class="content">
@@ -3293,6 +3699,7 @@ function tsExportExcel(){
         <div class="mob-nav-i" onclick="showBsupTab('bsupGroups')">Groups</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupAttendance')">Attendance</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupStatus')">Status</div>
+        <div class="mob-nav-i" onclick="showBsupTab('bsupMatches')">Matches</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupNotifs')">Alerts</div>
       </div>
 
@@ -3705,6 +4112,154 @@ function tsExportExcel(){
             <div style="display:flex;gap:8px;margin-top:4px">
               <button class="btn btn-primary btn-full" onclick="tsSaveStatus()">💾 Save Status</button>
               <button class="btn btn-secondary" onclick="document.getElementById('tsModal').style.display='none'">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PAGE 5: MATCH ASSIGNMENT -->
+      <div id="bsupMatches" class="container" style="display:none">
+        <div class="page-hdr">
+          <h2>Match Assignment</h2>
+          <p>Assign matches from the live database to each training group — weekly</p>
+        </div>
+
+        <!-- STEP 1: LOAD & FILTER MATCHES -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+            <div>
+              <div class="card-title">📡 Live Match Database</div>
+              <div style="font-size:13px;color:var(--text-secondary)">Fetched live from Google Sheets — updated weekly</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="loadMatchesData()">🔄 Load / Refresh Matches</button>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <select id="maFilterComp" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:180px">
+              <option value="all">All Competitions</option>
+            </select>
+            <select id="maFilterWeek" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:140px">
+              <option value="all">All Game Weeks</option>
+            </select>
+            <select id="maFilterCountry" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:140px">
+              <option value="all">All Countries</option>
+            </select>
+            <input type="text" id="maSearch" oninput="maApplyFilters()" placeholder="Search teams..." style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:160px"/>
+            <button class="btn btn-ghost btn-sm" onclick="maClearFilters()">✕ Clear</button>
+            <span style="font-size:12px;color:var(--text-muted)" id="maMatchCount"></span>
+          </div>
+        </div>
+
+        <!-- STEP 2: SELECT & ASSIGN -->
+        <div style="display:grid;grid-template-columns:1fr 380px;gap:16px;align-items:start" id="maMainLayout">
+
+          <!-- MATCHES LIST -->
+          <div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+              <div style="font-size:13px;font-weight:600;color:var(--text-primary)">
+                Available Matches
+                <span id="maSelectedCount" style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700;margin-inline-start:8px">0 selected</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="maSelectAll()">Select All</button>
+                <button class="btn btn-ghost btn-sm" onclick="maClearSelection()">Clear</button>
+              </div>
+            </div>
+            <div id="maMatchesList" style="max-height:520px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+              <div style="text-align:center;padding:48px;color:var(--text-muted)">Click "Load / Refresh Matches" to fetch live data</div>
+            </div>
+          </div>
+
+          <!-- ASSIGN PANEL -->
+          <div style="position:sticky;top:72px">
+            <div class="card" style="border:2px solid var(--border-strong)">
+              <div class="card-title" style="margin-bottom:14px">⚡ Assign to Group</div>
+
+              <div class="field">
+                <label class="input-label">Training Group</label>
+                <select class="input" id="maTargetGroup">
+                  <option value="">— Select group —</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label class="input-label">Match Count</label>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <input type="number" class="input" id="maMatchCount2" min="1" max="20" placeholder="How many matches" style="flex:1"/>
+                  <button class="btn btn-ghost btn-sm" onclick="maAutoSelect()" title="Auto-select this many matches">🎯 Auto</button>
+                </div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Or manually select matches from the list</div>
+              </div>
+
+              <div id="maSelectionPreview" style="background:var(--bg-app);border-radius:var(--radius-md);padding:10px;margin-bottom:14px;min-height:60px;font-size:12px;color:var(--text-muted);display:none">
+                <div style="font-weight:600;color:var(--text-primary);margin-bottom:6px">Selected matches:</div>
+                <div id="maPreviewList"></div>
+              </div>
+
+              <button class="btn btn-primary btn-full" onclick="maAssignMatches()" id="maAssignBtn">
+                ✅ Assign Matches
+              </button>
+            </div>
+
+            <!-- ASSIGNED GROUPS SUMMARY -->
+            <div class="card" style="margin-top:0">
+              <div class="card-title" style="margin-bottom:12px">📋 Current Assignments</div>
+              <div id="maAssignedSummary" style="font-size:13px;color:var(--text-muted)">No assignments yet</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ASSIGNED MATCHES TABLE -->
+        <div class="card" style="margin-top:16px;padding:0;overflow:hidden" id="maAssignedCard">
+          <div style="padding:14px 20px;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div class="card-title">All Group Assignments</div>
+            <div style="display:flex;gap:8px">
+              <select id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none">
+                <option value="all">All Groups</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" onclick="maExportExcel()">⬇ Excel</button>
+            </div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Group</th><th>Trainer</th><th>Game Week</th><th>Competition</th><th>Date</th><th>Home</th><th>Away</th><th>Country</th><th>Assigned</th><th>Action</th></tr></thead>
+              <tbody id="maAssignedBody">
+                <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- EDIT REASON MODAL -->
+        <div id="maEditModal" class="modal-ov" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+          <div class="modal-box" style="max-width:480px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+              <div class="modal-title">Edit Assignment</div>
+              <button class="btn btn-ghost btn-sm" onclick="document.getElementById('maEditModal').style.display='none'">✕</button>
+            </div>
+            <div class="alert alert-warn" style="display:block;margin-bottom:16px">
+              ⚠️ This assignment is locked. Please provide a reason for the change.
+            </div>
+            <div class="field">
+              <label class="input-label">Reason for Change</label>
+              <select class="input" id="maEditReason">
+                <option value="">— Select reason —</option>
+                <option value="Match Issue">Issue with a specific match</option>
+                <option value="Group Issue">Issue with the group</option>
+                <option value="Competition Change">Competition changed</option>
+                <option value="Week Change">Different game week needed</option>
+                <option value="Duplicate Match">Duplicate match found</option>
+                <option value="Wrong Assignment">Wrong group assignment</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="input-label">Details</label>
+              <input class="input" type="text" id="maEditDetails" placeholder="Describe the issue..."/>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary btn-full" onclick="maConfirmEdit()">Proceed with Edit</button>
+              <button class="btn btn-secondary" onclick="document.getElementById('maEditModal').style.display='none'">Cancel</button>
             </div>
           </div>
         </div>
