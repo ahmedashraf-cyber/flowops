@@ -388,6 +388,7 @@ tbody tr:hover{background:var(--bg-surface-hover)}
         <div class="mob-nav-i active" onclick="showTab('overview')">Overview</div>
         <div class="mob-nav-i" onclick="showTab('candidates')">Candidates</div>
         <div class="mob-nav-i" onclick="showTab('report')">Report</div>
+        <div class="mob-nav-i" onclick="showTab('attendance')">Attendance</div>
         <div class="mob-nav-i" onclick="showTab('notifs')">Alerts</div>
       </div>
 
@@ -526,6 +527,93 @@ tbody tr:hover{background:var(--bg-surface-hover)}
           </div>
           <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Recipients: Training Manager · Training Supervisor · Batch Supervisor</p>
         </div>
+      </div>
+
+      <!-- ATTENDANCE VIEW TAB -->
+      <div id="tab_attendance" class="container" style="display:none">
+        <div class="page-hdr">
+          <h2>Attendance View</h2>
+          <p>Read-only attendance overview — data collected by Batch Supervisor</p>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="font-size:13px;font-weight:600;color:var(--text-secondary)">Filter by Batch:</div>
+            <select id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:7px 14px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px">
+              <option value="all">All Batches</option>
+            </select>
+            <div id="coordAttFilterBadge" style="display:none">
+              <span class="badge badge-orange" id="coordAttFilterLabel"></span>
+            </div>
+            <div style="margin-inline-start:auto;display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm" onclick="coordAttExportExcel()">⬇ Export Excel</button>
+              <button class="btn btn-secondary btn-sm" onclick="loadCoordAttData()">🔄 Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUMMARY METRICS -->
+        <div class="metrics" id="coordAttMetrics" style="display:none;grid-template-columns:repeat(5,1fr)">
+          <div class="card-stat"><div class="card-stat__label">Total Days</div><div class="card-stat__value accent" id="coordAttDays">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Total Trainees</div><div class="card-stat__value" id="coordAttTrainees">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Avg Attendance</div><div class="card-stat__value green" id="coordAttAvg">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Best Day</div><div class="card-stat__value green" id="coordAttBest">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Worst Day</div><div class="card-stat__value red" id="coordAttWorst">—</div></div>
+        </div>
+
+        <!-- CHARTS ROW -->
+        <div id="coordAttChartsRow" style="display:none">
+          <!-- Chart 1: Daily Attendance Trend -->
+          <div class="card">
+            <div class="card-title">📈 Daily Attendance Trend</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Attendance rate % per training day</div>
+            <div style="position:relative;height:260px"><canvas id="coordChartDaily"></canvas></div>
+          </div>
+
+          <!-- Chart 2: Status Breakdown per Day -->
+          <div class="card">
+            <div class="card-title">📊 Daily Status Breakdown</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">M / UL / WV / H count per day — stacked</div>
+            <div style="position:relative;height:260px"><canvas id="coordChartStacked"></canvas></div>
+          </div>
+
+          <!-- Chart 3: Overall Status Distribution -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="card">
+              <div class="card-title">🍩 Overall Status Distribution</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">All days combined</div>
+              <div style="position:relative;height:220px"><canvas id="coordChartDonut"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-title">📉 Weekly Average Trend</div>
+              <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px">Average attendance % per week</div>
+              <div style="position:relative;height:220px"><canvas id="coordChartWeekly"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ATTENDANCE TABLE -->
+        <div class="card" id="coordAttTableCard" style="display:none;padding:0;overflow:hidden">
+          <div style="padding:16px 20px;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center">
+            <div class="card-title">Full Attendance Record</div>
+            <div style="font-size:12px;color:var(--text-muted)" id="coordAttTableSub"></div>
+          </div>
+          <div class="tbl-wrap">
+            <table id="coordAttTable">
+              <thead id="coordAttThead"></thead>
+              <tbody id="coordAttTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- EMPTY STATE -->
+        <div id="coordAttEmpty" class="card" style="text-align:center;padding:48px">
+          <div style="font-size:32px;margin-bottom:12px">📅</div>
+          <div style="font-size:15px;font-weight:600;margin-bottom:6px">No Attendance Data Yet</div>
+          <div style="font-size:13px;color:var(--text-secondary)">Attendance data will appear here once the Batch Supervisor starts recording daily attendance.</div>
+        </div>
+
       </div>
 
       <!-- NOTIFICATIONS TAB -->
@@ -1235,12 +1323,13 @@ function updateBadge(){document.getElementById('nBadge').textContent=A.notifN;do
 // NAVIGATION
 // ============================================================
 function showTab(t){
-  ['overview','candidates','report','notifs'].forEach(x=>{
+  ['overview','candidates','report','attendance','notifs'].forEach(x=>{
     const el=document.getElementById('tab_'+x);if(el)el.style.display=x===t?'block':'none';
     const n=document.getElementById('nav_'+x);if(n)n.classList.toggle('active',x===t);
   });
   document.querySelectorAll('.mob-nav-i').forEach(el=>el.classList.toggle('active',el.textContent.toLowerCase().trim().startsWith(t.slice(0,4))));
   if(t==='report'){setTimeout(()=>{buildCharts();updateReportStats();},50);}
+  if(t==='attendance'){setTimeout(()=>{ initCoordAttendance(); },100);}
   if(t==='notifs'){A.notifN=0;updateBadge();}
 }
 function showScreen(id){
@@ -2298,6 +2387,345 @@ function exportAttendanceExcel(){
   a.download = 'flowops_attendance_'+new Date().toISOString().split('T')[0]+'.csv';
   a.click();
   addBsupNotif('Excel exported', 'Attendance data exported successfully', 'green');
+}
+
+
+// ============================================================
+// COORDINATOR ATTENDANCE VIEW
+// ============================================================
+const COORD_ATT = {
+  data:     {},   // dayKey -> { traineeCode: status }
+  trainees: [],   // from Firestore
+  filtered: {},   // after batch filter
+  charts:   {},
+  batches:  []
+};
+
+async function initCoordAttendance(){
+  if(Object.keys(COORD_ATT.data).length > 0){
+    coordAttApplyFilter(); return;
+  }
+  await loadCoordAttData();
+}
+
+async function loadCoordAttData(){
+  const empty = document.getElementById('coordAttEmpty');
+  const metrics = document.getElementById('coordAttMetrics');
+  const charts = document.getElementById('coordAttChartsRow');
+  const tableCard = document.getElementById('coordAttTableCard');
+  if(empty) empty.style.display = 'block';
+  if(metrics) metrics.style.display = 'none';
+  if(charts) charts.style.display = 'none';
+  if(tableCard) tableCard.style.display = 'none';
+
+  if(!fbDb){ return; }
+
+  try {
+    // Load attendance records from Firestore
+    const snap = await fbDb.collection('attendance').get();
+    COORD_ATT.data = {};
+    snap.forEach(doc => {
+      const d = doc.data();
+      if(d.records) COORD_ATT.data[d.dayKey] = { records: d.records, dayLabel: d.dayLabel };
+    });
+
+    // Load trainees from batch_notifications
+    const tSnap = await fbDb.collection('batch_notifications').where('type','==','end_of_batch').get();
+    COORD_ATT.trainees = [];
+    const seen = new Set();
+    tSnap.forEach(doc => {
+      const d = doc.data();
+      (d.acceptedCandidates||[]).forEach(t => {
+        const key = t.name + '|' + d.batchName;
+        if(!seen.has(key)){
+          seen.add(key);
+          COORD_ATT.trainees.push({ ...t, batchName: d.batchName });
+        }
+      });
+    });
+
+    // Populate batch filter
+    COORD_ATT.batches = [...new Set(COORD_ATT.trainees.map(t => t.batchName).filter(Boolean))];
+    const sel = document.getElementById('coordAttBatch');
+    if(sel){
+      sel.innerHTML = '<option value="all">All Batches</option>' +
+        COORD_ATT.batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+    }
+
+    coordAttApplyFilter();
+  } catch(e){
+    console.error('loadCoordAttData failed:', e);
+  }
+}
+
+function coordAttApplyFilter(){
+  const batchF = document.getElementById('coordAttBatch') ? document.getElementById('coordAttBatch').value : 'all';
+
+  // Filter badge
+  const badge = document.getElementById('coordAttFilterBadge');
+  const label = document.getElementById('coordAttFilterLabel');
+  if(badge){ badge.style.display = batchF === 'all' ? 'none' : 'block'; }
+  if(label){ label.textContent = batchF; }
+
+  // Filter trainees
+  const trainees = batchF === 'all'
+    ? COORD_ATT.trainees
+    : COORD_ATT.trainees.filter(t => t.batchName === batchF);
+
+  if(!trainees.length && !Object.keys(COORD_ATT.data).length){
+    document.getElementById('coordAttEmpty').style.display = 'block';
+    return;
+  }
+
+  // Get recorded days sorted
+  const days = Object.keys(COORD_ATT.data).sort((a,b) => {
+    const na = parseInt(a.replace('day_',''));
+    const nb = parseInt(b.replace('day_',''));
+    return na - nb;
+  });
+
+  if(!days.length){
+    document.getElementById('coordAttEmpty').style.display = 'block';
+    return;
+  }
+
+  document.getElementById('coordAttEmpty').style.display = 'none';
+  document.getElementById('coordAttMetrics').style.display = 'grid';
+  document.getElementById('coordAttChartsRow').style.display = 'block';
+  document.getElementById('coordAttTableCard').style.display = 'block';
+
+  // Build filtered data
+  const filteredData = {};
+  days.forEach(dk => {
+    const rec = COORD_ATT.data[dk].records || {};
+    filteredData[dk] = {};
+    trainees.forEach(t => {
+      if(t.trainingCode && rec[t.trainingCode]){
+        filteredData[dk][t.trainingCode] = rec[t.trainingCode];
+      }
+    });
+  });
+
+  // Calculate metrics
+  const allRates = days.map(dk => {
+    const vals = Object.values(filteredData[dk]);
+    const total = vals.length;
+    const m = vals.filter(v=>v==='M').length;
+    return total ? Math.round(m/total*100) : 0;
+  }).filter(r => r > 0);
+
+  const avgRate = allRates.length ? Math.round(allRates.reduce((a,b)=>a+b,0)/allRates.length) : 0;
+  const bestRate = allRates.length ? Math.max(...allRates) : 0;
+  const worstRate = allRates.length ? Math.min(...allRates) : 0;
+  const bestDay = days[allRates.indexOf(bestRate)];
+  const worstDay = days[allRates.indexOf(worstRate)];
+
+  document.getElementById('coordAttDays').textContent = days.length;
+  document.getElementById('coordAttTrainees').textContent = trainees.length;
+  document.getElementById('coordAttAvg').textContent = avgRate + '%';
+  document.getElementById('coordAttBest').textContent = bestRate + '% (' + (bestDay ? COORD_ATT.data[bestDay].dayLabel : '—') + ')';
+  document.getElementById('coordAttWorst').textContent = worstRate + '% (' + (worstDay ? COORD_ATT.data[worstDay].dayLabel : '—') + ')';
+  document.getElementById('coordAttTableSub').textContent = days.length + ' days · ' + trainees.length + ' trainees';
+
+  buildCoordAttCharts(days, filteredData, trainees);
+  buildCoordAttTable(days, filteredData, trainees);
+}
+
+function buildCoordAttCharts(days, filteredData, trainees){
+  const labels = days.map(dk => COORD_ATT.data[dk].dayLabel || dk.replace('day_','D'));
+  const mRates  = days.map(dk => { const v=Object.values(filteredData[dk]); return v.length?Math.round(v.filter(x=>x==='M').length/v.length*100):0; });
+  const ulRates = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='UL').length; });
+  const wvRates = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='WV').length; });
+  const hRates  = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='H').length; });
+  const mCounts = days.map(dk => Object.values(filteredData[dk]).filter(x=>x==='M').length);
+
+  const chartOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { color:'#aaa', font:{size:11} } } },
+    scales: {
+      x: { ticks:{color:'#666',font:{size:10},maxRotation:45}, grid:{color:'rgba(255,255,255,0.04)'} },
+      y: { ticks:{color:'#666',font:{size:10}}, beginAtZero:true, grid:{color:'rgba(255,255,255,0.04)'} }
+    }
+  };
+
+  // Chart 1: Daily Attendance Rate Line
+  if(COORD_ATT.charts.daily) COORD_ATT.charts.daily.destroy();
+  const ctx1 = document.getElementById('coordChartDaily');
+  if(ctx1){
+    COORD_ATT.charts.daily = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Attendance Rate %',
+          data: mRates,
+          borderColor: '#28A064',
+          backgroundColor: 'rgba(40,160,100,0.1)',
+          borderWidth: 2.5,
+          pointBackgroundColor: mRates.map(r => r>=80?'#28A064':r>=60?'#F0A020':'#E04040'),
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          fill: true,
+          tension: 0.35
+        }]
+      },
+      options: {
+        ...chartOpts,
+        plugins: {
+          ...chartOpts.plugins,
+          tooltip: {
+            callbacks: {
+              label: ctx => 'Attendance: ' + ctx.parsed.y + '%',
+              afterLabel: ctx => {
+                const dk = days[ctx.dataIndex];
+                const vals = Object.values(filteredData[dk]);
+                const m = vals.filter(v=>v==='M').length;
+                return 'Present: '+m+' / '+vals.length+' trainees';
+              }
+            }
+          }
+        },
+        scales: {
+          ...chartOpts.scales,
+          y: { ...chartOpts.scales.y, max:100, ticks:{...chartOpts.scales.y.ticks, callback: v=>v+'%'} }
+        }
+      }
+    });
+  }
+
+  // Chart 2: Stacked Bar - Status breakdown per day
+  if(COORD_ATT.charts.stacked) COORD_ATT.charts.stacked.destroy();
+  const ctx2 = document.getElementById('coordChartStacked');
+  if(ctx2){
+    COORD_ATT.charts.stacked = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label:'M (Attended)', data:mCounts,  backgroundColor:'rgba(40,160,100,0.8)',  borderRadius:2 },
+          { label:'UL (Absent)',  data:ulRates, backgroundColor:'rgba(224,64,64,0.8)',   borderRadius:2 },
+          { label:'WV (Vacation)',data:wvRates, backgroundColor:'rgba(59,139,212,0.8)',  borderRadius:2 },
+          { label:'H (Holiday)',  data:hRates,  backgroundColor:'rgba(240,160,32,0.8)',  borderRadius:2 }
+        ]
+      },
+      options: { ...chartOpts, scales: { ...chartOpts.scales, x:{...chartOpts.scales.x,stacked:true}, y:{...chartOpts.scales.y,stacked:true} } }
+    });
+  }
+
+  // Chart 3: Donut - Overall distribution
+  const totalM  = mCounts.reduce((a,b)=>a+b,0);
+  const totalUL = ulRates.reduce((a,b)=>a+b,0);
+  const totalWV = wvRates.reduce((a,b)=>a+b,0);
+  const totalH  = hRates.reduce((a,b)=>a+b,0);
+  if(COORD_ATT.charts.donut) COORD_ATT.charts.donut.destroy();
+  const ctx3 = document.getElementById('coordChartDonut');
+  if(ctx3){
+    COORD_ATT.charts.donut = new Chart(ctx3, {
+      type: 'doughnut',
+      data: {
+        labels: ['M — Attended','UL — Absent','WV — Vacation','H — Holiday'],
+        datasets:[{ data:[totalM,totalUL,totalWV,totalH],
+          backgroundColor:['rgba(40,160,100,0.85)','rgba(224,64,64,0.85)','rgba(59,139,212,0.85)','rgba(240,160,32,0.85)'],
+          borderColor:['#28A064','#E04040','#3B8BD4','#F0A020'], borderWidth:2 }]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{color:'#aaa',font:{size:11},padding:12} },
+          tooltip:{ callbacks:{ label: ctx => { const total=ctx.dataset.data.reduce((a,b)=>a+b,0); return ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/total*100)+'%)'; } } }
+        }, cutout:'60%' }
+    });
+  }
+
+  // Chart 4: Weekly average trend
+  const weeklyAvgs = [];
+  const weeklyLabels = [];
+  for(let w=0; w<Math.ceil(days.length/5); w++){
+    const weekDays = days.slice(w*5, w*5+5);
+    const weekRates = weekDays.map(dk => { const v=Object.values(filteredData[dk]); return v.length?Math.round(v.filter(x=>x==='M').length/v.length*100):0; });
+    const avg = weekRates.length ? Math.round(weekRates.reduce((a,b)=>a+b,0)/weekRates.length) : 0;
+    weeklyAvgs.push(avg);
+    weeklyLabels.push('Week '+(w+1));
+  }
+  if(COORD_ATT.charts.weekly) COORD_ATT.charts.weekly.destroy();
+  const ctx4 = document.getElementById('coordChartWeekly');
+  if(ctx4){
+    COORD_ATT.charts.weekly = new Chart(ctx4, {
+      type: 'bar',
+      data: {
+        labels: weeklyLabels,
+        datasets:[{ label:'Weekly Avg %', data:weeklyAvgs,
+          backgroundColor: weeklyAvgs.map(r=>r>=80?'rgba(40,160,100,0.75)':r>=60?'rgba(240,160,32,0.75)':'rgba(224,64,64,0.75)'),
+          borderRadius:6, borderSkipped:false }]
+      },
+      options:{ ...chartOpts,
+        scales:{ ...chartOpts.scales, y:{ ...chartOpts.scales.y, max:100, ticks:{...chartOpts.scales.y.ticks, callback:v=>v+'%'} } }
+      }
+    });
+  }
+}
+
+function buildCoordAttTable(days, filteredData, trainees){
+  const thead = document.getElementById('coordAttThead');
+  const tbody = document.getElementById('coordAttTbody');
+  if(!thead||!tbody) return;
+
+  const dayLabels = days.map(dk => COORD_ATT.data[dk].dayLabel || dk.replace('day_','D'));
+
+  // Header
+  thead.innerHTML = '<tr><th>#</th><th>Name</th><th>Batch</th>' +
+    dayLabels.map(l=>'<th style="min-width:60px;text-align:center">'+l+'</th>').join('') +
+    '<th style="text-align:center">M Total</th><th style="text-align:center">Rate</th></tr>';
+
+  // Rows
+  const STATUS_COLORS = { M:'var(--color-success)', UL:'var(--color-danger)', WV:'var(--color-info)', H:'var(--color-warning)', '':'var(--text-muted)' };
+  tbody.innerHTML = trainees.sort((a,b)=>{
+    if((a.batchName||'')!==(b.batchName||'')) return (a.batchName||'').localeCompare(b.batchName||'');
+    return (a.trainingCode||0)-(b.trainingCode||0);
+  }).map((t,idx) => {
+    const cells = days.map(dk => {
+      const s = (filteredData[dk]||{})[t.trainingCode] || '';
+      const col = STATUS_COLORS[s]||'var(--text-muted)';
+      return '<td style="text-align:center"><span style="color:'+col+';font-weight:700;font-size:12px">'+(s||'—')+'</span></td>';
+    }).join('');
+    const allStatus = days.map(dk => (filteredData[dk]||{})[t.trainingCode]||'');
+    const totalM = allStatus.filter(s=>s==='M').length;
+    const taken = allStatus.filter(s=>s!=='').length;
+    const rate = taken ? Math.round(totalM/taken*100) : 0;
+    const rateColor = rate>=80?'var(--color-success)':rate>=60?'var(--color-warning)':'var(--color-danger)';
+    return '<tr>'+
+      '<td style="color:var(--text-muted);font-size:11px;font-family:JetBrains Mono,monospace">'+(t.trainingCode?'#'+t.trainingCode:'—')+'</td>'+
+      '<td style="font-weight:500;font-size:13px">'+(t.name||'')+'</td>'+
+      '<td><span class="badge badge-orange" style="font-size:10px">'+(t.batchName||'—')+'</span></td>'+
+      cells+
+      '<td style="text-align:center;font-weight:700">'+totalM+'</td>'+
+      '<td style="text-align:center;font-weight:700;color:'+rateColor+'">'+rate+'%</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function coordAttExportExcel(){
+  const batchF = document.getElementById('coordAttBatch') ? document.getElementById('coordAttBatch').value : 'all';
+  const trainees = batchF === 'all' ? COORD_ATT.trainees : COORD_ATT.trainees.filter(t=>t.batchName===batchF);
+  const days = Object.keys(COORD_ATT.data).sort((a,b)=>parseInt(a.replace('day_',''))-parseInt(b.replace('day_','')));
+  const dayLabels = days.map(dk => COORD_ATT.data[dk].dayLabel || dk);
+
+  const headers = ['Code','Name','Batch',...dayLabels,'Total M','Rate %'];
+  const rows = trainees.sort((a,b)=>{
+    if((a.batchName||'')!==(b.batchName||'')) return (a.batchName||'').localeCompare(b.batchName||'');
+    return (a.trainingCode||0)-(b.trainingCode||0);
+  }).map(t => {
+    const statuses = days.map(dk=>(COORD_ATT.data[dk].records||{})[t.trainingCode]||'');
+    const totalM = statuses.filter(s=>s==='M').length;
+    const taken = statuses.filter(s=>s!=='').length;
+    const rate = taken ? Math.round(totalM/taken*100)+'%' : '—';
+    return ['#'+(t.trainingCode||'—'), '"'+(t.name||'')+'"', t.batchName||'—', ...statuses, totalM, rate];
+  });
+
+  const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'flowops_attendance_coordinator_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+  addNotif('Excel exported','Attendance data exported successfully','orange');
 }
 
 </script>
