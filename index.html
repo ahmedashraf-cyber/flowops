@@ -3404,6 +3404,7 @@ function maRenderMatchesList(){
           (m.gameWeek?'<span style="font-size:11px;color:var(--text-muted)">GW '+m.gameWeek+'</span>':'')+
           (m.matchDate?'<span style="font-size:11px;color:var(--text-muted)">'+m.matchDate+'</span>':'')+
           (m.country?'<span style="font-size:11px;color:var(--text-muted)">'+m.country+'</span>':'')+
+          (m.productionId?'<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-muted);background:var(--bg-overlay);padding:1px 6px;border-radius:var(--radius-sm)">ID: '+m.productionId+'</span>':'')+
         '</div>'+
       '</div>'+
     '</div>';
@@ -3562,6 +3563,7 @@ function maRenderAssignedTable(){
     '<tr>'+
     '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700">G'+(gi+1)+'</span></td>'+
     '<td style="font-size:12px;color:var(--color-primary);font-weight:600">'+trainer+'</td>'+
+    '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-secondary)">'+(m.productionId||'—')+'</td>'+
     '<td style="font-size:12px;color:var(--text-secondary)">'+(m.gameWeek?'GW'+m.gameWeek:'—')+'</td>'+
     '<td style="font-size:12px;font-weight:500">'+m.competition+'</td>'+
     '<td style="font-size:11px;color:var(--text-muted)">'+m.matchDate+'</td>'+
@@ -3638,9 +3640,9 @@ function maExportExcel(){
     const trainer = BSUP.groupAssign[gi] || '—';
     MA.assignments[gi].forEach(m => {
       rows.push([
-        'Group '+(gi+1), trainer,
+        'Group '+(gi+1), trainer, m.productionId||'—',
         m.gameWeek||'—', '"'+m.competition+'"', m.country||'—', m.matchDate||'—',
-        '"'+m.homeTeam+'"', '"'+m.awayTeam+'"', m.productionId||'—',
+        '"'+m.homeTeam+'"', '"'+m.awayTeam+'"',
         new Date(m.assignedAt).toLocaleDateString('en-EG'),
         '"'+(m.lastEditReason||'—')+'"'
       ]);
@@ -4222,7 +4224,7 @@ function maExportExcel(){
           </div>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>Group</th><th>Trainer</th><th>Game Week</th><th>Competition</th><th>Date</th><th>Home</th><th>Away</th><th>Country</th><th>Assigned</th><th>Action</th></tr></thead>
+              <thead><tr><th>Group</th><th>Trainer</th><th>Production ID</th><th>GW</th><th>Competition</th><th>Date</th><th>Home</th><th>Away</th><th>Country</th><th>Assigned</th><th>Action</th></tr></thead>
               <tbody id="maAssignedBody">
                 <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>
               </tbody>
