@@ -2210,10 +2210,15 @@ async function submitAttendance(){
   // Save to Firestore — coordinator can read this immediately
   if(fbDb && A.user){
     try {
+      // Normalize records: convert all keys to strings for consistent Firestore storage
+      const normalizedRecords = {};
+      Object.entries(ATT.records[dayKey]||{}).forEach(([k,v]) => {
+        normalizedRecords[String(k)] = v;
+      });
       await fbDb.collection('attendance').doc(dayKey).set({
         dayKey,
         dayLabel,
-        records: ATT.records[dayKey],
+        records: normalizedRecords,
         submittedBy: A.user.email,
         submittedAt: new Date().toISOString(),
         locked: true,
@@ -2507,15 +2512,14 @@ function coordAttApplyFilter(){
   document.getElementById('coordAttChartsRow').style.display = 'block';
   document.getElementById('coordAttTableCard').style.display = 'block';
 
-  // Build filtered data
+  // Build filtered data — normalize keys to handle string/int mismatch
   const filteredData = {};
   days.forEach(dk => {
     const rec = COORD_ATT.data[dk].records || {};
     filteredData[dk] = {};
-    trainees.forEach(t => {
-      if(t.trainingCode && rec[t.trainingCode]){
-        filteredData[dk][t.trainingCode] = rec[t.trainingCode];
-      }
+    // Normalize all keys to integers
+    Object.keys(rec).forEach(k => {
+      filteredData[dk][parseInt(k)] = rec[k];
     });
   });
 
@@ -2546,11 +2550,14 @@ function coordAttApplyFilter(){
 
 function buildCoordAttCharts(days, filteredData, trainees){
   const labels = days.map(dk => COORD_ATT.data[dk].dayLabel || dk.replace('day_','D'));
-  const mRates  = days.map(dk => { const v=Object.values(filteredData[dk]); return v.length?Math.round(v.filter(x=>x==='M').length/v.length*100):0; });
-  const ulRates = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='UL').length; });
-  const wvRates = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='WV').length; });
-  const hRates  = days.map(dk => { const v=Object.values(filteredData[dk]); return v.filter(x=>x==='H').length; });
-  const mCounts = days.map(dk => Object.values(filteredData[dk]).filter(x=>x==='M').length);
+  // Only count trainees that are in our filtered list
+  const trainerCodes = new Set(trainees.map(t=>t.trainingCode).filter(Boolean));
+  const getVals = dk => Object.entries(filteredData[dk]).filter(([k])=>trainerCodes.has(parseInt(k))).map(([,v])=>v);
+  const mRates  = days.map(dk => { const v=getVals(dk); return v.length?Math.round(v.filter(x=>x==='M').length/v.length*100):0; });
+  const ulRates = days.map(dk => getVals(dk).filter(x=>x==='UL').length);
+  const wvRates = days.map(dk => getVals(dk).filter(x=>x==='WV').length);
+  const hRates  = days.map(dk => getVals(dk).filter(x=>x==='H').length);
+  const mCounts = days.map(dk => getVals(dk).filter(x=>x==='M').length);
 
   const chartOpts = {
     responsive: true, maintainAspectRatio: false,
@@ -2694,12 +2701,18 @@ function buildCoordAttTable(days, filteredData, trainees){
     if((a.batchName||'')!==(b.batchName||'')) return (a.batchName||'').localeCompare(b.batchName||'');
     return (a.trainingCode||0)-(b.trainingCode||0);
   }).map((t,idx) => {
+    // Try both string and integer keys since Firestore may store either
+    const code = t.trainingCode;
     const cells = days.map(dk => {
-      const s = (filteredData[dk]||{})[t.trainingCode] || '';
+      const rec = filteredData[dk]||{};
+      const s = rec[code] || rec[String(code)] || rec[parseInt(code)] || '';
       const col = STATUS_COLORS[s]||'var(--text-muted)';
       return '<td style="text-align:center"><span style="color:'+col+';font-weight:700;font-size:12px">'+(s||'—')+'</span></td>';
     }).join('');
-    const allStatus = days.map(dk => (filteredData[dk]||{})[t.trainingCode]||'');
+    const allStatus = days.map(dk => {
+      const rec = filteredData[dk]||{};
+      return rec[code] || rec[String(code)] || rec[parseInt(code)] || '';
+    });
     const totalM = allStatus.filter(s=>s==='M').length;
     const taken = allStatus.filter(s=>s!=='').length;
     const rate = taken ? Math.round(totalM/taken*100) : 0;
