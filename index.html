@@ -1422,7 +1422,8 @@ const TRAINER_CODES = ['A-043', 'A-145', 'A-162', 'A-411', 'A-566', 'A-721', 'A-
 async function initBsupDashboard(){
   await loadBsupTrainees();
   listenForBatchNotifications();
-  loadSavedCodes();
+  await loadSavedCodes();
+  await loadSavedGroups();
 }
 
 // Load accepted trainees from Firestore (saved by coordinator on End of Batch)
@@ -1498,18 +1499,47 @@ function listenForBatchNotifications(){
 // ============================================================
 // TRAINING CODES
 // ============================================================
-function loadSavedCodes(){
+async function loadSavedCodes(){
   try {
+    // First load from localStorage (instant)
     const saved = JSON.parse(localStorage.getItem('flowops_training_codes') || '{}');
     BSUP.codes = saved;
-    // Apply saved codes to trainees
-    BSUP.trainees.forEach((t, i) => {
+    BSUP.trainees.forEach(t => {
       const key = t.name + '|' + (t.batchName||'');
-      if(saved[key]) t.trainingCode = saved[key];
+      if(saved[key]) t.trainingCode = parseInt(saved[key]);
     });
+
+    // Then sync from Firestore (authoritative source)
+    if(fbDb){
+      const snap = await fbDb.collection('training_codes').get();
+      snap.forEach(doc => {
+        const d = doc.data();
+        if(d.codes){
+          Object.assign(BSUP.codes, d.codes);
+          BSUP.trainees.forEach(t => {
+            const key = t.name + '|' + (t.batchName||'');
+            if(d.codes[key]) t.trainingCode = parseInt(d.codes[key]);
+          });
+        }
+      });
+      // Save merged codes back to localStorage
+      localStorage.setItem('flowops_training_codes', JSON.stringify(BSUP.codes));
+    }
+
+    // Show reset button if codes exist
+    const coded = BSUP.trainees.filter(t => t.trainingCode).length;
+    if(coded > 0){
+      const genBtn = document.getElementById('bsupGenBtn');
+      const resetBtn = document.getElementById('bsupResetBtn');
+      if(genBtn) genBtn.style.display = 'none';
+      if(resetBtn) resetBtn.style.display = 'inline-flex';
+      document.getElementById('bsupCodeStatus').textContent = coded + ' training codes loaded';
+    }
+
     updateBsupMetrics();
     renderBsupTable();
-  } catch(e){}
+    updateBsupGroupsAvailability();
+  } catch(e){ console.warn('loadSavedCodes error:', e); }
 }
 
 function generateTrainingCodes(){
@@ -1767,6 +1797,9 @@ function generateGroups(){
   }
 
   BSUP.groups = groups;
+  // Save groups to localStorage immediately
+  localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
+  localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
   renderGroups();
   document.getElementById('bsupSaveGroups').style.display = 'inline-flex';
 
@@ -1836,7 +1869,47 @@ function renderGroups(){
 function assignTrainer(groupIdx, code){
   if(!code) return;
   BSUP.groupAssign[groupIdx] = code.trim().toUpperCase();
+  localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
   renderGroups();
+}
+
+async function loadSavedGroups(){
+  try {
+    // Load from localStorage first
+    const localGroups = JSON.parse(localStorage.getItem('flowops_groups') || 'null');
+    const localAssign = JSON.parse(localStorage.getItem('flowops_group_assign') || 'null');
+
+    // Load from Firestore (authoritative)
+    if(fbDb){
+      const doc = await fbDb.collection('group_assignments').doc('current').get();
+      if(doc.exists){
+        const d = doc.data();
+        if(d.groups && d.groups.length > 0){
+          // Reconstruct BSUP.groups from saved data
+          BSUP.groups = d.groups.map(g => g.trainees.map(t => {
+            // Find full trainee data from BSUP.trainees
+            const full = BSUP.trainees.find(x => x.trainingCode === t.trainingCode && (x.name === t.name));
+            return full ? { ...full, tier: t.tier } : { ...t };
+          }));
+          // Reconstruct groupAssign
+          BSUP.groupAssign = {};
+          d.groups.forEach((g, i) => {
+            if(g.trainer && g.trainer !== 'Unassigned') BSUP.groupAssign[i] = g.trainer;
+          });
+          localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
+          localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
+          console.log('Groups loaded from Firestore:', BSUP.groups.length, 'groups');
+          return;
+        }
+      }
+    }
+
+    // Fallback to localStorage
+    if(localGroups && localGroups.length > 0){
+      BSUP.groups = localGroups;
+      BSUP.groupAssign = localAssign || {};
+    }
+  } catch(e){ console.warn('loadSavedGroups error:', e); }
 }
 
 async function saveGroupAssignments(){
@@ -1861,10 +1934,15 @@ async function saveGroupAssignments(){
         savedAt: new Date().toISOString()
       });
     }
+    localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
+    localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
     addBsupNotif('Groups saved', BSUP.groups.length + ' groups assigned to trainers', 'green');
     alert('✅ Group assignments saved successfully!');
   } catch(e){
-    alert('Saved locally. Firestore: ' + e.message);
+    localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
+    localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
+    addBsupNotif('Groups saved', BSUP.groups.length + ' groups assigned to trainers', 'green');
+    alert('✅ Groups saved locally!');
   }
 }
 
