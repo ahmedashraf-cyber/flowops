@@ -2886,14 +2886,14 @@ const TS = {
 };
 
 const TS_POSITIVE   = ['In Training', 'Distributed'];
-const TS_LEAVING    = ['No show','Can't Cope','No show (During Training)','Performance / Quality','Behavior','Another Offer','Postponed (During Training)','Personal','PC','Medical Condition','Documentation issues','Another Job','Studying'];
+const TS_LEAVING    = ['No show',"Can\'t Cope",'No show (During Training)','Performance / Quality','Behavior','Another Offer','Postponed (During Training)','Personal','PC','Medical Condition','Documentation issues','Another Job','Studying'];
 const TS_ALL        = ['In Training','Distributed',...TS_LEAVING];
 
 const TS_COLORS = {
   'In Training':              '#28A064',
   'Distributed':              '#3B8BD4',
   'No show':                  '#E04040',
-  'Can't Cope':              '#E04040',
+  "Can\'t Cope":              '#E04040',
   'No show (During Training)':'#E04040',
   'Performance / Quality':    '#F0A020',
   'Behavior':                 '#F0A020',
@@ -3639,7 +3639,7 @@ function tsExportExcel(){
                 <option value="In Training">✅ In Training</option>
                 <option value="Distributed">🎓 Distributed</option>
                 <option value="No show">No Show</option>
-                <option value="Can't Cope">Can't Cope</option>
+                <option value="Can\'t Cope">Can\'t Cope</option>
                 <option value="No show (During Training)">No Show (During Training)</option>
                 <option value="Performance / Quality">Performance / Quality</option>
                 <option value="Behavior">Behavior</option>
