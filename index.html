@@ -1950,7 +1950,7 @@ async function saveGroupAssignments(){
 // BSUP NAVIGATION & NOTIFICATIONS
 // ============================================================
 function showBsupTab(tab){
-  ['bsupTrainees','bsupGroups','bsupAttendance','bsupNotifs'].forEach(t => {
+  ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupNotifs'].forEach(t => {
     const el = document.getElementById(t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
     const nav = document.getElementById('bsupNav_'+t.replace('bsup','').toLowerCase());
@@ -1960,6 +1960,7 @@ function showBsupTab(tab){
     bsupTrainees:'bsupNav_trainees',
     bsupGroups:'bsupNav_groups',
     bsupAttendance:'bsupNav_attendance',
+    bsupStatus:'bsupNav_status',
     bsupNotifs:'bsupNav_notifs'
   };
   Object.entries(navMap).forEach(([k,v]) => {
@@ -1968,6 +1969,7 @@ function showBsupTab(tab){
   });
   if(tab === 'bsupGroups') updateBsupGroupsAvailability();
   if(tab === 'bsupAttendance'){ initAttendance(); }
+  if(tab === 'bsupStatus'){ initTrainingStatus(); }
   if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
 }
 
@@ -2872,6 +2874,380 @@ function coordAttExportExcel(){
   addNotif('Excel exported','Attendance data exported successfully','orange');
 }
 
+
+// ============================================================
+// TRAINING STATUS SYSTEM
+// ============================================================
+const TS = {
+  statuses: {},   // trainingCode -> { status, leavingDate, leavingPhase, notes, updatedAt }
+  charts:   {},
+  currentCode: null,
+  filtered: []
+};
+
+const TS_POSITIVE   = ['In Training', 'Distributed'];
+const TS_LEAVING    = ['No show','Can't Cope','No show (During Training)','Performance / Quality','Behavior','Another Offer','Postponed (During Training)','Personal','PC','Medical Condition','Documentation issues','Another Job','Studying'];
+const TS_ALL        = ['In Training','Distributed',...TS_LEAVING];
+
+const TS_COLORS = {
+  'In Training':              '#28A064',
+  'Distributed':              '#3B8BD4',
+  'No show':                  '#E04040',
+  'Can't Cope':              '#E04040',
+  'No show (During Training)':'#E04040',
+  'Performance / Quality':    '#F0A020',
+  'Behavior':                 '#F0A020',
+  'Another Offer':            '#9B59B6',
+  'Postponed (During Training)':'#F0A020',
+  'Personal':                 '#E67E22',
+  'PC':                       '#E04040',
+  'Medical Condition':        '#E67E22',
+  'Documentation issues':     '#F0A020',
+  'Another Job':              '#9B59B6',
+  'Studying':                 '#9B59B6'
+};
+
+async function initTrainingStatus(){
+  // Load saved statuses from Firestore
+  if(fbDb){
+    try {
+      const snap = await fbDb.collection('training_status').get();
+      TS.statuses = {};
+      snap.forEach(doc => { TS.statuses[parseInt(doc.id)] = doc.data(); });
+    } catch(e){ console.warn('TS load error:', e); }
+  }
+
+  // Default all coded trainees to "In Training" if no status
+  BSUP.trainees.forEach(t => {
+    if(t.trainingCode && !TS.statuses[t.trainingCode]){
+      TS.statuses[t.trainingCode] = { status: 'In Training', updatedAt: null };
+    }
+  });
+
+  // Populate filters
+  tsPopulateFilters();
+  tsApplyFilters();
+}
+
+function tsPopulateFilters(){
+  // Batch filter
+  const batches = [...new Set(BSUP.trainees.map(t=>t.batchName).filter(Boolean))];
+  const bSel = document.getElementById('tsFilterBatch');
+  if(bSel) bSel.innerHTML = '<option value="all">All Batches</option>' + batches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+
+  // Group filter
+  const gSel = document.getElementById('tsFilterGroup');
+  if(gSel){
+    const groups = BSUP.groups.map((_,i) => 'Group '+(i+1));
+    gSel.innerHTML = '<option value="all">All Groups</option>' + groups.map(g=>'<option value="'+g+'">'+g+'</option>').join('');
+  }
+
+  // Trainer filter
+  const tSel = document.getElementById('tsFilterTrainer');
+  if(tSel){
+    const trainers = [...new Set(Object.values(BSUP.groupAssign).filter(Boolean))].sort();
+    tSel.innerHTML = '<option value="all">All Trainers</option>' + trainers.map(t=>'<option value="'+t+'">'+t+'</option>').join('');
+  }
+}
+
+function tsGetGroupInfo(code){
+  for(let i=0; i<BSUP.groups.length; i++){
+    if(BSUP.groups[i].some(t=>t.trainingCode===code)){
+      return { group:'Group '+(i+1), trainer: BSUP.groupAssign[i]||'—' };
+    }
+  }
+  return { group:'—', trainer:'—' };
+}
+
+function tsApplyFilters(){
+  const batchF   = (document.getElementById('tsFilterBatch')||{}).value   || 'all';
+  const groupF   = (document.getElementById('tsFilterGroup')||{}).value   || 'all';
+  const trainerF = (document.getElementById('tsFilterTrainer')||{}).value || 'all';
+  const statusF  = (document.getElementById('tsFilterStatus')||{}).value  || 'all';
+
+  TS.filtered = BSUP.trainees.filter(t => {
+    if(!t.trainingCode) return false;
+    if(batchF !== 'all' && t.batchName !== batchF) return false;
+    const gi = tsGetGroupInfo(t.trainingCode);
+    if(groupF !== 'all' && gi.group !== groupF) return false;
+    if(trainerF !== 'all' && gi.trainer !== trainerF) return false;
+    if(statusF === 'active'){
+      const s = (TS.statuses[t.trainingCode]||{}).status || 'In Training';
+      if(!TS_POSITIVE.includes(s)) return false;
+    }
+    if(statusF === 'leaving'){
+      const s = (TS.statuses[t.trainingCode]||{}).status || 'In Training';
+      if(!TS_LEAVING.includes(s)) return false;
+    }
+    return true;
+  }).sort((a,b) => {
+    if((a.batchName||'') !== (b.batchName||'')) return (a.batchName||'').localeCompare(b.batchName||'');
+    return (a.trainingCode||0) - (b.trainingCode||0);
+  });
+
+  tsUpdateMetrics();
+  tsRenderTable();
+  tsBuildCharts();
+}
+
+function tsResetFilters(){
+  ['tsFilterBatch','tsFilterGroup','tsFilterTrainer','tsFilterStatus'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = 'all';
+  });
+  tsApplyFilters();
+}
+
+function tsUpdateMetrics(){
+  const all = BSUP.trainees.filter(t => t.trainingCode);
+  const total = all.length;
+  const inTraining   = all.filter(t => (TS.statuses[t.trainingCode]||{}).status === 'In Training').length;
+  const distributed  = all.filter(t => (TS.statuses[t.trainingCode]||{}).status === 'Distributed').length;
+  const leaving      = all.filter(t => TS_LEAVING.includes((TS.statuses[t.trainingCode]||{}).status)).length;
+  const retention    = total ? Math.round((inTraining + distributed) / total * 100) : 0;
+
+  const el = (id,v) => { const e=document.getElementById(id); if(e) e.textContent=v; };
+  el('tsTotal',       total);
+  el('tsInTraining',  inTraining);
+  el('tsDistributed', distributed);
+  el('tsLeaving',     leaving);
+  el('tsRetention',   retention + '%');
+  document.getElementById('tsTableSub').textContent = TS.filtered.length + ' trainees shown';
+}
+
+function tsRenderTable(){
+  const tbody = document.getElementById('tsTableBody');
+  if(!tbody) return;
+
+  if(!TS.filtered.length){
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted)">No trainees match the filter</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = TS.filtered.map(t => {
+    const code = t.trainingCode;
+    const st   = TS.statuses[code] || { status:'In Training' };
+    const isLeaving = TS_LEAVING.includes(st.status);
+    const isDistrib = st.status === 'Distributed';
+    const gi   = tsGetGroupInfo(code);
+    const color = TS_COLORS[st.status] || 'var(--text-muted)';
+    const bgColor = isLeaving ? 'rgba(224,64,64,0.05)' : isDistrib ? 'rgba(59,139,212,0.05)' : 'transparent';
+
+    return '<tr style="background:'+bgColor+'">'+
+      '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-weight:700;font-family:JetBrains Mono,monospace;font-size:11px">#'+code+'</span></td>'+
+      '<td style="font-weight:500">'+(t.name||'')+'</td>'+
+      '<td><span class="badge badge-orange" style="font-size:10px">'+(t.batchName||'—')+'</span></td>'+
+      '<td style="font-size:12px;color:var(--text-secondary)">'+gi.group+'</td>'+
+      '<td style="font-size:12px;color:var(--color-primary);font-weight:600">'+gi.trainer+'</td>'+
+      '<td><span style="background:'+color+'22;color:'+color+';padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;white-space:nowrap">'+st.status+'</span></td>'+
+      '<td style="font-size:12px;color:var(--text-secondary)">'+(st.leavingDate||'—')+'</td>'+
+      '<td style="font-size:12px;color:var(--text-secondary)">'+(st.leavingPhase||'—')+'</td>'+
+      '<td><button class="btn btn-ghost btn-sm" onclick="tsOpenModal('+code+')" style="font-size:11px">✏️ Edit</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function tsBuildCharts(){
+  const all = BSUP.trainees.filter(t => t.trainingCode);
+
+  // Chart 1: Donut - status distribution
+  const statusCounts = {};
+  TS_ALL.forEach(s => statusCounts[s] = 0);
+  all.forEach(t => {
+    const s = (TS.statuses[t.trainingCode]||{}).status || 'In Training';
+    if(statusCounts[s] !== undefined) statusCounts[s]++;
+  });
+  const donutLabels = TS_ALL.filter(s => statusCounts[s] > 0);
+  const donutData   = donutLabels.map(s => statusCounts[s]);
+  const donutColors = donutLabels.map(s => TS_COLORS[s]||'#888');
+
+  if(TS.charts.donut) TS.charts.donut.destroy();
+  const ctx1 = document.getElementById('tsChartDonut');
+  if(ctx1) TS.charts.donut = new Chart(ctx1, {
+    type:'doughnut',
+    data:{ labels:donutLabels, datasets:[{ data:donutData, backgroundColor:donutColors.map(c=>c+'cc'), borderColor:donutColors, borderWidth:2 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'58%',
+      plugins:{ legend:{ position:'right', labels:{ color:'#aaa', font:{size:10}, padding:8, boxWidth:12 } },
+        tooltip:{ callbacks:{ label: ctx => ctx.label+': '+ctx.parsed+' ('+Math.round(ctx.parsed/donutData.reduce((a,b)=>a+b,0)*100)+'%)' } }
+      }
+    }
+  });
+
+  // Chart 2: Bar - leaving reasons
+  const leavingCounts = {};
+  TS_LEAVING.forEach(s => leavingCounts[s] = 0);
+  all.forEach(t => {
+    const s = (TS.statuses[t.trainingCode]||{}).status || 'In Training';
+    if(TS_LEAVING.includes(s)) leavingCounts[s]++;
+  });
+  const leavingLabels = TS_LEAVING.filter(s => leavingCounts[s] > 0);
+  const leavingData   = leavingLabels.map(s => leavingCounts[s]);
+
+  if(TS.charts.reasons) TS.charts.reasons.destroy();
+  const ctx2 = document.getElementById('tsChartReasons');
+  if(ctx2) TS.charts.reasons = new Chart(ctx2, {
+    type:'bar',
+    data:{ labels:leavingLabels, datasets:[{ data:leavingData, backgroundColor:leavingLabels.map(s=>(TS_COLORS[s]||'#E04040')+'bb'), borderRadius:4, borderSkipped:false }] },
+    options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ ticks:{color:'#666',font:{size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, beginAtZero:true },
+               y:{ ticks:{color:'#aaa',font:{size:10}}, grid:{display:false} } }
+    }
+  });
+
+  // Chart 3: Retention rate by batch
+  const batches = [...new Set(BSUP.trainees.map(t=>t.batchName).filter(Boolean))];
+  const retentionByBatch = batches.map(b => {
+    const bTrainees = BSUP.trainees.filter(t=>t.trainingCode && t.batchName===b);
+    const active = bTrainees.filter(t => TS_POSITIVE.includes((TS.statuses[t.trainingCode]||{}).status||'In Training')).length;
+    return bTrainees.length ? Math.round(active/bTrainees.length*100) : 0;
+  });
+
+  if(TS.charts.retention) TS.charts.retention.destroy();
+  const ctx3 = document.getElementById('tsChartRetention');
+  if(ctx3) TS.charts.retention = new Chart(ctx3, {
+    type:'bar',
+    data:{ labels:batches, datasets:[{ label:'Retention %', data:retentionByBatch,
+      backgroundColor:retentionByBatch.map(r=>r>=80?'rgba(40,160,100,0.75)':r>=60?'rgba(240,160,32,0.75)':'rgba(224,64,64,0.75)'),
+      borderRadius:6, borderSkipped:false }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{color:'#666',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},
+               y:{ticks:{color:'#666',font:{size:10},callback:v=>v+'%'},max:100,beginAtZero:true,grid:{color:'rgba(255,255,255,0.04)'}} }
+    }
+  });
+
+  // Chart 4: Leaving phase breakdown
+  const phaseCounts = {};
+  all.forEach(t => {
+    const st = TS.statuses[t.trainingCode]||{};
+    if(TS_LEAVING.includes(st.status) && st.leavingPhase){
+      phaseCounts[st.leavingPhase] = (phaseCounts[st.leavingPhase]||0) + 1;
+    }
+  });
+  const phaseLabels = Object.keys(phaseCounts).sort((a,b) => {
+    const order = ['Interview','Orientation Day','Day 1','Day 2','Day 3','Day 4','Day 5','Day 6','Day 7','Day 8','Day 9','Day 10','Day 11','Day 12','Day 13','Day 14','Day 15','Day 16','Day 17','Day 18','Day 19','Day 20','Day 21','Day 22','Day 23','Day 24','Day 25','Day 26','Day 27','Day 28','Day 29','Day 30'];
+    return order.indexOf(a) - order.indexOf(b);
+  });
+  const phaseData = phaseLabels.map(p => phaseCounts[p]);
+
+  if(TS.charts.phase) TS.charts.phase.destroy();
+  const ctx4 = document.getElementById('tsChartPhase');
+  if(ctx4) TS.charts.phase = new Chart(ctx4, {
+    type:'bar',
+    data:{ labels:phaseLabels, datasets:[{ data:phaseData, backgroundColor:'rgba(224,64,64,0.7)', borderRadius:4, borderSkipped:false }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{color:'#666',font:{size:10},maxRotation:45},grid:{color:'rgba(255,255,255,0.04)'}},
+               y:{ticks:{color:'#666',font:{size:10}},beginAtZero:true,grid:{color:'rgba(255,255,255,0.04)'}} }
+    }
+  });
+}
+
+// MODAL
+function tsOpenModal(code){
+  TS.currentCode = code;
+  const t  = BSUP.trainees.find(x => x.trainingCode === code);
+  const st = TS.statuses[code] || { status:'In Training' };
+  if(!t) return;
+
+  document.getElementById('tsModalName').textContent = t.name || '';
+  document.getElementById('tsModalBatch').textContent = (t.batchName||'') + ' · #' + code;
+  document.getElementById('tsModalStatus').value = st.status || 'In Training';
+  document.getElementById('tsModalDate').value = st.leavingDate || new Date().toISOString().split('T')[0];
+  document.getElementById('tsModalPhase').value = st.leavingPhase || 'Interview';
+  document.getElementById('tsModalNotes').value = st.notes || '';
+  tsModalStatusChange();
+  document.getElementById('tsModal').style.display = 'flex';
+}
+
+function tsModalStatusChange(){
+  const status = document.getElementById('tsModalStatus').value;
+  const isLeaving = TS_LEAVING.includes(status);
+  document.getElementById('tsLeavingFields').style.display = isLeaving ? 'block' : 'none';
+}
+
+async function tsSaveStatus(){
+  const code   = TS.currentCode;
+  const status = document.getElementById('tsModalStatus').value;
+  const isLeaving = TS_LEAVING.includes(status);
+
+  const record = {
+    status,
+    updatedAt: new Date().toISOString(),
+    leavingDate:  isLeaving ? document.getElementById('tsModalDate').value : null,
+    leavingPhase: isLeaving ? document.getElementById('tsModalPhase').value : null,
+    notes:        document.getElementById('tsModalNotes').value || null
+  };
+
+  TS.statuses[code] = record;
+
+  // Save to Firestore
+  if(fbDb && A.user){
+    try {
+      await fbDb.collection('training_status').doc(String(code)).set({
+        ...record, trainingCode: code, updatedBy: A.user.email
+      });
+    } catch(e){ console.warn('TS save error:', e); }
+  }
+
+  document.getElementById('tsModal').style.display = 'none';
+  tsApplyFilters();
+  addBsupNotif('Status Updated', 'Training status updated for #'+code, 'green');
+}
+
+// Mark all In Training → Distributed
+async function tsMarkAllDistributed(){
+  const batchF = (document.getElementById('tsFilterBatch')||{}).value || 'all';
+  const targets = BSUP.trainees.filter(t => {
+    if(!t.trainingCode) return false;
+    if(batchF !== 'all' && t.batchName !== batchF) return false;
+    return (TS.statuses[t.trainingCode]||{}).status === 'In Training';
+  });
+
+  if(!targets.length){ alert('No "In Training" trainees found for this filter.'); return; }
+  if(!confirm('Mark ' + targets.length + ' trainees as Distributed' + (batchF!=='all'?' for '+batchF:'') + '?')) return;
+
+  const now = new Date().toISOString();
+  for(const t of targets){
+    TS.statuses[t.trainingCode] = { status:'Distributed', updatedAt: now };
+    if(fbDb && A.user){
+      try {
+        await fbDb.collection('training_status').doc(String(t.trainingCode)).set({
+          status:'Distributed', updatedAt:now, trainingCode:t.trainingCode, updatedBy:A.user.email
+        });
+      } catch(e){}
+    }
+  }
+
+  tsApplyFilters();
+  addBsupNotif('Batch Distributed', targets.length + ' trainees marked as Distributed', 'green');
+}
+
+// EXCEL EXPORT
+function tsExportExcel(){
+  const headers = ['Code','Name','Batch','Group','Trainer','Status','Leaving Date','Leaving Phase','Notes'];
+  const rows = TS.filtered.map(t => {
+    const st = TS.statuses[t.trainingCode] || { status:'In Training' };
+    const gi = tsGetGroupInfo(t.trainingCode);
+    return [
+      '#'+t.trainingCode,
+      '"'+(t.name||'')+'"',
+      t.batchName||'—',
+      gi.group, gi.trainer,
+      '"'+(st.status||'In Training')+'"',
+      st.leavingDate||'—',
+      '"'+(st.leavingPhase||'—')+'"',
+      '"'+(st.notes||'')+'"'
+    ];
+  });
+  const csv = [headers.join(','), ...rows.map(r=>r.join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'flowops_training_status_'+new Date().toISOString().split('T')[0]+'.csv';
+  a.click();
+}
+
 </script>
 
 <!-- PWA Install Banner -->
@@ -2907,6 +3283,7 @@ function coordAttExportExcel(){
       <div class="sidebar-item active" onclick="showBsupTab('bsupTrainees')" id="bsupNav_trainees"><span class="sidebar-icon">👥</span>Accepted Trainees</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupGroups')" id="bsupNav_groups"><span class="sidebar-icon">🗂</span>Group Assignment</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupAttendance')" id="bsupNav_attendance"><span class="sidebar-icon">📅</span>Attendance</div>
+      <div class="sidebar-item" onclick="showBsupTab('bsupStatus')" id="bsupNav_status"><span class="sidebar-icon">📊</span>Training Status</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupNotifs')" id="bsupNav_notifs"><span class="sidebar-icon">🔔</span>Notifications<span class="sidebar-badge" id="bsupNSide">0</span></div>
     </div>
     <div class="content">
@@ -2915,6 +3292,7 @@ function coordAttExportExcel(){
         <div class="mob-nav-i active" onclick="showBsupTab('bsupTrainees')">Trainees</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupGroups')">Groups</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupAttendance')">Attendance</div>
+        <div class="mob-nav-i" onclick="showBsupTab('bsupStatus')">Status</div>
         <div class="mob-nav-i" onclick="showBsupTab('bsupNotifs')">Alerts</div>
       </div>
 
@@ -3151,6 +3529,182 @@ function coordAttExportExcel(){
             <div style="margin-top:16px;display:flex;gap:8px">
               <button class="btn btn-primary" onclick="exportAttendanceExcel()">⬇ Export Excel</button>
               <button class="btn btn-secondary" onclick="document.getElementById('attSummaryModal').style.display='none'">Close</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- PAGE 4: TRAINING STATUS -->
+      <div id="bsupStatus" class="container" style="display:none">
+        <div class="page-hdr">
+          <h2>Training Status</h2>
+          <p>Track each trainee's current status throughout the training program</p>
+        </div>
+
+        <!-- FILTERS -->
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Filters:</span>
+            <select id="tsFilterBatch" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+              <option value="all">All Batches</option>
+            </select>
+            <select id="tsFilterGroup" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+              <option value="all">All Groups</option>
+            </select>
+            <select id="tsFilterTrainer" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+              <option value="all">All Trainers</option>
+            </select>
+            <select id="tsFilterStatus" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:150px">
+              <option value="all">All Statuses</option>
+              <option value="active">✅ Active Only</option>
+              <option value="leaving">❌ Leaving Only</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="tsResetFilters()">✕ Clear</button>
+            <div style="margin-inline-start:auto;display:flex;gap:8px">
+              <button class="btn btn-primary btn-sm" onclick="tsMarkAllDistributed()">🎓 End Batch → Distributed</button>
+              <button class="btn btn-secondary btn-sm" onclick="tsExportExcel()">⬇ Excel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- METRICS -->
+        <div class="metrics" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px" id="tsMetrics">
+          <div class="card-stat"><div class="card-stat__label">Total</div><div class="card-stat__value accent" id="tsTotal">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">In Training</div><div class="card-stat__value green" id="tsInTraining">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Distributed</div><div class="card-stat__value" style="color:var(--color-info)" id="tsDistributed">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Leaving</div><div class="card-stat__value red" id="tsLeaving">—</div></div>
+          <div class="card-stat"><div class="card-stat__label">Retention</div><div class="card-stat__value green" id="tsRetention">—</div></div>
+        </div>
+
+        <!-- CHARTS -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px" id="tsChartsRow">
+          <div class="card">
+            <div class="card-title">🍩 Status Distribution</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">All trainees by current status</div>
+            <div style="position:relative;height:220px"><canvas id="tsChartDonut"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">📊 Leaving Reasons</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">Breakdown of leaving causes</div>
+            <div style="position:relative;height:220px"><canvas id="tsChartReasons"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">📈 Retention Rate by Batch</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">% still active per batch</div>
+            <div style="position:relative;height:200px"><canvas id="tsChartRetention"></canvas></div>
+          </div>
+          <div class="card">
+            <div class="card-title">📉 Leaving Phase Breakdown</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px">At which phase trainees left</div>
+            <div style="position:relative;height:200px"><canvas id="tsChartPhase"></canvas></div>
+          </div>
+        </div>
+
+        <!-- TRAINEES TABLE -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 20px;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center">
+            <div class="card-title">Trainees Status</div>
+            <div style="font-size:12px;color:var(--text-muted)" id="tsTableSub"></div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th><th>Name</th><th>Batch</th><th>Group</th><th>Trainer</th>
+                  <th>Status</th><th>Leaving Date</th><th>Leaving Phase</th><th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="tsTableBody">
+                <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted)">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- STATUS CHANGE MODAL -->
+        <div id="tsModal" class="modal-ov" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+          <div class="modal-box" style="max-width:480px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+              <div>
+                <div class="modal-title" id="tsModalName">Update Status</div>
+                <div style="font-size:13px;color:var(--text-secondary)" id="tsModalBatch"></div>
+              </div>
+              <button class="btn btn-ghost btn-sm" onclick="document.getElementById('tsModal').style.display='none'">✕</button>
+            </div>
+
+            <div class="field">
+              <label class="input-label">Training Status</label>
+              <select class="input" id="tsModalStatus" onchange="tsModalStatusChange()">
+                <option value="In Training">✅ In Training</option>
+                <option value="Distributed">🎓 Distributed</option>
+                <option value="No show">No Show</option>
+                <option value="Can't Cope">Can't Cope</option>
+                <option value="No show (During Training)">No Show (During Training)</option>
+                <option value="Performance / Quality">Performance / Quality</option>
+                <option value="Behavior">Behavior</option>
+                <option value="Another Offer">Another Offer</option>
+                <option value="Postponed (During Training)">Postponed (During Training)</option>
+                <option value="Personal">Personal</option>
+                <option value="PC">PC</option>
+                <option value="Medical Condition">Medical Condition</option>
+                <option value="Documentation issues">Documentation Issues</option>
+                <option value="Another Job">Another Job</option>
+                <option value="Studying">Studying</option>
+              </select>
+            </div>
+
+            <div id="tsLeavingFields" style="display:none">
+              <div class="field">
+                <label class="input-label">Leaving Date</label>
+                <input class="input" type="date" id="tsModalDate"/>
+              </div>
+              <div class="field">
+                <label class="input-label">Leaving Phase</label>
+                <select class="input" id="tsModalPhase">
+                  <option value="Interview">Interview (Before batch starts)</option>
+                  <option value="Orientation Day">Orientation Day</option>
+                  <option value="Day 1">Day 1</option>
+                  <option value="Day 2">Day 2</option>
+                  <option value="Day 3">Day 3</option>
+                  <option value="Day 4">Day 4</option>
+                  <option value="Day 5">Day 5</option>
+                  <option value="Day 6">Day 6</option>
+                  <option value="Day 7">Day 7</option>
+                  <option value="Day 8">Day 8</option>
+                  <option value="Day 9">Day 9</option>
+                  <option value="Day 10">Day 10</option>
+                  <option value="Day 11">Day 11</option>
+                  <option value="Day 12">Day 12</option>
+                  <option value="Day 13">Day 13</option>
+                  <option value="Day 14">Day 14</option>
+                  <option value="Day 15">Day 15</option>
+                  <option value="Day 16">Day 16</option>
+                  <option value="Day 17">Day 17</option>
+                  <option value="Day 18">Day 18</option>
+                  <option value="Day 19">Day 19</option>
+                  <option value="Day 20">Day 20</option>
+                  <option value="Day 21">Day 21</option>
+                  <option value="Day 22">Day 22</option>
+                  <option value="Day 23">Day 23</option>
+                  <option value="Day 24">Day 24</option>
+                  <option value="Day 25">Day 25</option>
+                  <option value="Day 26">Day 26</option>
+                  <option value="Day 27">Day 27</option>
+                  <option value="Day 28">Day 28</option>
+                  <option value="Day 29">Day 29</option>
+                  <option value="Day 30">Day 30</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="input-label">Notes (optional)</label>
+                <input class="input" type="text" id="tsModalNotes" placeholder="Any additional notes..."/>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button class="btn btn-primary btn-full" onclick="tsSaveStatus()">💾 Save Status</button>
+              <button class="btn btn-secondary" onclick="document.getElementById('tsModal').style.display='none'">Cancel</button>
             </div>
           </div>
         </div>
