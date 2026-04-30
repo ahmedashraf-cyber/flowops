@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="NEXUS"/>
+<meta name="apple-mobile-web-app-title" content="FIELD"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="theme-color" content="#111111"/>
-<meta name="description" content="NEXUS — Training Operations Platform"/>
+<meta name="description" content="FIELD — Training Operations Platform"/>
 
 
 
@@ -16,11 +16,11 @@
 
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <meta name="apple-mobile-web-app-title" content="NEXUS"/>
+  <meta name="apple-mobile-web-app-title" content="FIELD"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="theme-color" content="#111111"/>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230E0E1A'/%3E%3Crect x='15' y='13' width='5' height='38' rx='2.5' fill='%23FF7A2F'/%3E%3Crect x='15' y='13' width='26' height='5' rx='2.5' fill='%23FF7A2F'/%3E%3Crect x='15' y='30' width='19' height='5' rx='2.5' fill='%23E8590C' opacity='.6'/%3E%3Ccircle cx='46' cy='46' r='7' fill='%23E8590C'/%3E%3C/svg%3E"/>
-<title>NEXUS — Training Operations Platform</title>
+<title>FIELD — Training Operations Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Sans:wght@400;500&family=JetBrains+Mono:wght@400&family=Cairo:wght@400;700&display=swap" rel="stylesheet">
@@ -35,7 +35,7 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 
 :root{
-  /* NEXUS Core Palette */
+  /* FIELD Core Palette */
   --p:#E8590C;--p2:#FF6B1F;--p3:#FF8C45;
   --p-glow:rgba(232,89,12,0.25);
   --p-subtle:rgba(232,89,12,0.08);
@@ -537,7 +537,7 @@ tbody tr:hover{background:var(--glass-1)}
 }
 
 /* ============================================================
-   NEXUS — Dark Mode Depth & Premium Selects
+   FIELD — Dark Mode Depth & Premium Selects
    ============================================================ */
 
 /* FIX 4: Table depth in dark mode */
@@ -830,7 +830,7 @@ select option {
     <circle cx="36" cy="38" r="5.5" fill="url(#nlg)"/>
   </svg>
   <div style="display:flex;flex-direction:column;line-height:1">
-    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:1.5px;color:inherit">NEXUS</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:1.5px;color:inherit">FIELD</span>
   </div>
 </div>
 </template>
@@ -863,7 +863,7 @@ select option {
       <div class="auth-card">
         <div class="auth-logo" id="su_icon"></div>
         <div class="auth-title">Create your account</div>
-        <div class="auth-sub">Join NEXUS — @hudl.com email required</div>
+        <div class="auth-sub">Join FIELD — @hudl.com email required</div>
         <div class="input-row">
           <div class="field"><label class="input-label">First Name</label><input class="input" type="text" id="suFirst" placeholder="Ahmed"/></div>
           <div class="field"><label class="input-label">Last Name</label><input class="input" type="text" id="suLast" placeholder="Mohamed"/></div>
@@ -915,7 +915,7 @@ select option {
       <div class="auth-card">
         <div class="auth-logo" id="si_icon"></div>
         <div class="auth-title">Welcome back</div>
-        <div class="auth-sub">Sign in to NEXUS</div>
+        <div class="auth-sub">Sign in to FIELD</div>
         <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email"/></div>
         <div class="field"><label class="input-label">Password</label><input class="input" type="password" id="siPass" placeholder="••••••••" autocomplete="current-password"/></div>
         <button class="btn btn-primary btn-full" id="siBtn" onclick="doSignin()">Sign in →</button>
@@ -1003,7 +1003,14 @@ select option {
           <div class="input-row">
             <div class="field">
               <label class="input-label">Batch</label>
-              <select class="input" id="bName" onchange="onBatchChange()">
+              <div class="nx-select-wrap " id="nx_bName" data-onchange="onBatchChange" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:200px">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select style="display:none" class="nx-native" class="input" id="bName" onchange="onBatchChange()">
                 <option value="all">All Batches</option>
               </select>
             </div>
@@ -1131,10 +1138,24 @@ select option {
         <div class="card" style="margin-bottom:16px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Filters:</div>
-            <select id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:140px">
+            <div class="nx-select-wrap " id="nx_coordAttBatch" data-onchange="coordAttApplyFilter" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:140px">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:140px;display:none">
               <option value="all">All Batches</option>
             </select>
-            <select id="coordAttDay" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px">
+            <div class="nx-select-wrap " id="nx_coordAttDay" data-onchange="coordAttApplyFilter" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:150px">
+    <span class="nx-label">All Days</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="coordAttDay" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px;display:none">
               <option value="all">All Days</option>
             </select>
             <button class="btn btn-ghost btn-sm" onclick="document.getElementById('coordAttBatch').value='all';document.getElementById('coordAttDay').value='all';coordAttApplyFilter()">✕ Clear</button>
@@ -1213,7 +1234,7 @@ select option {
         <div class="page-hdr"><h2>Notifications</h2><p>Activity log and system alerts</p></div>
         <div id="notifList">
           <div class="notif">
-            <div class="notif-t">Welcome to NEXUS</div>
+            <div class="notif-t">Welcome to FIELD</div>
             <div class="notif-b">Your account is active. Start by loading batch data.</div>
             <div class="notif-ts">Now · System</div>
           </div>
@@ -1796,7 +1817,7 @@ async function confirmEndBatch(){
       '- Accepted           : ' + accCands.length + '\n' +
       '- Rejected           : ' + (A.cands.length - accCands.length) + '\n\n' +
       'Please log in to FlowOps to view the full accepted candidates list.\n\n' +
-      'Best regards,\nNEXUS — Training Operations',
+      'Best regards,\nFIELD — Training Operations',
     full_body_ar:
       'عزيزي المشرف،\n\n' +
       'تم الانتهاء من مرحلة جمع المقابلات للدفعة ' + batchName + '.\n\n' +
@@ -1924,9 +1945,10 @@ function showTab(t){
     const n=document.getElementById('nav_'+x);if(n)n.classList.toggle('active',x===t);
   });
   document.querySelectorAll('.mob-nav-i').forEach(el=>el.classList.toggle('active',el.textContent.toLowerCase().trim().startsWith(t.slice(0,4))));
-  if(t==='report'){setTimeout(()=>{buildCharts();updateReportStats();},50);}
-  if(t==='attendance'){setTimeout(()=>{ initCoordAttendance(); },100);}
+  if(t==='report'){setTimeout(()=>{buildCharts();updateReportStats();initNxSelects();},50);}
+  if(t==='attendance'){setTimeout(()=>{ initCoordAttendance();initNxSelects(); },100);}
   if(t==='notifs'){A.notifN=0;updateBadge();}
+  setTimeout(initNxSelects, 50);
 }
 function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -1983,6 +2005,8 @@ if(savedLang&&savedLang==='ar'){
 
 // Inject logos
 injectLogos();
+// Init custom dropdowns
+setTimeout(initNxSelects, 100);
 
 // Apply saved theme
 (function(){
@@ -2596,11 +2620,12 @@ function showBsupTab(tab){
     const el = document.getElementById(v);
     if(el) el.classList.toggle('active', k===tab);
   });
-  if(tab === 'bsupGroups') updateBsupGroupsAvailability();
-  if(tab === 'bsupAttendance'){ initAttendance(); }
-  if(tab === 'bsupStatus'){ initTrainingStatus(); }
-  if(tab === 'bsupMatches'){ initMatchAssignment(); }
+  if(tab === 'bsupGroups'){ updateBsupGroupsAvailability(); setTimeout(initNxSelects,50); }
+  if(tab === 'bsupAttendance'){ initAttendance(); setTimeout(initNxSelects,50); }
+  if(tab === 'bsupStatus'){ initTrainingStatus(); setTimeout(initNxSelects,50); }
+  if(tab === 'bsupMatches'){ initMatchAssignment(); setTimeout(initNxSelects,100); }
   if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
+  setTimeout(initNxSelects, 50);
 }
 
 function addBsupNotif(title, body, type){
@@ -4338,71 +4363,76 @@ function maExportExcel(){
 }
 
 
-// ── NEXUS CUSTOM DROPDOWN ──────────────────────────
-function nxSelect(wrapperId, onChange){
-  const wrap = document.getElementById(wrapperId);
-  if(!wrap) return;
-  const trigger = wrap.querySelector('.nx-trigger');
-  const dropdown = wrap.querySelector('.nx-dropdown');
-  const label = wrap.querySelector('.nx-label');
-  const nativeSelect = wrap.querySelector('select.nx-native');
+// ── FIELD CUSTOM DROPDOWN ──────────────────────────
+// nxSelect replaced by initNxSelects
 
-  if(!trigger || !dropdown) return;
-
-  trigger.addEventListener('click', e => {
-    e.stopPropagation();
-    const isOpen = trigger.classList.contains('open');
-    // Close all other dropdowns
-    document.querySelectorAll('.nx-trigger.open').forEach(t => {
-      t.classList.remove('open');
-      t.nextElementSibling && t.nextElementSibling.classList.contains('nx-dropdown') &&
-        t.nextElementSibling.remove();
-    });
-    if(!isOpen){
-      trigger.classList.add('open');
-      buildDropdown(wrap, trigger, dropdown, label, nativeSelect, onChange);
-    }
-  });
-
-  document.addEventListener('click', () => {
-    trigger.classList.remove('open');
-    const dd = wrap.querySelector('.nx-dropdown');
-    if(dd && !dd.classList.contains('nx-dropdown-keep')) dd.style.display='none';
-  });
-}
-
-function buildDropdown(wrap, trigger, dropdown, label, nativeSelect, onChange){
-  dropdown.style.display = 'block';
-  const opts = nativeSelect ? Array.from(nativeSelect.options) : [];
-  const current = nativeSelect ? nativeSelect.value : '';
-
-  dropdown.innerHTML = opts.map(o =>
-    '<div class="nx-opt'+(o.value===current?' selected':'')+'" data-val="'+o.value+'">'+o.text+'</div>'
-  ).join('');
-
-  dropdown.querySelectorAll('.nx-opt').forEach(opt => {
-    opt.addEventListener('click', e => {
-      e.stopPropagation();
-      const val = opt.getAttribute('data-val');
-      const text = opt.textContent;
-      if(nativeSelect) nativeSelect.value = val;
-      if(label) label.textContent = text;
-      dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
-      opt.classList.add('selected');
-      trigger.classList.remove('open');
-      dropdown.style.display = 'none';
-      if(onChange) onChange(val);
-    });
-  });
-}
-
-// Initialize custom dropdowns on page ready
+// Initialize custom dropdowns
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(wrap => {
+    if(wrap.dataset.nxInit) return; // already initialized
+    wrap.dataset.nxInit = '1';
+    const trigger = wrap.querySelector('.nx-trigger');
+    const dropdown = wrap.querySelector('.nx-dropdown');
+    const label = wrap.querySelector('.nx-label');
     const nativeSelect = wrap.querySelector('select.nx-native');
-    const onChange = wrap.dataset.onchange;
-    if(onChange) nxSelect(wrap.id, () => window[onChange] && window[onChange]());
+    const onChangeFn = wrap.dataset.onchange;
+    if(!trigger || !dropdown) return;
+
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      const isOpen = trigger.classList.contains('open');
+      // Close all others
+      document.querySelectorAll('.nx-trigger.open').forEach(t => {
+        t.classList.remove('open');
+        const dd = t.parentElement.querySelector('.nx-dropdown');
+        if(dd) dd.style.display = 'none';
+      });
+      if(!isOpen){
+        trigger.classList.add('open');
+        // Build options
+        const opts = nativeSelect ? Array.from(nativeSelect.options) : [];
+        const current = nativeSelect ? nativeSelect.value : '';
+        dropdown.innerHTML = opts.map(o =>
+          '<div class="nx-opt'+(o.value===current?' selected':'')+'" data-val="'+o.value+'">'+o.text+'</div>'
+        ).join('');
+        dropdown.style.display = 'block';
+        // Option click
+        dropdown.querySelectorAll('.nx-opt').forEach(opt => {
+          opt.addEventListener('click', ev => {
+            ev.stopPropagation();
+            const val = opt.getAttribute('data-val');
+            if(nativeSelect){ nativeSelect.value = val; }
+            if(label) label.textContent = opt.textContent;
+            dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
+            opt.classList.add('selected');
+            trigger.classList.remove('open');
+            dropdown.style.display = 'none';
+            if(onChangeFn && window[onChangeFn]) window[onChangeFn]();
+          });
+        });
+      }
+    });
   });
+
+  // Close on outside click
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.nx-trigger.open').forEach(t => {
+      t.classList.remove('open');
+      const dd = t.parentElement.querySelector('.nx-dropdown');
+      if(dd) dd.style.display = 'none';
+    });
+  });
+}
+
+// Sync nx label when native select changes programmatically
+function syncNxLabel(selectId, value){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  const wrap = sel.closest('.nx-select-wrap');
+  if(!wrap) return;
+  const label = wrap.querySelector('.nx-label');
+  const opt = Array.from(sel.options).find(o => o.value === value);
+  if(label && opt) label.textContent = opt.text;
 }
 
 </script>
@@ -4412,8 +4442,8 @@ function initNxSelects(){
   <div style="display:flex;align-items:center;gap:10px;flex:1">
     <svg width="28" height="28" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="10" fill="#1A1A1A"/><circle cx="46" cy="38" r="9" fill="#E8590C"/><circle cx="30" cy="28" r="6" fill="#E8590C" opacity="0.5"/><circle cx="16" cy="20" r="4" fill="#E8590C" opacity="0.2"/></svg>
     <div>
-      <div style="font-size:13px;font-weight:600;font-family:'Inter',sans-serif;color:var(--text-primary)">Install NEXUS</div>
-      <div style="font-size:11px;color:var(--text-muted)">Add NEXUS to your home screen</div>
+      <div style="font-size:13px;font-weight:600;font-family:'Inter',sans-serif;color:var(--text-primary)">Install FIELD</div>
+      <div style="font-size:11px;color:var(--text-muted)">Add FIELD to your home screen</div>
     </div>
   </div>
   <button class="btn btn-primary btn-sm" onclick="installPWA()">Install</button>
@@ -4570,7 +4600,14 @@ function initNxSelects(){
                 </div>
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <select id="bsupGroupBatch" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none">
+                <div class="nx-select-wrap " id="nx_bsupGroupBatch" data-onchange="generateGroups" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:130px">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="bsupGroupBatch" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;display:none">
                   <option value="all">All Batches</option>
                 </select>
                 <button class="btn btn-primary" onclick="generateGroups()">⚡ Generate Groups</button>
@@ -4602,7 +4639,14 @@ function initNxSelects(){
               <div style="font-size:13px;color:var(--text-secondary)" id="attDayDate"></div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <select id="attDaySelect" onchange="loadAttendanceDay()" style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600">
+              <div class="nx-select-wrap " id="nx_attDaySelect" data-onchange="loadAttendanceDay" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:170px">
+    <span class="nx-label">Orientation Day</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="attDaySelect" onchange="loadAttendanceDay()" style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;display:none">
                 <option value="0">🎯 Orientation Day</option>
               </select>
               <button class="btn btn-secondary btn-sm" onclick="switchAttView('take')" id="attBtnTake">📋 Take Attendance</button>
@@ -4713,16 +4757,44 @@ function initNxSelects(){
         <div class="card" style="margin-bottom:16px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">Filters:</span>
-            <select id="tsFilterBatch" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+            <div class="nx-select-wrap " id="nx_tsFilterBatch" data-onchange="tsApplyFilters" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:120px">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="tsFilterBatch" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Batches</option>
             </select>
-            <select id="tsFilterGroup" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+            <div class="nx-select-wrap " id="nx_tsFilterGroup" data-onchange="tsApplyFilters" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:120px">
+    <span class="nx-label">All Groups</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="tsFilterGroup" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Groups</option>
             </select>
-            <select id="tsFilterTrainer" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px">
+            <div class="nx-select-wrap " id="nx_tsFilterTrainer" data-onchange="tsApplyFilters" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:130px">
+    <span class="nx-label">All Trainers</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="tsFilterTrainer" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Trainers</option>
             </select>
-            <select id="tsFilterStatus" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:150px">
+            <div class="nx-select-wrap " id="nx_tsFilterStatus" data-onchange="tsApplyFilters" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:130px">
+    <span class="nx-label">All Statuses</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="tsFilterStatus" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:150px;display:none">
               <option value="all">All Statuses</option>
               <option value="active">✅ Active Only</option>
               <option value="leaving">❌ Leaving Only</option>
@@ -4943,7 +5015,14 @@ function initNxSelects(){
 
               <div class="field">
                 <label class="input-label">Training Group</label>
-                <select class="input" id="maTargetGroup">
+                <div class="nx-select-wrap full" id="nx_maTargetGroup" data-onchange="" style="display:inline-block">
+  <div class="nx-trigger" style="width:100%">
+    <span class="nx-label">— Select group —</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select style="display:none" class="nx-native" class="input" id="maTargetGroup">
                   <option value="">— Select group —</option>
                 </select>
               </div>
@@ -4980,7 +5059,14 @@ function initNxSelects(){
           <div style="padding:14px 20px;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div class="card-title">All Group Assignments</div>
             <div style="display:flex;gap:8px">
-              <select id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none">
+              <div class="nx-select-wrap " id="nx_maViewGroup" data-onchange="maRenderAssignedTable" style="display:inline-block">
+  <div class="nx-trigger" style="min-width:130px">
+    <span class="nx-label">All Groups</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+</div>
+<select class="nx-native" id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;display:none">
                 <option value="all">All Groups</option>
               </select>
               <button class="btn btn-secondary btn-sm" onclick="maExportExcel()">⬇ Excel</button>
