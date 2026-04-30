@@ -749,40 +749,105 @@ select option {
   border:0.5px solid var(--b-2);
 }
 
+
+/* ── CUSTOM DROPDOWN SYSTEM ── */
+.nx-select-wrap{position:relative;display:inline-block}
+.nx-select-wrap.full{width:100%}
+.nx-trigger{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 14px;
+  background:var(--bg-2);
+  border:0.5px solid var(--b-2);
+  border-radius:var(--r-md);
+  color:var(--t-1);
+  font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
+  cursor:pointer;
+  transition:border-color .15s, box-shadow .15s;
+  white-space:nowrap;
+  min-width:140px;
+  user-select:none;
+}
+.nx-trigger:hover{border-color:var(--b-3);background:var(--bg-3)}
+.nx-trigger.open{border-color:var(--p);box-shadow:0 0 0 3px rgba(232,89,12,0.12)}
+.nx-trigger svg{opacity:.5;flex-shrink:0;transition:transform .2s var(--ease)}
+.nx-trigger.open svg{transform:rotate(180deg);opacity:.8}
+
+.nx-dropdown{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:1000;
+  background:var(--bg-2);
+  border:0.5px solid var(--b-2);
+  border-radius:var(--r-lg);
+  box-shadow:0 8px 32px rgba(0,0,0,0.6),0 2px 8px rgba(0,0,0,0.4),0 0 0 0.5px var(--b-1);
+  overflow:hidden;
+  min-width:100%;
+  animation:dropIn .18s var(--ease-out) both;
+  max-height:280px;overflow-y:auto;
+}
+@keyframes dropIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+.nx-dropdown::-webkit-scrollbar{width:3px}
+.nx-dropdown::-webkit-scrollbar-track{background:transparent}
+.nx-dropdown::-webkit-scrollbar-thumb{background:var(--b-2);border-radius:2px}
+
+.nx-opt{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;
+  font-size:13px;font-weight:400;color:var(--t-2);
+  cursor:pointer;
+  transition:background .1s,color .1s;
+  border-bottom:0.5px solid var(--b-1);
+}
+.nx-opt:last-child{border-bottom:none}
+.nx-opt:hover{background:var(--glass-1);color:var(--t-1)}
+.nx-opt.selected{
+  background:var(--p-subtle);color:var(--p2);font-weight:600;
+}
+.nx-opt.selected::after{
+  content:'';width:6px;height:6px;border-radius:50%;
+  background:var(--p2);margin-inline-start:auto;flex-shrink:0;
+  box-shadow:0 0 6px rgba(232,89,12,0.5);
+}
+[data-theme="light"] .nx-dropdown{
+  background:#fff;
+  box-shadow:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.08);
+}
+[data-theme="light"] .nx-opt:hover{background:var(--bg-2)}
+
 </style>
 </head>
 <body>
 
 <!-- FLOWOPS LOGO SVG COMPONENT -->
 <template id="logoSVG">
-<svg width="128" height="34" viewBox="0 0 200 54" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF9350"/>
-      <stop offset="100%" stop-color="#E8590C"/>
-    </linearGradient>
-  </defs>
-  <!-- N connection mark -->
-  <rect x="4" y="9" width="5" height="36" rx="2.5" fill="url(#lg)"/>
-  <rect x="21" y="9" width="5" height="36" rx="2.5" fill="url(#lg)"/>
-  <line x1="6.5" y1="11" x2="23.5" y2="43" stroke="url(#lg)" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="36" cy="41" r="4.5" fill="url(#lg)"/>
-  <!-- Wordmark -->
-  <text x="48" y="32" font-family="Inter,-apple-system,sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="var(--t-1,#F5F5F7)">NEXUS</text>
-</svg>
+<div style="display:flex;align-items:center;gap:10px">
+  <svg width="28" height="28" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs><linearGradient id="nlg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
+    <rect width="56" height="56" rx="13" fill="#111"/>
+    <rect x=".5" y=".5" width="55" height="55" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".5"/>
+    <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#nlg)"/>
+    <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#nlg)"/>
+    <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#nlg)" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="36" cy="38" r="5.5" fill="url(#nlg)"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;line-height:1">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:1.5px;color:inherit">NEXUS</span>
+  </div>
+</div>
 </template>
 
 <!-- ICON SVG -->
 <template id="iconSVG">
-<svg width="32" height="32" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
-  <defs><linearGradient id="ig" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
-  <rect width="56" height="56" rx="13" fill="#111111"/>
-  <rect x=".5" y=".5" width="55" height="55" rx="12.5" fill="none" stroke="rgba(232,89,12,0.25)" stroke-width=".5"/>
-  <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#ig)"/>
-  <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#ig)"/>
-  <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#ig)" stroke-width="4.5" stroke-linecap="round"/>
-  <circle cx="36" cy="38" r="5.5" fill="url(#ig)"/>
-</svg>
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+  <svg width="56" height="56" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="nig" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
+    <rect width="56" height="56" rx="14" fill="#111"/>
+    <rect x=".5" y=".5" width="55" height="55" rx="13.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".5"/>
+    <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#nig)"/>
+    <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#nig)"/>
+    <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#nig)" stroke-width="4.5" stroke-linecap="round"/>
+    <circle cx="36" cy="38" r="5.5" fill="url(#nig)"/>
+  </svg>
+</div>
 </template>
 
 <!-- ===== SIGN UP ===== -->
@@ -980,9 +1045,16 @@ select option {
         <div class="page-hdr"><h2>Candidates</h2><p id="candSub">All interviewees — live from sheet</p></div>
         <div class="search-row no-print">
           <input class="input" type="text" id="srch" placeholder="Search name, ID, notes..." oninput="renderTable()" style="flex:1;min-width:180px"/>
-          <select id="batchFilter" onchange="applyBatchFilter()">
-            <option value="all">All Batches</option>
-          </select>
+          <div class="nx-select-wrap" id="nxBatchFilter" data-onchange="applyBatchFilter">
+  <div class="nx-trigger">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+  <select id="batchFilter" class="nx-native" onchange="applyBatchFilter()" style="display:none">
+    <option value="all">All Batches</option>
+  </select>
+</div>
           <button class="btn btn-success btn-sm" onclick="setFilt('accepted')">✅ Accepted</button>
           <button class="btn btn-danger btn-sm" onclick="setFilt('rejected')">❌ Rejected</button>
           <button class="btn btn-secondary btn-sm" onclick="setFilt('all')">All</button>
@@ -1425,15 +1497,18 @@ function batchVal(v){
 // LOGO INJECTION
 // ============================================================
 function injectLogos(){
-  const logoHTML=document.getElementById('logoSVG').content.firstElementChild.outerHTML;
-  const iconHTML=document.getElementById('iconSVG').content.firstElementChild.outerHTML;
+  const tmpl = document.getElementById('logoSVG');
+  const iconTmpl = document.getElementById('iconSVG');
+  if(!tmpl) return;
+  const logoHTML = tmpl.content.firstElementChild ? tmpl.content.firstElementChild.outerHTML : '';
+  const iconHTML = iconTmpl && iconTmpl.content.firstElementChild ? iconTmpl.content.firstElementChild.outerHTML : '';
   ['su_logo','si_logo','dash_logo','bsup_logo'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el) el.innerHTML=logoHTML;
+    if(el && logoHTML) el.innerHTML=logoHTML;
   });
   ['su_icon','si_icon'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el) el.innerHTML=iconHTML;
+    if(el && iconHTML) el.innerHTML=iconHTML;
   });
 }
 
@@ -1502,6 +1577,7 @@ function populateBatchDropdowns(){
   }).join('');
   const bf=document.getElementById('batchFilter');if(bf)bf.innerHTML=opts;
   const bn=document.getElementById('bName');if(bn)bn.innerHTML=opts;
+  initNxSelects();
 }
 function getBatchFiltered(){
   const el=document.getElementById('batchFilter');
@@ -2263,6 +2339,7 @@ function populateBsupBatchFilter(){
   if(!el) return;
   el.innerHTML = '<option value="all">All Batches</option>' +
     batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+  initNxSelects();
 }
 
 function populateBsupGroupBatch(){
@@ -4260,6 +4337,74 @@ function maExportExcel(){
   a.click();
 }
 
+
+// ── NEXUS CUSTOM DROPDOWN ──────────────────────────
+function nxSelect(wrapperId, onChange){
+  const wrap = document.getElementById(wrapperId);
+  if(!wrap) return;
+  const trigger = wrap.querySelector('.nx-trigger');
+  const dropdown = wrap.querySelector('.nx-dropdown');
+  const label = wrap.querySelector('.nx-label');
+  const nativeSelect = wrap.querySelector('select.nx-native');
+
+  if(!trigger || !dropdown) return;
+
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = trigger.classList.contains('open');
+    // Close all other dropdowns
+    document.querySelectorAll('.nx-trigger.open').forEach(t => {
+      t.classList.remove('open');
+      t.nextElementSibling && t.nextElementSibling.classList.contains('nx-dropdown') &&
+        t.nextElementSibling.remove();
+    });
+    if(!isOpen){
+      trigger.classList.add('open');
+      buildDropdown(wrap, trigger, dropdown, label, nativeSelect, onChange);
+    }
+  });
+
+  document.addEventListener('click', () => {
+    trigger.classList.remove('open');
+    const dd = wrap.querySelector('.nx-dropdown');
+    if(dd && !dd.classList.contains('nx-dropdown-keep')) dd.style.display='none';
+  });
+}
+
+function buildDropdown(wrap, trigger, dropdown, label, nativeSelect, onChange){
+  dropdown.style.display = 'block';
+  const opts = nativeSelect ? Array.from(nativeSelect.options) : [];
+  const current = nativeSelect ? nativeSelect.value : '';
+
+  dropdown.innerHTML = opts.map(o =>
+    '<div class="nx-opt'+(o.value===current?' selected':'')+'" data-val="'+o.value+'">'+o.text+'</div>'
+  ).join('');
+
+  dropdown.querySelectorAll('.nx-opt').forEach(opt => {
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      const val = opt.getAttribute('data-val');
+      const text = opt.textContent;
+      if(nativeSelect) nativeSelect.value = val;
+      if(label) label.textContent = text;
+      dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      trigger.classList.remove('open');
+      dropdown.style.display = 'none';
+      if(onChange) onChange(val);
+    });
+  });
+}
+
+// Initialize custom dropdowns on page ready
+function initNxSelects(){
+  document.querySelectorAll('.nx-select-wrap').forEach(wrap => {
+    const nativeSelect = wrap.querySelector('select.nx-native');
+    const onChange = wrap.dataset.onchange;
+    if(onChange) nxSelect(wrap.id, () => window[onChange] && window[onChange]());
+  });
+}
+
 </script>
 
 <!-- PWA Install Banner -->
@@ -4334,9 +4479,16 @@ function maExportExcel(){
         <!-- FILTERS + ACTIONS -->
         <div class="search-row no-print" style="margin-bottom:16px">
           <input class="input" type="text" id="bsupSearch" placeholder="Search trainee name or code..." oninput="renderBsupTable()" style="flex:1;min-width:180px"/>
-          <select id="bsupBatchFilter" onchange="renderBsupTable()" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;cursor:pointer;outline:none">
-            <option value="all">All Batches</option>
-          </select>
+          <div class="nx-select-wrap" id="nxBsupBatch" data-onchange="renderBsupTable">
+  <div class="nx-trigger">
+    <span class="nx-label">All Batches</span>
+    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="nx-dropdown" style="display:none"></div>
+  <select id="bsupBatchFilter" class="nx-native" onchange="renderBsupTable()" style="display:none">
+    <option value="all">All Batches</option>
+  </select>
+</div>
           <button class="btn btn-secondary btn-sm" onclick="setTraineeFilter('all')" id="bsupFAll">All</button>
           <button class="btn btn-success btn-sm" onclick="setTraineeFilter('coded')" id="bsupFCoded">✅ Coded</button>
           <button class="btn btn-warn btn-sm" onclick="setTraineeFilter('uncoded')" id="bsupFUncoded">⏳ Pending</button>
@@ -4743,15 +4895,21 @@ function maExportExcel(){
             <button class="btn btn-primary btn-sm" onclick="loadMatchesData()">🔄 Load / Refresh Matches</button>
           </div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-            <select id="maFilterComp" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:180px">
-              <option value="all">All Competitions</option>
-            </select>
-            <select id="maFilterWeek" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:140px">
-              <option value="all">All Game Weeks</option>
-            </select>
-            <select id="maFilterCountry" onchange="maApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:140px">
-              <option value="all">All Countries</option>
-            </select>
+            <div class="nx-select-wrap" id="nxMaComp" data-onchange="maApplyFilters">
+  <div class="nx-trigger" style="min-width:160px"><span class="nx-label">All Competitions</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="nx-dropdown" style="display:none"></div>
+  <select id="maFilterComp" class="nx-native" onchange="maApplyFilters()" style="display:none"><option value="all">All Competitions</option></select>
+</div>
+<div class="nx-select-wrap" id="nxMaWeek" data-onchange="maApplyFilters">
+  <div class="nx-trigger" style="min-width:120px"><span class="nx-label">All Game Weeks</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="nx-dropdown" style="display:none"></div>
+  <select id="maFilterWeek" class="nx-native" onchange="maApplyFilters()" style="display:none"><option value="all">All Game Weeks</option></select>
+</div>
+<div class="nx-select-wrap" id="nxMaCountry" data-onchange="maApplyFilters">
+  <div class="nx-trigger" style="min-width:120px"><span class="nx-label">All Countries</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="nx-dropdown" style="display:none"></div>
+  <select id="maFilterCountry" class="nx-native" onchange="maApplyFilters()" style="display:none"><option value="all">All Countries</option></select>
+</div>
             <input type="text" id="maSearch" oninput="maApplyFilters()" placeholder="Search teams..." style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:160px"/>
             <button class="btn btn-ghost btn-sm" onclick="maClearFilters()">✕ Clear</button>
             <span style="font-size:12px;color:var(--text-muted)" id="maMatchCount"></span>
