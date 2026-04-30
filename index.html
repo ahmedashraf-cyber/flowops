@@ -535,32 +535,226 @@ tbody tr:hover{background:var(--glass-1)}
   .card,.card-stat{animation:cardIn .4s var(--ease) both}
   @keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 }
+
+/* ============================================================
+   NEXUS — Dark Mode Depth & Premium Selects
+   ============================================================ */
+
+/* FIX 4: Table depth in dark mode */
+.tbl-wrap{
+  border-radius:var(--r-xl);
+  overflow:hidden;
+  box-shadow:0 0 0 0.5px var(--b-1),0 4px 24px rgba(0,0,0,0.4);
+}
+thead tr{
+  background:var(--bg-2);
+}
+tbody tr:nth-child(even){
+  background:rgba(255,255,255,0.015);
+}
+tbody tr:hover{
+  background:linear-gradient(90deg,rgba(232,89,12,0.05),rgba(232,89,12,0.02));
+}
+
+/* Card dark mode depth */
+.card{
+  background:linear-gradient(145deg,var(--bg-2) 0%,var(--bg-1) 100%);
+  box-shadow:0 0 0 0.5px var(--b-1),0 2px 8px rgba(0,0,0,0.3),var(--sh-inner);
+}
+.card-stat{
+  background:linear-gradient(145deg,var(--bg-2) 0%,var(--bg-1) 100%);
+  box-shadow:0 0 0 0.5px var(--b-1),0 2px 8px rgba(0,0,0,0.3),var(--sh-inner);
+}
+[data-theme="light"] .card,
+[data-theme="light"] .card-stat{
+  background:var(--bg-1);
+  box-shadow:0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04);
+}
+
+/* Sidebar depth */
+.sidebar{
+  background:var(--bg);
+  box-shadow:inset -1px 0 0 var(--b-1);
+}
+
+/* FIX 5: Premium custom selects ──────────────────────── */
+select,
+.search-row select,
+.input[type="date"] {
+  background:var(--bg-2) !important;
+  border:0.5px solid var(--b-2) !important;
+  border-radius:var(--r-md) !important;
+  color:var(--t-1) !important;
+  font-family:'DM Sans',sans-serif !important;
+  font-size:13px !important;
+  font-weight:500 !important;
+  padding:9px 36px 9px 14px !important;
+  outline:none !important;
+  cursor:pointer;
+  appearance:none;
+  -webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236E6E73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-repeat:no-repeat !important;
+  background-position:right 12px center !important;
+  transition:border-color .15s,box-shadow .15s,background .15s !important;
+}
+select:focus,
+.search-row select:focus {
+  border-color:var(--p) !important;
+  box-shadow:0 0 0 3px rgba(232,89,12,0.12) !important;
+  background-color:var(--bg-1) !important;
+}
+select:hover,
+.search-row select:hover {
+  border-color:var(--b-3) !important;
+}
+select option {
+  background:var(--bg-3);
+  color:var(--t-1);
+  padding:10px;
+  font-size:13px;
+}
+
+/* FIX 6: Dark mode overall depth improvements ────────── */
+/* Background gradient layers */
+.app-shell{
+  background:
+    radial-gradient(ellipse 70% 50% at 0% 0%, rgba(232,89,12,0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 100% 100%, rgba(232,89,12,0.03) 0%, transparent 50%),
+    var(--bg);
+}
+[data-theme="light"] .app-shell{
+  background:var(--bg);
+}
+
+/* Auth card glow */
+.auth-card{
+  box-shadow:
+    0 0 0 0.5px var(--b-1),
+    0 24px 64px rgba(0,0,0,0.6),
+    0 8px 24px rgba(0,0,0,0.4),
+    0 0 40px rgba(232,89,12,0.04);
+}
+
+/* Topbar glow line at bottom */
+.topbar::after{
+  content:'';
+  position:absolute;bottom:0;left:10%;right:10%;height:0.5px;
+  background:linear-gradient(90deg,transparent,rgba(232,89,12,0.15),transparent);
+  pointer-events:none;
+}
+
+/* Modal depth */
+.modal-box{
+  background:linear-gradient(145deg,var(--bg-2),var(--bg-1));
+  box-shadow:
+    0 0 0 0.5px var(--b-2),
+    0 32px 80px rgba(0,0,0,0.7),
+    0 8px 24px rgba(0,0,0,0.5),
+    0 0 60px rgba(232,89,12,0.04);
+}
+
+/* Role switcher — premium dark panel */
+#roleSwitcher{
+  background:linear-gradient(145deg,var(--bg-2),var(--bg-1)) !important;
+  border:0.5px solid var(--b-2) !important;
+  border-radius:var(--r-xl) !important;
+  box-shadow:0 0 0 0.5px var(--b-1),0 24px 56px rgba(0,0,0,0.7),0 8px 20px rgba(0,0,0,0.5),0 0 30px rgba(232,89,12,0.06) !important;
+  padding:20px !important;
+  backdrop-filter:blur(20px) !important;
+}
+#roleSwitcher::before{
+  content:'';position:absolute;top:0;left:15%;right:15%;height:0.5px;
+  background:linear-gradient(90deg,transparent,rgba(232,89,12,0.4),transparent);
+}
+
+/* Metric number glow on hover */
+.card-stat:hover .card-stat__value.accent,
+.card-stat:hover .card-stat__value.green,
+.card-stat:hover .card-stat__value.red{
+  filter:brightness(1.15);
+}
+
+/* Page header line accent */
+.page-hdr{
+  padding-bottom:20px;
+  border-bottom:0.5px solid var(--b-1);
+  margin-bottom:24px;
+}
+.page-hdr h2{
+  background:linear-gradient(135deg,var(--t-1) 0%,rgba(245,245,247,0.7) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+[data-theme="light"] .page-hdr h2{
+  -webkit-text-fill-color:var(--t-1);background:none;
+}
+
+/* Notification badge pulse */
+.sidebar-badge{
+  animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse{
+  0%,100%{box-shadow:0 2px 8px rgba(255,69,58,0.4)}
+  50%{box-shadow:0 2px 16px rgba(255,69,58,0.7),0 0 0 4px rgba(255,69,58,0.1)}
+}
+
+/* Input focus glow */
+.input:focus{
+  box-shadow:0 0 0 3px rgba(232,89,12,0.12),0 0 16px rgba(232,89,12,0.06) !important;
+}
+
+/* Button hover glow */
+.btn-primary:hover{
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.18) inset,
+    0 6px 24px rgba(232,89,12,0.5),
+    0 2px 8px rgba(0,0,0,0.3) !important;
+}
+
+/* Batch card entrance */
+.batch-card{
+  animation:cardIn .4s cubic-bezier(0,0,0.2,1) both;
+}
+
+/* Toast */
+#nexusToast{
+  font-family:'DM Sans',sans-serif !important;
+  letter-spacing:0.01em;
+}
+
 </style>
 </head>
 <body>
 
 <!-- FLOWOPS LOGO SVG COMPONENT -->
 <template id="logoSVG">
-<svg width="130" height="36" viewBox="0 0 210 58" xmlns="http://www.w3.org/2000/svg">
-  <defs><linearGradient id="ng1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF8C45"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
-  <rect x="6" y="10" width="4.5" height="38" rx="2.25" fill="url(#ng1)"/>
-  <rect x="23" y="10" width="4.5" height="38" rx="2.25" fill="url(#ng1)"/>
-  <line x1="8.25" y1="12" x2="25.75" y2="46" stroke="url(#ng1)" stroke-width="4.5" stroke-linecap="round"/>
-  <circle cx="38" cy="44" r="4" fill="url(#ng1)" opacity=".85"/>
-  <text x="50" y="36" font-family="Inter,system-ui,sans-serif" font-size="20" font-weight="700" letter-spacing="-0.5" fill="var(--t-1,#F5F5F7)">NEXUS</text>
+<svg width="128" height="34" viewBox="0 0 200 54" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9350"/>
+      <stop offset="100%" stop-color="#E8590C"/>
+    </linearGradient>
+  </defs>
+  <!-- N connection mark -->
+  <rect x="4" y="9" width="5" height="36" rx="2.5" fill="url(#lg)"/>
+  <rect x="21" y="9" width="5" height="36" rx="2.5" fill="url(#lg)"/>
+  <line x1="6.5" y1="11" x2="23.5" y2="43" stroke="url(#lg)" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="36" cy="41" r="4.5" fill="url(#lg)"/>
+  <!-- Wordmark -->
+  <text x="48" y="32" font-family="Inter,-apple-system,sans-serif" font-size="18" font-weight="700" letter-spacing="2" fill="var(--t-1,#F5F5F7)">NEXUS</text>
 </svg>
 </template>
 
 <!-- ICON SVG -->
 <template id="iconSVG">
-<svg width="34" height="34" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-  <defs><linearGradient id="nig1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF8C45"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
-  <rect width="60" height="60" rx="14" fill="#0F0F0F"/>
-  <rect x=".5" y=".5" width="59" height="59" rx="13.5" fill="none" stroke="rgba(232,89,12,0.2)" stroke-width=".5"/>
-  <rect x="13" y="11" width="4" height="34" rx="2" fill="url(#nig1)"/>
-  <rect x="26" y="11" width="4" height="34" rx="2" fill="url(#nig1)"/>
-  <line x1="15" y1="13" x2="28" y2="43" stroke="url(#nig1)" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="39" cy="42" r="5" fill="url(#nig1)"/>
+<svg width="32" height="32" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+  <defs><linearGradient id="ig" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
+  <rect width="56" height="56" rx="13" fill="#111111"/>
+  <rect x=".5" y=".5" width="55" height="55" rx="12.5" fill="none" stroke="rgba(232,89,12,0.25)" stroke-width=".5"/>
+  <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#ig)"/>
+  <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#ig)"/>
+  <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#ig)" stroke-width="4.5" stroke-linecap="round"/>
+  <circle cx="36" cy="38" r="5.5" fill="url(#ig)"/>
 </svg>
 </template>
 
@@ -1206,7 +1400,7 @@ function batchVal(v){
 function injectLogos(){
   const logoHTML=document.getElementById('logoSVG').content.firstElementChild.outerHTML;
   const iconHTML=document.getElementById('iconSVG').content.firstElementChild.outerHTML;
-  ['su_logo','si_logo','dash_logo'].forEach(id=>{
+  ['su_logo','si_logo','dash_logo','bsup_logo'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.innerHTML=logoHTML;
   });
@@ -2330,31 +2524,78 @@ function switchRole(role){
   if(!A.user) return;
   A.requestedRole = role;
 
-  if(role === 'batchsup'){
-    const logoEl = document.getElementById('bsup_logo');
-    if(logoEl){ const tmpl = document.getElementById('logoSVG'); if(tmpl) logoEl.innerHTML = tmpl.content.firstElementChild.outerHTML; }
-    document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
-    showScreen('bsupScreen');
-    // Keep switcher visible
-    const sw = document.getElementById('roleSwitcher');
-    if(sw) sw.style.display = 'block';
-    setTimeout(()=>{ initBsupDashboard(); }, 200);
-  } else if(role === 'coordinator'){
-    document.getElementById('userPill').textContent = A.user.name + ' · Batch Coordinator';
-    showScreen('coordScreen');
-    const sw = document.getElementById('roleSwitcher');
-    if(sw) sw.style.display = 'block';
-    setTimeout(()=>{ loadData(); }, 200);
-  } else if(role === 'manager'){
-    document.getElementById('userPill').textContent = A.user.name + ' · Training Manager';
-    showScreen('coordScreen');
-    const sw = document.getElementById('roleSwitcher');
-    if(sw) sw.style.display = 'block';
-    setTimeout(()=>{ loadData(); }, 200);
-  } else {
-    alert('This role dashboard is coming soon! We are building it.');
-    return;
+  // Cinematic transition: fade out current screen
+  const current = document.querySelector('.screen.active');
+  if(current){
+    current.style.transition = 'opacity .25s cubic-bezier(0.4,0,0.2,1), transform .25s cubic-bezier(0.4,0,0.2,1)';
+    current.style.opacity = '0';
+    current.style.transform = 'scale(0.98) translateY(-4px)';
   }
+
+  setTimeout(() => {
+    if(role === 'batchsup'){
+      injectLogos();
+      document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
+      showScreen('bsupScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ initBsupDashboard(); }, 100);
+    } else if(role === 'coordinator'){
+      document.getElementById('userPill').textContent = A.user.name + ' · Batch Coordinator';
+      showScreen('coordScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ loadData(); }, 100);
+    } else if(role === 'manager'){
+      document.getElementById('userPill').textContent = A.user.name + ' · Training Manager';
+      showScreen('coordScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ loadData(); }, 100);
+    } else {
+      // Restore current screen
+      if(current){ current.style.opacity='1'; current.style.transform='none'; }
+      showToast('Coming soon — we are building this role dashboard.');
+      return;
+    }
+    // Fade in new screen
+    const next = document.querySelector('.screen.active');
+    if(next){
+      next.style.opacity = '0';
+      next.style.transform = 'scale(1.01) translateY(6px)';
+      next.style.transition = 'none';
+      requestAnimationFrame(()=>{
+        next.style.transition = 'opacity .35s cubic-bezier(0,0,0.2,1), transform .35s cubic-bezier(0,0,0.2,1)';
+        next.style.opacity = '1';
+        next.style.transform = 'scale(1) translateY(0)';
+      });
+    }
+  }, 220);
+}
+
+// Toast notification (replaces alert for premium feel)
+function showToast(msg, type='info'){
+  let t = document.getElementById('nexusToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'nexusToast';
+    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);z-index:9999;background:var(--bg-1);border:0.5px solid var(--b-2);border-radius:var(--r-pill);padding:12px 24px;font-size:14px;font-weight:500;color:var(--t-1);box-shadow:0 8px 32px rgba(0,0,0,0.6),0 2px 8px rgba(0,0,0,0.4);backdrop-filter:blur(20px);opacity:0;transition:all .3s cubic-bezier(0,0,0.2,1);pointer-events:none;white-space:nowrap;font-family:DM Sans,sans-serif;';
+    document.body.appendChild(t);
+  }
+  const colors = {info:'var(--blue)',success:'var(--green)',warn:'var(--warn)',error:'var(--red)'};
+  t.style.borderColor = colors[type]||'var(--b-2)';
+  t.textContent = msg;
+  t.style.transform = 'translateX(-50%) translateY(20px)';
+  t.style.opacity = '0';
+  requestAnimationFrame(()=>{
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    t.style.opacity = '1';
+  });
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{
+    t.style.transform = 'translateX(-50%) translateY(20px)';
+    t.style.opacity = '0';
+  }, 3000);
 }
 
 function showAdminSwitcher(){
