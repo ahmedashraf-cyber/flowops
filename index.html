@@ -1071,7 +1071,7 @@ select option {
         </div>
 
         <div id="batchBreakdown" style="display:none;margin-bottom:16px">
-          <div class="label" style="margin-bottom:10px">Batch breakdown — column S</div>
+          <div class="label" style="margin-bottom:10px">Batch breakdown</div>
           <div id="batchBreakdownContent" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
 
@@ -1377,7 +1377,7 @@ const GSHEETS={
   sheetId:'190Zih7R1HswY2yVxl4WanfH-QhGlt4X8bOBteFrNtiY',
   tabPrefix:'Interview Score',
   // Returns URL for a specific tab number
-  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n+'!A2:R')+'?key='+this.apiKey; },
+  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n+'!A2:T')+'?key='+this.apiKey; },
   // Returns metadata URL to detect all tabs
   metaUrl(){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'?key='+this.apiKey; }
 };
@@ -1679,13 +1679,6 @@ async function loadData(){
     // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
 
-    // DEBUG: log first 3 rows to console
-    console.log('=== FIELD DEBUG: First 3 raw rows ===');
-    allRows.slice(0,3).forEach(({row,tab})=>{
-      console.log('Tab:',tab,'Row length:',row.length,'Data:',JSON.stringify(row));
-    });
-    console.log('Total merged rows:', allRows.length);
-
     A.cands = allRows
       .filter(({row:r})=>r[1]&&r[1].trim()) // must have Name (col B)
       .map(({row:r, tab},i)=>{
@@ -1694,7 +1687,7 @@ async function loadData(){
         const nameAr=isAr(name)?name:'';
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
         const status=rawStatus.toLowerCase().startsWith('accepted')?'accepted':'rejected';
-        const batch=batchVal(r[17]); // col R = index 17
+        const batch=batchVal(r[19]); // col T = index 19 = Batch
         return{
           id:i+1,
           nameEn, nameAr,
@@ -1704,14 +1697,14 @@ async function loadData(){
           iv:pct(r[3]),                 // D = Interview%
           kn:pct(r[4]),                 // E = Knowledge%
           tac:pct(r[5]),                // F = Tactics%
-          tspd:num(r[6]),               // G = TypingSpeed
-          tacc:pct(r[7]),               // H = TypingAccuracy
-          notes:(r[8]||'').trim(),      // I = Notes
+          tspd:num(r[6]),               // G = Typing Speed (wpm)
+          tacc:pct(r[7]),               // H = Typing Accuracy%
+          notes:(r[17]||'').trim(),     // R = Notes (index 17)
           pts:pct(r[9])||0,             // J = Points%
-          footballKn:pct(r[11]),        // L = FootballKnowledge
-          ptsAvg:pct(r[12]),            // M = PointsAVG
-          tspdAvg:num(r[13]),           // N = TypingSpeedAVG
-          rank:(r[14]||'').trim(),      // O = Rank
+          footballKn:null,              // not present in sheet
+          ptsAvg:pct(r[13]),            // N = Points AVG (index 13)
+          tspdAvg:num(r[14]),           // O = Typing Speed AVG (index 14)
+          rank:(r[15]||'').trim(),      // P = Rank (index 15)
           raw:rawStatus, status, batch,
           sourceTab: GSHEETS.tabPrefix+' '+tab
         };
@@ -1858,7 +1851,6 @@ function renderTable(){
     <td style="color:var(--text-secondary)">${c.iv!=null?c.iv.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.kn!=null?c.kn.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.tac!=null?c.tac.toFixed(1)+'%':'—'}</td>
-    <td style="color:var(--text-secondary)">${c.footballKn!=null?c.footballKn.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.tspd?c.tspd+' wpm':'—'}</td>
     <td><span class="badge ${c.status==='accepted'?'badge-success':'badge-danger'}">${c.status==='accepted'?'✅ Accepted':'❌ '+shortR(c.raw)}</span></td>
     <td><span class="${rankCls(c.rank)}" style="font-size:11px">${c.rank||'—'}</span></td>
