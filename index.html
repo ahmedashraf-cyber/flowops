@@ -1687,19 +1687,6 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
-    // PER-BATCH ACCEPTED DEBUG
-    const _perBatch = {};
-    allRows.forEach(({row:r})=>{
-      const batch = (r[17]||'EMPTY').trim();
-      const status = (r[10]||'').trim().toLowerCase();
-      const isAcc = status.startsWith('accept');
-      if(!_perBatch[batch]) _perBatch[batch] = {total:0, acc:0, statuses:{}};
-      _perBatch[batch].total++;
-      if(isAcc) _perBatch[batch].acc++;
-      _perBatch[batch].statuses[r[10]||'EMPTY'] = (_perBatch[batch].statuses[r[10]||'EMPTY']||0)+1;
-    });
-    console.log('PER BATCH:', JSON.stringify(_perBatch, null, 2));
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
@@ -1720,9 +1707,12 @@ async function loadData(){
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
-        const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
-        // Accepted if K starts with 'accept' (handles trailing spaces, variants)
-        const status = rawStatus.toLowerCase().startsWith('accept') ? 'accepted' : 'rejected';
+        const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected text
+        const footballKn = (r[11]||'').toString().trim(); // col L = Football Knowledge
+        // Accepted = col L (Football Knowledge) has a value
+        // Rejected = col L is empty or #N/A
+        const hasFootballKn = footballKn !== '' && footballKn !== '#N/A' && footballKn !== '-';
+        const status = hasFootballKn ? 'accepted' : 'rejected';
         const effectiveRaw = status==='accepted' ? 'Accepted' : (rawStatus||'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
