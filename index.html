@@ -1687,6 +1687,19 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
+    // PER-BATCH ACCEPTED DEBUG
+    const _perBatch = {};
+    allRows.forEach(({row:r})=>{
+      const batch = (r[17]||'EMPTY').trim();
+      const status = (r[10]||'').trim().toLowerCase();
+      const isAcc = status.startsWith('accept');
+      if(!_perBatch[batch]) _perBatch[batch] = {total:0, acc:0, statuses:{}};
+      _perBatch[batch].total++;
+      if(isAcc) _perBatch[batch].acc++;
+      _perBatch[batch].statuses[r[10]||'EMPTY'] = (_perBatch[batch].statuses[r[10]||'EMPTY']||0)+1;
+    });
+    console.log('PER BATCH:', JSON.stringify(_perBatch, null, 2));
+
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
