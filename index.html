@@ -1689,21 +1689,30 @@ async function loadData(){
 
     A.cands = allRows
       .filter(({row:r})=>{
-        if(!r[1]||!r[1].trim()) return false; // must have Name
-        if(!r[0]||!r[0].trim()) return false; // must have ID
+        // Must have valid ID (col A)
+        if(!r[0]||!r[0].trim()) return false;
         const id = r[0].trim();
-        if(isNaN(id.replace(/\D/g,''))) return false; // ID must contain numbers
-        if(!r[17]||!r[17].trim()) return false; // must have Batch
-        const batchVal = r[17].trim();
-        if(batchVal.toLowerCase()==='batch' || id.toLowerCase()==='id') return false; // skip header rows
+        // Skip header rows
+        if(id.toLowerCase()==='id') return false;
+        // ID must be numeric
+        if(!/\d/.test(id)) return false;
+        // Must have Name (col B)
+        if(!r[1]||!r[1].trim()) return false;
+        // Must have Batch (col R = index 17)
+        if(!r[17]||!r[17].trim()) return false;
+        if(r[17].trim().toLowerCase()==='batch') return false;
         return true;
-      }) // filter valid data rows
+      })
       .map(({row:r, tab},i)=>{
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
-        const status=rawStatus.toLowerCase().startsWith('accepted')?'accepted':'rejected';
+        const footballKnVal = r[11]||'';
+        // Auto-reject if: K is empty OR Football Knowledge (L) is empty
+        const status = (rawStatus.toLowerCase().startsWith('accepted') && footballKnVal.toString().trim()!=='')
+          ? 'accepted' : 'rejected';
+        const effectiveRaw = rawStatus||'Rejected';
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
@@ -1722,7 +1731,7 @@ async function loadData(){
           ptsAvg:pct(r[12]),            // M = Points AVG
           tspdAvg:num(r[13]),           // N = Typing Speed AVG
           rank:(r[14]||'').trim(),      // P = Rank (index 15)
-          raw:rawStatus, status, batch,
+          raw:effectiveRaw, status, batch,
           sourceTab: GSHEETS.tabPrefix+' '+tab
         };
       });
