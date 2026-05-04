@@ -1378,8 +1378,8 @@ const GSHEETS={
   tabPrefix:'Interview Score',
   // Returns URL for a specific tab number
   tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n+'!A2:T')+'?key='+this.apiKey; },
-  // Returns metadata URL to detect all tabs
-  metaUrl(){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'?key='+this.apiKey; }
+  // Sequential tab detection - no metadata API needed
+  maxTabs: 20
 };
 
 // ============================================================
@@ -1634,23 +1634,21 @@ async function loadData(){
   function num(v){if(!v)return 0;return parseFloat(v)||0;}
 
   try{
-    // Step 1: Auto-detect all "Interview Score N" tabs via metadata
+    // Step 1: Auto-detect tabs by probing sequentially (no metadata API needed)
+    // Try Interview Score 1, 2, 3... until we get an empty response
     let tabNumbers = [];
-    try{
-      const metaRes = await fetch(GSHEETS.metaUrl());
-      if(metaRes.ok){
-        const meta = await metaRes.json();
-        const tabs = (meta.sheets||[]).map(s=>s.properties.title);
-        tabNumbers = tabs
-          .filter(t=>t.startsWith(GSHEETS.tabPrefix))
-          .map(t=>t.replace(GSHEETS.tabPrefix,'').trim())
-          .map(n=>parseInt(n))
-          .filter(n=>!isNaN(n))
-          .sort((a,b)=>a-b);
-      }
-    }catch(e){}
-    // Fallback: try tabs 1-10 if metadata fails
-    if(!tabNumbers.length) tabNumbers=[1,2,3];
+    loadMsg.textContent='⏳ Detecting tabs...';
+    for(let n=1; n<=20; n++){
+      try{
+        const probeRes = await fetch(GSHEETS.tabUrl(n));
+        if(!probeRes.ok) break; // tab doesn't exist
+        const probeData = await probeRes.json();
+        const rows = probeData.values||[];
+        if(!rows.length) break; // empty tab = end of tabs
+        tabNumbers.push(n);
+      }catch(e){ break; }
+    }
+    if(!tabNumbers.length) tabNumbers=[1,2,3]; // safety fallback
 
     loadMsg.textContent=`⏳ Found ${tabNumbers.length} tab(s): ${tabNumbers.map(n=>GSHEETS.tabPrefix+' '+n).join(', ')}. Loading...`;
 
