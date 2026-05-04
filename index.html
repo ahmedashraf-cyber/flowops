@@ -1678,7 +1678,16 @@ async function loadData(){
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
 
     A.cands = allRows
-      .filter(({row:r})=>r[1]&&r[1].trim()) // must have Name (col B)
+      .filter(({row:r})=>{
+        if(!r[1]||!r[1].trim()) return false; // must have Name
+        if(!r[0]||!r[0].trim()) return false; // must have ID
+        const id = r[0].trim();
+        if(isNaN(id.replace(/\D/g,''))) return false; // ID must contain numbers
+        if(!r[17]||!r[17].trim()) return false; // must have Batch
+        const batchVal = r[17].trim();
+        if(batchVal.toLowerCase()==='batch' || id.toLowerCase()==='id') return false; // skip header rows
+        return true;
+      }) // filter valid data rows
       .map(({row:r, tab},i)=>{
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
