@@ -1687,6 +1687,11 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
+    // QUICK DEBUG
+    console.table(allRows.slice(0,10).map(({row:r})=>({
+      ID:r[0], Name:r[1], K_Status:r[10], L_FootballKn:r[11], R_Batch:r[17]
+    })));
+
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
