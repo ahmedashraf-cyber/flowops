@@ -1650,6 +1650,7 @@ async function loadData(){
     }
     if(!tabNumbers.length) tabNumbers=[1,2,3]; // safety fallback
 
+    console.log('tabNumbers found:',tabNumbers,'urls:',tabNumbers.map(n=>GSHEETS.tabUrl(n)));
     loadMsg.textContent=`⏳ Found ${tabNumbers.length} tab(s): ${tabNumbers.map(n=>GSHEETS.tabPrefix+' '+n).join(', ')}. Loading...`;
 
     // Step 2: Fetch all tabs in parallel
@@ -1686,6 +1687,7 @@ async function loadData(){
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
         const status=rawStatus.toLowerCase().startsWith('accepted')?'accepted':'rejected';
         const batch=batchVal(r[19]); // col T = index 19 = Batch
+        if(allRows.indexOf({row:r,tab})===0) console.log('ROW0 batch r[19]=',r[19],'r[17]=',r[17],'r[18]=',r[18],'r[16]=',r[16],'len=',r.length);
         return{
           id:i+1,
           nameEn, nameAr,
