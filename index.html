@@ -19,7 +19,7 @@
   <meta name="apple-mobile-web-app-title" content="FIELD"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="theme-color" content="#111111"/>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230E0E1A'/%3E%3Crect x='15' y='13' width='5' height='38' rx='2.5' fill='%23FF7A2F'/%3E%3Crect x='15' y='13' width='26' height='5' rx='2.5' fill='%23FF7A2F'/%3E%3Crect x='15' y='30' width='19' height='5' rx='2.5' fill='%23E8590C' opacity='.6'/%3E%3Ccircle cx='46' cy='46' r='7' fill='%23E8590C'/%3E%3C/svg%3E"/>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230A0A0A'/%3E%3Crect x='12' y='18' width='40' height='28' rx='1.5' fill='none' stroke='rgba(242,242,242,0.9)' stroke-width='2.5'/%3E%3Cline x1='32' y1='18' x2='32' y2='46' stroke='rgba(242,242,242,0.9)' stroke-width='1.8' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='4.5' fill='%23E8590C'/%3E%3Ccircle cx='32' cy='32' r='1.8' fill='%230A0A0A'/%3E%3C/svg%3E"/>
 <title>FIELD — Training Operations Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -939,7 +939,7 @@ select option {
     </div>
     <div class="auth-center">
       <div class="auth-card">
-        <div class="auth-logo" id="su_icon"></div>
+        <div class="auth-logo" style="flex-direction:column;align-items:center;gap:14px"><div id="su_icon"></div><div style="text-align:center"><div style="font-family:Inter,-apple-system,sans-serif;font-size:24px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</div><div style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:500;letter-spacing:4px;color:#E8590C;opacity:.85;margin-top:3px">TRAINING OPERATIONS</div></div></div>
         <div class="auth-title">Create your account</div>
         <div class="auth-sub">Join FIELD — @hudl.com email required</div>
         <div class="input-row">
@@ -991,7 +991,7 @@ select option {
     </div>
     <div class="auth-center">
       <div class="auth-card">
-        <div class="auth-logo" id="si_icon"></div>
+        <div class="auth-logo" style="flex-direction:column;align-items:center;gap:14px"><div id="si_icon"></div><div style="text-align:center"><div style="font-family:Inter,-apple-system,sans-serif;font-size:24px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</div><div style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:500;letter-spacing:4px;color:#E8590C;opacity:.85;margin-top:3px">TRAINING OPERATIONS</div></div></div>
         <div class="auth-title">Welcome back</div>
         <div class="auth-sub">Sign in to FIELD</div>
         <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email"/></div>
@@ -5235,5 +5235,7 @@ function syncNxLabel(selectId, value){
   </div>
 </div>
 
+<template id="logoSVG"><svg width="148" height="40" viewBox="0 0 240 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFAA6A"/><stop offset="55%" stop-color="#E8590C"/><stop offset="100%" stop-color="#C04000"/></linearGradient><filter id="lg1glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect x="0" y="2" width="44" height="44" rx="9" fill="#111"/><rect x=".5" y="2.5" width="43" height="43" rx="8.5" fill="none" stroke="rgba(232,89,12,0.28)" stroke-width=".8"/><rect x="8" y="13" width="28" height="20" rx="1.2" fill="none" stroke="rgba(242,242,242,0.9)" stroke-width="1.8"/><line x1="22" y1="13" x2="22" y2="33" stroke="rgba(242,242,242,0.9)" stroke-width="1.2" stroke-linecap="round"/><path d="M17,23 A5,5 0 0 1 27,23" stroke="rgba(242,242,242,0.9)" stroke-width="1.2" fill="none" stroke-linecap="round"/><circle cx="22" cy="23" r="2.8" fill="url(#lg1)" filter="url(#lg1glow)"/><circle cx="22" cy="23" r="1.1" fill="#111"/><text x="54" y="31" font-family="Inter,-apple-system,sans-serif" font-size="22" font-weight="600" letter-spacing="3" fill="var(--t-1,#F5F5F7)">FIELD</text><line x1="54" y1="36" x2="198" y2="36" stroke="rgba(232,89,12,0.25)" stroke-width="0.5"/><text x="55" y="45" font-family="Inter,-apple-system,sans-serif" font-size="7.5" font-weight="500" letter-spacing="3" fill="#E8590C" opacity=".85">TRAINING OPERATIONS</text></svg></template>
+<template id="iconSVG"><svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="ig1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFAA6A"/><stop offset="55%" stop-color="#E8590C"/><stop offset="100%" stop-color="#C04000"/></linearGradient><linearGradient id="igf" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="rgba(255,154,92,0.45)"/><stop offset="100%" stop-color="rgba(192,64,0,0.1)"/></linearGradient><filter id="ig1glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><rect width="64" height="64" rx="14" fill="#0A0A0A"/><rect x=".5" y=".5" width="63" height="63" rx="13.5" fill="none" stroke="rgba(232,89,12,0.2)" stroke-width="1"/><polygon points="32,6 58,21 58,51 32,66 6,51 6,21" fill="none" stroke="url(#igf)" stroke-width="1.4" stroke-linejoin="round"/><rect x="12" y="22" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2"/><line x1="32" y1="22" x2="32" y2="50" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" stroke-linecap="round"/><path d="M24,36 A8,8 0 0 1 40,36" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" fill="none" stroke-linecap="round"/><circle cx="32" cy="36" r="5" fill="url(#ig1)" filter="url(#ig1glow)"/><circle cx="32" cy="36" r="2" fill="#0A0A0A"/></svg></template>
 </body>
 </html>
