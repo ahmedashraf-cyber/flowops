@@ -1687,36 +1687,20 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
-    // ACCEPTED DEBUG - show exact char codes
-    const _acc = allRows.filter(({row:r})=>{
-      const v = (r[10]||'').trim();
-      return v.toLowerCase().includes('accept');
-    });
-    console.log('Rows with accept in K:', _acc.length);
-    if(_acc.length > 0){
-      const sample = _acc[0].row[10];
-      console.log('Sample accepted value:', JSON.stringify(sample));
-      console.log('Char codes:', [...sample].map(c=>c.charCodeAt(0)));
-      console.log('startsWith test:', sample.toLowerCase().startsWith('accepted'));
-    }
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
         if(!r[0]||!r[0].trim()) return false;
         const id = r[0].trim();
-        // Skip header rows
+        // Skip header rows (literal "id" text)
         if(id.toLowerCase()==='id') return false;
-        // ID must be numeric
+        // ID must contain digits
         if(!/\d/.test(id)) return false;
         // Must have Name (col B)
         if(!r[1]||!r[1].trim()) return false;
-        // Must have valid Batch (col R = index 17) — exclude empty batch rows
+        // Must have valid Batch (col R = index 17)
         const batchRaw = (r[17]||'').trim();
         if(!batchRaw || batchRaw.toLowerCase()==='batch') return false;
-        // Exclude #N/A and formula errors in any key column
-        const kVal = (r[10]||'').trim();
-        if(kVal==='#N/A'||kVal==='#REF!'||kVal==='#VALUE!'||kVal==='#ERROR!') return false;
         return true;
       })
       .map(({row:r, tab},i)=>{
@@ -1724,10 +1708,9 @@ async function loadData(){
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
-        // Status: accepted only if col K explicitly starts with 'Accepted'
-        // Everything else (empty, rejected variants, #N/A) = rejected
-        const status = rawStatus.toLowerCase().startsWith('accepted') ? 'accepted' : 'rejected';
-        const effectiveRaw = rawStatus||'Rejected';
+        // Accepted if K starts with 'accept' (handles trailing spaces, variants)
+        const status = rawStatus.toLowerCase().startsWith('accept') ? 'accepted' : 'rejected';
+        const effectiveRaw = status==='accepted' ? 'Accepted' : (rawStatus||'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
