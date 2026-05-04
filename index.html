@@ -1377,7 +1377,7 @@ const GSHEETS={
   sheetId:'190Zih7R1HswY2yVxl4WanfH-QhGlt4X8bOBteFrNtiY',
   tabPrefix:'Interview Score',
   // Returns URL for a specific tab number
-  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n+'!A2:T')+'?key='+this.apiKey; },
+  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n)+'!A2:T?key='+this.apiKey; },
   // Sequential tab detection - no metadata API needed
   maxTabs: 20
 };
@@ -1676,13 +1676,6 @@ async function loadData(){
     // G=TypingSpeed, H=TypingAccuracy, I=Notes, J=Points%,
     // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
-
-    // DEBUG: show column mapping
-    console.log('=== COLUMN DEBUG ===');
-    allRows.slice(0,3).forEach(({row:r,tab})=>{
-      console.log('Tab:',tab,'Len:',r.length);
-      r.forEach((v,i)=>{ if(v) console.log('  ['+i+']',v); });
-    });
 
     A.cands = allRows
       .filter(({row:r})=>r[1]&&r[1].trim()) // must have Name (col B)
