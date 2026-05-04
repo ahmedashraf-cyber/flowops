@@ -813,196 +813,114 @@ select option {
 }
 [data-theme="light"] .nx-opt:hover{background:var(--bg-2)}
 
+
+/* ── FIELD Background visibility fix ── */
+#fieldBg{ z-index:0 !important; }
+.app-shell{ background:transparent !important; }
+.screen{ position:relative; z-index:1; background:transparent; }
+.auth-wrap{ position:relative; z-index:1; }
+.sidebar{ z-index:2; position:relative; }
+.topbar{ z-index:200; }
+.main-content,.content{ position:relative; z-index:1; }
+
 </style>
 </head>
 <body>
 <!-- FIELD Background Icons Layer -->
-<div id="fieldBg" style="position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;opacity:1">
+<div id="fieldBg" style="position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden">
 <svg width="100%" height="100%" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <style>
-      .bg-shape { fill: none; stroke: rgba(232,89,12,0.07); stroke-width: 1; }
-      .bg-shape-fill { fill: rgba(232,89,12,0.04); stroke: rgba(232,89,12,0.06); stroke-width: 0.8; }
-      [data-theme="light"] .bg-shape { stroke: rgba(232,89,12,0.09); }
-      [data-theme="light"] .bg-shape-fill { fill: rgba(232,89,12,0.05); }
-    
-/* ── FIELD Background Layer ── */
-#fieldBg{
-  transition: opacity .4s;
-}
-[data-theme="light"] #fieldBg{
-  opacity: 0.7;
-}
-/* Ensure all content sits above background */
-.screen{position:relative;z-index:1}
-.app-shell{position:relative;z-index:1}
-.auth-wrap{position:relative;z-index:1}
-
-</style>
-  </defs>
-
-  <!-- Football pitch outline — top right, large, faded -->
-  <g transform="translate(980, -60) rotate(15)" opacity="0.6">
-    <!-- Outer pitch -->
-    <rect x="0" y="0" width="320" height="210" rx="4" class="bg-shape" stroke-width="1.2"/>
-    <!-- Center line -->
-    <line x1="160" y1="0" x2="160" y2="210" class="bg-shape"/>
-    <!-- Center circle -->
-    <circle cx="160" cy="105" r="32" class="bg-shape"/>
-    <circle cx="160" cy="105" r="2" class="bg-shape-fill"/>
-    <!-- Left penalty box -->
-    <rect x="0" y="58" width="54" height="94" class="bg-shape"/>
-    <!-- Left goal box -->
-    <rect x="0" y="80" width="20" height="50" class="bg-shape"/>
-    <!-- Right penalty box -->
-    <rect x="266" y="58" width="54" height="94" class="bg-shape"/>
-    <!-- Right goal box -->
-    <rect x="300" y="80" width="20" height="50" class="bg-shape"/>
-    <!-- Corner arcs -->
-    <path d="M0,0 A12,12 0 0,1 12,12" class="bg-shape" fill="none"/>
-    <path d="M320,0 A12,12 0 0,0 308,12" class="bg-shape" fill="none"/>
-    <path d="M0,210 A12,12 0 0,0 12,198" class="bg-shape" fill="none"/>
-    <path d="M320,210 A12,12 0 0,1 308,198" class="bg-shape" fill="none"/>
+  <!-- Football pitch outline top right -->
+  <g transform="translate(980,-60) rotate(15)" opacity="1">
+    <rect x="0" y="0" width="320" height="210" rx="4" fill="none" stroke="rgba(232,89,12,0.2)" stroke-width="1.5"/>
+    <line x1="160" y1="0" x2="160" y2="210" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <circle cx="160" cy="105" r="32" fill="none" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <circle cx="160" cy="105" r="2.5" fill="rgba(232,89,12,0.2)"/>
+    <rect x="0" y="58" width="54" height="94" fill="none" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <rect x="0" y="80" width="20" height="50" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <rect x="266" y="58" width="54" height="94" fill="none" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <rect x="300" y="80" width="20" height="50" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <path d="M0,0 A12,12 0 0,1 12,12" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <path d="M320,0 A12,12 0 0,0 308,12" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <path d="M0,210 A12,12 0 0,0 12,198" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <path d="M320,210 A12,12 0 0,1 308,198" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
   </g>
-
-  <!-- Football ball — bottom left, geometric hexagon pattern -->
-  <g transform="translate(60, 580)" opacity="0.5">
-    <circle cx="70" cy="70" r="65" class="bg-shape" stroke-width="1"/>
-    <!-- Pentagon/hexagon pattern on ball -->
-    <polygon points="70,20 95,38 95,68 70,82 45,68 45,38" class="bg-shape-fill"/>
-    <polygon points="70,82 95,68 115,78 118,108 95,120 70,118" class="bg-shape"/>
-    <polygon points="70,82 45,68 25,78 22,108 45,120 70,118" class="bg-shape"/>
-    <polygon points="95,38 115,28 130,48 120,72 95,68" class="bg-shape"/>
-    <polygon points="45,38 25,28 10,48 20,72 45,68" class="bg-shape"/>
-    <polygon points="70,20 95,38 115,28 110,4 80,0 50,0 30,4 25,28 45,38" class="bg-shape"/>
+  <!-- Football ball bottom left -->
+  <g transform="translate(50,580)">
+    <circle cx="70" cy="70" r="65" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <polygon points="70,20 95,38 95,68 70,82 45,68 45,38" fill="rgba(232,89,12,0.06)" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
+    <polygon points="70,82 95,68 115,78 118,108 95,120 70,118" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <polygon points="70,82 45,68 25,78 22,108 45,120 70,118" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <polygon points="95,38 115,28 130,48 120,72 95,68" fill="rgba(232,89,12,0.05)" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <polygon points="45,38 25,28 10,48 20,72 45,68" fill="rgba(232,89,12,0.05)" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
   </g>
-
-  <!-- Tactical arrows — training concept, top left area -->
-  <g transform="translate(40, 80)" opacity="0.45">
-    <!-- Player positions as dots -->
-    <circle cx="40" cy="160" r="8" class="bg-shape-fill"/>
-    <circle cx="120" cy="80" r="8" class="bg-shape-fill"/>
-    <circle cx="200" cy="140" r="8" class="bg-shape-fill"/>
-    <circle cx="160" cy="220" r="8" class="bg-shape-fill"/>
-    <circle cx="80" cy="240" r="8" class="bg-shape-fill"/>
-    <!-- Movement arrows -->
-    <path d="M48,154 Q80,100 112,88" fill="none" class="bg-shape" stroke-dasharray="6,4" stroke-width="1.2"/>
-    <path d="M128,86 Q165,90 192,134" fill="none" class="bg-shape" stroke-dasharray="6,4" stroke-width="1.2"/>
-    <path d="M196,148 Q182,185 168,212" fill="none" class="bg-shape" stroke-dasharray="6,4" stroke-width="1.2"/>
-    <!-- Arrow heads -->
-    <polygon points="112,82 118,95 104,91" class="bg-shape-fill"/>
-    <polygon points="193,139 180,142 185,130" class="bg-shape-fill"/>
-    <polygon points="163,216 155,205 169,204" class="bg-shape-fill"/>
+  <!-- Tactical arrows top left -->
+  <g transform="translate(30,60)">
+    <circle cx="40" cy="160" r="9" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <circle cx="120" cy="80" r="9" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <circle cx="200" cy="140" r="9" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <circle cx="160" cy="230" r="9" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <circle cx="75" cy="250" r="9" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <path d="M49,154 Q82,102 111,88" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2" stroke-dasharray="6,4"/>
+    <path d="M129,86 Q166,92 191,134" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2" stroke-dasharray="6,4"/>
+    <path d="M197,149 Q183,188 169,222" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2" stroke-dasharray="6,4"/>
+    <polygon points="112,82 119,96 104,92" fill="rgba(232,89,12,0.25)"/>
+    <polygon points="193,140 180,143 185,131" fill="rgba(232,89,12,0.25)"/>
+    <polygon points="164,218 156,206 170,205" fill="rgba(232,89,12,0.25)"/>
   </g>
-
-  <!-- Clipboard / training board — middle right -->
-  <g transform="translate(1260, 300)" opacity="0.4">
-    <rect x="0" y="0" width="100" height="130" rx="6" class="bg-shape" stroke-width="1"/>
-    <!-- Clipboard top clip -->
-    <rect x="30" y="-8" width="40" height="18" rx="4" class="bg-shape-fill"/>
-    <!-- Lines representing notes -->
-    <line x1="14" y1="28" x2="86" y2="28" class="bg-shape"/>
-    <line x1="14" y1="44" x2="86" y2="44" class="bg-shape"/>
-    <line x1="14" y1="60" x2="70" y2="60" class="bg-shape"/>
-    <line x1="14" y1="76" x2="80" y2="76" class="bg-shape"/>
-    <line x1="14" y1="92" x2="60" y2="92" class="bg-shape"/>
-    <!-- Small pitch diagram on clipboard -->
-    <rect x="14" y="102" width="72" height="18" rx="2" class="bg-shape-fill" opacity="0.5"/>
+  <!-- Clipboard middle right -->
+  <g transform="translate(1270,280)">
+    <rect x="0" y="0" width="100" height="130" rx="6" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <rect x="30" y="-8" width="40" height="18" rx="4" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <line x1="14" y1="28" x2="86" y2="28" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <line x1="14" y1="44" x2="86" y2="44" stroke="rgba(232,89,12,0.15)" stroke-width="1"/>
+    <line x1="14" y1="60" x2="70" y2="60" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <line x1="14" y1="76" x2="80" y2="76" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
+    <line x1="14" y1="92" x2="60" y2="92" stroke="rgba(232,89,12,0.10)" stroke-width="1"/>
+    <rect x="14" y="104" width="72" height="16" rx="2" fill="rgba(232,89,12,0.07)" stroke="rgba(232,89,12,0.14)" stroke-width="0.8"/>
   </g>
-
-  <!-- Stopwatch / timer — center right -->
-  <g transform="translate(1340, 120)" opacity="0.35">
-    <circle cx="50" cy="58" r="46" class="bg-shape" stroke-width="1.2"/>
-    <!-- Crown -->
-    <rect x="38" y="8" width="24" height="8" rx="2" class="bg-shape-fill"/>
-    <rect x="46" y="4" width="8" height="10" rx="2" class="bg-shape-fill"/>
-    <!-- Button on top -->
-    <circle cx="50" cy="4" r="3" class="bg-shape-fill"/>
-    <!-- Clock hands -->
-    <line x1="50" y1="58" x2="50" y2="28" class="bg-shape" stroke-width="1.5"/>
-    <line x1="50" y1="58" x2="68" y2="68" class="bg-shape" stroke-width="1.5"/>
-    <!-- Tick marks -->
-    <line x1="50" y1="16" x2="50" y2="22" class="bg-shape"/>
-    <line x1="50" y1="94" x2="50" y2="100" class="bg-shape"/>
-    <line x1="8" y1="58" x2="14" y2="58" class="bg-shape"/>
-    <line x1="86" y1="58" x2="92" y2="58" class="bg-shape"/>
+  <!-- Stopwatch top right -->
+  <g transform="translate(1350,100)">
+    <circle cx="50" cy="60" r="46" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <rect x="38" y="10" width="24" height="8" rx="2" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <circle cx="50" cy="6" r="3.5" fill="rgba(232,89,12,0.15)" stroke="rgba(232,89,12,0.2)" stroke-width="0.8"/>
+    <line x1="50" y1="60" x2="50" y2="28" stroke="rgba(232,89,12,0.22)" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="50" y1="60" x2="68" y2="70" stroke="rgba(232,89,12,0.22)" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="50" y1="18" x2="50" y2="24" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <line x1="50" y1="96" x2="50" y2="102" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <line x1="8" y1="60" x2="14" y2="60" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <line x1="86" y1="60" x2="92" y2="60" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
   </g>
-
-  <!-- Bar chart / analytics — bottom right -->
-  <g transform="translate(1100, 700)" opacity="0.4">
-    <line x1="0" y1="120" x2="200" y2="120" class="bg-shape" stroke-width="1"/>
-    <line x1="0" y1="0" x2="0" y2="120" class="bg-shape" stroke-width="1"/>
-    <!-- Bars -->
-    <rect x="10" y="70" width="24" height="50" rx="3" class="bg-shape-fill"/>
-    <rect x="44" y="45" width="24" height="75" rx="3" class="bg-shape-fill"/>
-    <rect x="78" y="30" width="24" height="90" rx="3" class="bg-shape-fill"/>
-    <rect x="112" y="55" width="24" height="65" rx="3" class="bg-shape-fill"/>
-    <rect x="146" y="20" width="24" height="100" rx="3" class="bg-shape-fill"/>
-    <!-- Trend line -->
-    <path d="M22,70 L56,45 L90,30 L124,55 L158,20" fill="none" class="bg-shape" stroke-dasharray="4,3"/>
+  <!-- Analytics bars bottom right -->
+  <g transform="translate(1080,700)">
+    <line x1="0" y1="120" x2="200" y2="120" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <line x1="0" y1="0" x2="0" y2="120" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <rect x="10" y="70" width="24" height="50" rx="3" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <rect x="44" y="45" width="24" height="75" rx="3" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <rect x="78" y="28" width="24" height="92" rx="3" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <rect x="112" y="52" width="24" height="68" rx="3" fill="rgba(232,89,12,0.08)" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
+    <rect x="146" y="18" width="24" height="102" rx="3" fill="rgba(232,89,12,0.12)" stroke="rgba(232,89,12,0.2)" stroke-width="1"/>
+    <path d="M22,70 L56,45 L90,28 L124,52 L158,18" fill="none" stroke="rgba(232,89,12,0.22)" stroke-width="1.2" stroke-dasharray="4,3"/>
   </g>
-
-  <!-- Small football — bottom center -->
-  <g transform="translate(680, 780)" opacity="0.3">
-    <circle cx="40" cy="40" r="36" class="bg-shape" stroke-width="0.8"/>
-    <polygon points="40,12 55,22 55,38 40,46 25,38 25,22" class="bg-shape-fill" opacity="0.6"/>
+  <!-- Training jersey far left -->
+  <g transform="translate(0,340)">
+    <path d="M60,10 L40,30 L10,20 L0,60 L30,65 L30,120 L90,120 L90,65 L120,60 L110,20 L80,30 Z" fill="rgba(232,89,12,0.05)" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <rect x="48" y="72" width="24" height="28" rx="2" fill="rgba(232,89,12,0.08)" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
   </g>
-
-  <!-- Training jersey outline — far left middle -->
-  <g transform="translate(-20, 350)" opacity="0.35">
-    <!-- Jersey shape -->
-    <path d="M60,10 L40,30 L10,20 L0,60 L30,65 L30,120 L90,120 L90,65 L120,60 L110,20 L80,30 Z" 
-          class="bg-shape-fill" stroke-width="1"/>
-    <!-- Number on jersey -->
-    <rect x="48" y="72" width="24" height="28" rx="2" class="bg-shape" opacity="0.4"/>
+  <!-- Whistle top center -->
+  <g transform="translate(590,10)">
+    <circle cx="30" cy="32" r="22" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <rect x="50" y="26" width="52" height="12" rx="6" fill="rgba(232,89,12,0.08)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <rect x="98" y="22" width="8" height="20" rx="4" fill="rgba(232,89,12,0.1)" stroke="rgba(232,89,12,0.18)" stroke-width="1"/>
+    <circle cx="30" cy="32" r="10" fill="rgba(232,89,12,0.07)" stroke="rgba(232,89,12,0.15)" stroke-width="0.8"/>
   </g>
-
-  <!-- Whistle — top center -->
-  <g transform="translate(600, 20)" opacity="0.3">
-    <circle cx="30" cy="30" r="22" class="bg-shape"/>
-    <rect x="50" y="24" width="50" height="12" rx="6" class="bg-shape-fill"/>
-    <rect x="96" y="20" width="8" height="20" rx="4" class="bg-shape-fill"/>
-    <circle cx="30" cy="30" r="10" class="bg-shape-fill" opacity="0.5"/>
+  <!-- Small ball bottom center -->
+  <g transform="translate(680,800)">
+    <circle cx="35" cy="35" r="32" fill="none" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
+    <polygon points="35,10 50,20 50,36 35,44 20,36 20,20" fill="rgba(232,89,12,0.08)" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
   </g>
-
 </svg>
 </div>
 
-
-<!-- FLOWOPS LOGO SVG COMPONENT -->
-<template id="logoSVG">
-<div style="display:flex;align-items:center;gap:10px">
-  <svg width="28" height="28" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
-    <defs><linearGradient id="nlg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
-    <rect width="56" height="56" rx="13" fill="#111"/>
-    <rect x=".5" y=".5" width="55" height="55" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".5"/>
-    <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#nlg)"/>
-    <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#nlg)"/>
-    <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#nlg)" stroke-width="4.5" stroke-linecap="round"/>
-    <circle cx="36" cy="38" r="5.5" fill="url(#nlg)"/>
-  </svg>
-  <div style="display:flex;flex-direction:column;line-height:1">
-    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:1.5px;color:inherit">FIELD</span>
-  </div>
-</div>
-</template>
-
-<!-- ICON SVG -->
-<template id="iconSVG">
-<div style="display:flex;flex-direction:column;align-items:center;gap:8px">
-  <svg width="56" height="56" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="nig" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FF9350"/><stop offset="100%" stop-color="#E8590C"/></linearGradient></defs>
-    <rect width="56" height="56" rx="14" fill="#111"/>
-    <rect x=".5" y=".5" width="55" height="55" rx="13.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".5"/>
-    <rect x="12" y="10" width="4.5" height="32" rx="2.25" fill="url(#nig)"/>
-    <rect x="24" y="10" width="4.5" height="32" rx="2.25" fill="url(#nig)"/>
-    <line x1="14.25" y1="12" x2="26.25" y2="40" stroke="url(#nig)" stroke-width="4.5" stroke-linecap="round"/>
-    <circle cx="36" cy="38" r="5.5" fill="url(#nig)"/>
-  </svg>
-</div>
-</template>
-
-<!-- ===== SIGN UP ===== -->
 <div id="signupScreen" class="screen active">
   <div class="auth-wrap">
     <div class="auth-bar">
