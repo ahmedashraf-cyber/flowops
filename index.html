@@ -1677,6 +1677,16 @@ async function loadData(){
     // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
 
+    // BATCH + STATUS DEBUG
+    const _bs={}, _ss={};
+    allRows.forEach(({row:r,tab})=>{
+      const b=String(r[17]||'EMPTY'); _bs[b]=(_bs[b]||0)+1;
+      const s=String(r[10]||'EMPTY'); _ss[s]=(_ss[s]||0)+1;
+    });
+    console.log('BATCHES:',JSON.stringify(_bs));
+    console.log('STATUSES:',JSON.stringify(_ss));
+    console.log('TOTAL_ROWS:',allRows.length);
+
     A.cands = allRows
       .filter(({row:r})=>{
         if(!r[1]||!r[1].trim()) return false; // must have Name
