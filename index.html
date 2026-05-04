@@ -1377,7 +1377,7 @@ const GSHEETS={
   sheetId:'190Zih7R1HswY2yVxl4WanfH-QhGlt4X8bOBteFrNtiY',
   tabPrefix:'Interview Score',
   // Returns URL for a specific tab number
-  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n)+'!A2:T?key='+this.apiKey; },
+  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n)+'!A2:R?key='+this.apiKey; },
   // Sequential tab detection - no metadata API needed
   maxTabs: 20
 };
@@ -1650,7 +1650,6 @@ async function loadData(){
     }
     if(!tabNumbers.length) tabNumbers=[1,2,3]; // safety fallback
 
-    console.log('tabNumbers found:',tabNumbers,'urls:',tabNumbers.map(n=>GSHEETS.tabUrl(n)));
     loadMsg.textContent=`⏳ Found ${tabNumbers.length} tab(s): ${tabNumbers.map(n=>GSHEETS.tabPrefix+' '+n).join(', ')}. Loading...`;
 
     // Step 2: Fetch all tabs in parallel
@@ -1686,25 +1685,24 @@ async function loadData(){
         const nameAr=isAr(name)?name:'';
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
         const status=rawStatus.toLowerCase().startsWith('accepted')?'accepted':'rejected';
-        const batch=batchVal(r[19]); // col T = index 19 = Batch
-        if(allRows.indexOf({row:r,tab})===0) console.log('ROW0 batch r[19]=',r[19],'r[17]=',r[17],'r[18]=',r[18],'r[16]=',r[16],'len=',r.length);
+        const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
           nameEn, nameAr,
           nid:(r[0]||'').trim(),        // A = ID
-          itvr:'',                       // no interviewer col
-          form:pct(r[2]),               // C = Form%
-          iv:pct(r[3]),                 // D = Interview%
+          itvr:'',
+          form:pct(r[2]),               // C = Form Test%
+          iv:pct(r[3]),                 // D = Interview Score%
           kn:pct(r[4]),                 // E = Knowledge%
           tac:pct(r[5]),                // F = Tactics%
-          tspd:num(r[6]),               // G = Typing Speed (wpm)
+          tspd:num(r[6]),               // G = Typing Speed
           tacc:pct(r[7]),               // H = Typing Accuracy%
-          notes:(r[17]||'').trim(),     // R = Notes (index 17)
+          notes:(r[8]||'').trim(),      // I = Notes
           pts:pct(r[9])||0,             // J = Points%
-          footballKn:null,              // not present in sheet
-          ptsAvg:pct(r[13]),            // N = Points AVG (index 13)
-          tspdAvg:num(r[14]),           // O = Typing Speed AVG (index 14)
-          rank:(r[15]||'').trim(),      // P = Rank (index 15)
+          footballKn:pct(r[11]),        // L = Football Knowledge
+          ptsAvg:pct(r[12]),            // M = Points AVG
+          tspdAvg:num(r[13]),           // N = Typing Speed AVG
+          rank:(r[14]||'').trim(),      // P = Rank (index 15)
           raw:rawStatus, status, batch,
           sourceTab: GSHEETS.tabPrefix+' '+tab
         };
