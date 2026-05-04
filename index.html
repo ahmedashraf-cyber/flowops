@@ -932,14 +932,70 @@ select option {
 <div id="signupScreen" class="screen active">
   <div class="auth-wrap">
     <div class="auth-bar">
-      <div class="topbar-brand"><div id="su_logo"></div></div>
+      <div class="topbar-brand"><div style="display:flex;align-items:center;gap:10px">
+  <svg width="36" height="36" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="tlg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <filter id="tglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="13" fill="#111"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".8"/>
+    <rect x="12" y="18" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/>
+    <line x1="32" y1="18" x2="32" y2="46" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24,32 A8,8 0 0 1 40,32" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="4.5" fill="url(#tlg)" filter="url(#tglow)"/>
+    <circle cx="32" cy="32" r="1.8" fill="#111"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN / عر</button>
       </div>
     </div>
     <div class="auth-center">
       <div class="auth-card">
-        <div class="auth-logo" style="flex-direction:column;align-items:center;gap:14px"><div id="su_icon"></div><div style="text-align:center"><div style="font-family:Inter,-apple-system,sans-serif;font-size:24px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</div><div style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:500;letter-spacing:4px;color:#E8590C;opacity:.85;margin-top:3px">TRAINING OPERATIONS</div></div></div>
+        <div class="auth-logo" style="flex-direction:row;align-items:center;justify-content:center;gap:14px">
+  <svg width="56" height="56" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="alg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <linearGradient id="alf" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="rgba(255,154,92,0.45)"/>
+        <stop offset="100%" stop-color="rgba(192,64,0,0.1)"/>
+      </linearGradient>
+      <filter id="aglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="14" fill="#0A0A0A"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="13.5" fill="none" stroke="rgba(232,89,12,0.22)" stroke-width="1"/>
+    <polygon points="32,5 59,20.5 59,51.5 32,67 5,51.5 5,20.5" fill="none" stroke="url(#alf)" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="12" y="20" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2"/>
+    <line x1="32" y1="20" x2="32" y2="48" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M24,34 A8,8 0 0 1 40,34" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="34" r="5" fill="url(#alg)" filter="url(#aglow)"/>
+    <circle cx="32" cy="34" r="2" fill="#0A0A0A"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:28px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:600;letter-spacing:3.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div>
+        
         <div class="auth-title">Create your account</div>
         <div class="auth-sub">Join FIELD — @hudl.com email required</div>
         <div class="input-row">
@@ -984,14 +1040,70 @@ select option {
 <div id="signinScreen" class="screen">
   <div class="auth-wrap">
     <div class="auth-bar">
-      <div class="topbar-brand"><div id="si_logo"></div></div>
+      <div class="topbar-brand"><div style="display:flex;align-items:center;gap:10px">
+  <svg width="36" height="36" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="tlg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <filter id="tglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="13" fill="#111"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".8"/>
+    <rect x="12" y="18" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/>
+    <line x1="32" y1="18" x2="32" y2="46" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24,32 A8,8 0 0 1 40,32" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="4.5" fill="url(#tlg)" filter="url(#tglow)"/>
+    <circle cx="32" cy="32" r="1.8" fill="#111"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN / عر</button>
       </div>
     </div>
     <div class="auth-center">
       <div class="auth-card">
-        <div class="auth-logo" style="flex-direction:column;align-items:center;gap:14px"><div id="si_icon"></div><div style="text-align:center"><div style="font-family:Inter,-apple-system,sans-serif;font-size:24px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</div><div style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:500;letter-spacing:4px;color:#E8590C;opacity:.85;margin-top:3px">TRAINING OPERATIONS</div></div></div>
+        <div class="auth-logo" style="flex-direction:row;align-items:center;justify-content:center;gap:14px">
+  <svg width="56" height="56" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="alg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <linearGradient id="alf" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="rgba(255,154,92,0.45)"/>
+        <stop offset="100%" stop-color="rgba(192,64,0,0.1)"/>
+      </linearGradient>
+      <filter id="aglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="14" fill="#0A0A0A"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="13.5" fill="none" stroke="rgba(232,89,12,0.22)" stroke-width="1"/>
+    <polygon points="32,5 59,20.5 59,51.5 32,67 5,51.5 5,20.5" fill="none" stroke="url(#alf)" stroke-width="1.4" stroke-linejoin="round"/>
+    <rect x="12" y="20" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2"/>
+    <line x1="32" y1="20" x2="32" y2="48" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M24,34 A8,8 0 0 1 40,34" stroke="rgba(242,242,242,0.92)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="34" r="5" fill="url(#alg)" filter="url(#aglow)"/>
+    <circle cx="32" cy="34" r="2" fill="#0A0A0A"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:28px;font-weight:700;letter-spacing:5px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:600;letter-spacing:3.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div>
+        
         <div class="auth-title">Welcome back</div>
         <div class="auth-sub">Sign in to FIELD</div>
         <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email"/></div>
@@ -1019,7 +1131,32 @@ select option {
   <div class="app-shell">
     <!-- TOPBAR -->
     <div class="topbar">
-      <div class="topbar-brand"><div id="dash_logo"></div></div>
+      <div class="topbar-brand"><div style="display:flex;align-items:center;gap:10px">
+  <svg width="36" height="36" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="tlg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <filter id="tglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="13" fill="#111"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".8"/>
+    <rect x="12" y="18" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/>
+    <line x1="32" y1="18" x2="32" y2="46" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24,32 A8,8 0 0 1 40,32" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="4.5" fill="url(#tlg)" filter="url(#tglow)"/>
+    <circle cx="32" cy="32" r="1.8" fill="#111"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div></div>
       <div class="topbar-r">
         <span class="badge badge-orange" id="userPill">Coordinator</span>
         <button class="btn btn-ghost btn-sm" onclick="showTab('notifs')" style="position:relative">
@@ -4535,7 +4672,32 @@ function syncNxLabel(selectId, value){
 <div id="bsupScreen" class="screen">
   <div class="app-shell">
     <div class="topbar">
-      <div class="topbar-brand"><div id="bsup_logo"></div></div>
+      <div class="topbar-brand"><div style="display:flex;align-items:center;gap:10px">
+  <svg width="36" height="36" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <defs>
+      <linearGradient id="tlg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#FFAA6A"/>
+        <stop offset="55%" stop-color="#E8590C"/>
+        <stop offset="100%" stop-color="#C04000"/>
+      </linearGradient>
+      <filter id="tglow" x="-80%" y="-80%" width="260%" height="260%">
+        <feGaussianBlur stdDeviation="2.5" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect width="64" height="64" rx="13" fill="#111"/>
+    <rect x=".5" y=".5" width="63" height="63" rx="12.5" fill="none" stroke="rgba(232,89,12,0.3)" stroke-width=".8"/>
+    <rect x="12" y="18" width="40" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/>
+    <line x1="32" y1="18" x2="32" y2="46" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M24,32 A8,8 0 0 1 40,32" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="4.5" fill="url(#tlg)" filter="url(#tglow)"/>
+    <circle cx="32" cy="32" r="1.8" fill="#111"/>
+  </svg>
+  <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:3px;color:var(--t-1)">FIELD</span>
+    <span style="font-family:Inter,-apple-system,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span>
+  </div>
+</div></div>
       <div class="topbar-r">
         <span class="badge badge-orange" id="bsupPill">Batch Supervisor</span>
         <button class="btn btn-ghost btn-sm" onclick="showBsupTab('bsupNotifs')" style="position:relative">
