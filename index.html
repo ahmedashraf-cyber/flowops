@@ -1677,6 +1677,13 @@ async function loadData(){
     // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
 
+    // DEBUG: show column mapping
+    console.log('=== COLUMN DEBUG ===');
+    allRows.slice(0,3).forEach(({row:r,tab})=>{
+      console.log('Tab:',tab,'Len:',r.length);
+      r.forEach((v,i)=>{ if(v) console.log('  ['+i+']',v); });
+    });
+
     A.cands = allRows
       .filter(({row:r})=>r[1]&&r[1].trim()) // must have Name (col B)
       .map(({row:r, tab},i)=>{
