@@ -1687,6 +1687,19 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
+    // ACCEPTED DEBUG - show exact char codes
+    const _acc = allRows.filter(({row:r})=>{
+      const v = (r[10]||'').trim();
+      return v.toLowerCase().includes('accept');
+    });
+    console.log('Rows with accept in K:', _acc.length);
+    if(_acc.length > 0){
+      const sample = _acc[0].row[10];
+      console.log('Sample accepted value:', JSON.stringify(sample));
+      console.log('Char codes:', [...sample].map(c=>c.charCodeAt(0)));
+      console.log('startsWith test:', sample.toLowerCase().startsWith('accepted'));
+    }
+
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
