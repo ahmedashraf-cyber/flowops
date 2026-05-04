@@ -1374,8 +1374,12 @@ const EJS = {
 
 const GSHEETS={
   apiKey:'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI',
-  sheetId:'197awgRVfLpF5Dnq6AYYTcNWbedCx7r2C8j-X9cvVqmc',
-  get url(){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent('Interviews score!A2:S')+'?key='+this.apiKey; }
+  sheetId:'190Zih7R1HswY2yVxl4WanfH-QhGlt4X8bOBteFrNtiY',
+  tabPrefix:'Interview Score',
+  // Returns URL for a specific tab number
+  tabUrl(n){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'/values/'+encodeURIComponent(this.tabPrefix+' '+n+'!A2:R')+'?key='+this.apiKey; },
+  // Returns metadata URL to detect all tabs
+  metaUrl(){ return 'https://sheets.googleapis.com/v4/spreadsheets/'+this.sheetId+'?key='+this.apiKey; }
 };
 
 // ============================================================
@@ -1623,38 +1627,99 @@ async function loadData(){
   const loadedBlock=document.getElementById('loadedBlock');
   const loadedOk=document.getElementById('loadedOk');
   loadMsg.style.display='block';loadMsg.className='alert alert-info';
-  loadMsg.textContent='⏳ Fetching live data from Google Sheet...';
+  loadMsg.textContent='⏳ Detecting tabs and fetching live data...';
   loadedBlock.style.display='none';
+
+  function pct(v){if(!v||v==='#DIV/0!'||v==='-'||v==='')return null;return parseFloat((v+'').replace('%','').trim())||0;}
+  function num(v){if(!v)return 0;return parseFloat(v)||0;}
+
   try{
-    const res=await fetch(GSHEETS.url);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const json=await res.json();
-    const rows=json.values||[];
-    if(!rows.length){loadMsg.textContent='⚠️ No data found in sheet.';return;}
-    function pct(v){if(!v||v==='#DIV/0!'||v==='-')return null;return parseFloat(v.replace('%','').trim())||0;}
-    function num(v){if(!v)return 0;return parseFloat(v)||0;}
-    A.cands=rows.filter(r=>r[2]&&r[2].trim()).map((r,i)=>{
-      const name=(r[2]||'').trim();
-      const nameEn=isAr(name)?arToEn(name):fmt(name);
-      const nameAr=isAr(name)?name:'';
-      const raw=(r[12]||'').trim(); // Column M
-      const status=raw.toLowerCase().startsWith('accepted')?'accepted':'rejected';
-      const batch=batchVal(r[18]); // Column S
-      return{id:i+1,nameEn,nameAr,nid:(r[1]||'').trim(),itvr:(r[0]||'').trim(),
-        form:pct(r[3]),iv:pct(r[4]),kn:pct(r[5]),tac:pct(r[6]),
-        tspd:num(r[7]),tacc:pct(r[8]),notes:(r[9]||'').trim(),
-        pts:pct(r[10])||0,raw,status,rank:(r[15]||'').trim(),batch};
+    // Step 1: Auto-detect all "Interview Score N" tabs via metadata
+    let tabNumbers = [];
+    try{
+      const metaRes = await fetch(GSHEETS.metaUrl());
+      if(metaRes.ok){
+        const meta = await metaRes.json();
+        const tabs = (meta.sheets||[]).map(s=>s.properties.title);
+        tabNumbers = tabs
+          .filter(t=>t.startsWith(GSHEETS.tabPrefix))
+          .map(t=>t.replace(GSHEETS.tabPrefix,'').trim())
+          .map(n=>parseInt(n))
+          .filter(n=>!isNaN(n))
+          .sort((a,b)=>a-b);
+      }
+    }catch(e){}
+    // Fallback: try tabs 1-10 if metadata fails
+    if(!tabNumbers.length) tabNumbers=[1,2,3];
+
+    loadMsg.textContent=`⏳ Found ${tabNumbers.length} tab(s): ${tabNumbers.map(n=>GSHEETS.tabPrefix+' '+n).join(', ')}. Loading...`;
+
+    // Step 2: Fetch all tabs in parallel
+    const results = await Promise.allSettled(
+      tabNumbers.map(n => fetch(GSHEETS.tabUrl(n)).then(r=>r.ok?r.json():Promise.reject('HTTP '+r.status)))
+    );
+
+    // Step 3: Merge all rows
+    const allRows = [];
+    results.forEach((res, idx) => {
+      if(res.status==='fulfilled'){
+        const rows = res.value.values||[];
+        rows.forEach(r => allRows.push({row:r, tab:tabNumbers[idx]}));
+      }
     });
+
+    if(!allRows.length){
+      loadMsg.textContent='⚠️ No data found in any tab.';
+      return;
+    }
+
+    // Step 4: Parse rows — NEW column mapping (A:R, no Interviewer col)
+    // A=ID, B=Name, C=Form%, D=Interview%, E=Knowledge%, F=Tactics%,
+    // G=TypingSpeed, H=TypingAccuracy, I=Notes, J=Points%,
+    // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
+    // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
+    A.cands = allRows
+      .filter(({row:r})=>r[1]&&r[1].trim()) // must have Name (col B)
+      .map(({row:r, tab},i)=>{
+        const name=(r[1]||'').trim();
+        const nameEn=isAr(name)?arToEn(name):fmt(name);
+        const nameAr=isAr(name)?name:'';
+        const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
+        const status=rawStatus.toLowerCase().startsWith('accepted')?'accepted':'rejected';
+        const batch=batchVal(r[17]); // col R = index 17
+        return{
+          id:i+1,
+          nameEn, nameAr,
+          nid:(r[0]||'').trim(),        // A = ID
+          itvr:'',                       // no interviewer col
+          form:pct(r[2]),               // C = Form%
+          iv:pct(r[3]),                 // D = Interview%
+          kn:pct(r[4]),                 // E = Knowledge%
+          tac:pct(r[5]),                // F = Tactics%
+          tspd:num(r[6]),               // G = TypingSpeed
+          tacc:pct(r[7]),               // H = TypingAccuracy
+          notes:(r[8]||'').trim(),      // I = Notes
+          pts:pct(r[9])||0,             // J = Points%
+          footballKn:pct(r[11]),        // L = FootballKnowledge
+          ptsAvg:pct(r[12]),            // M = PointsAVG
+          tspdAvg:num(r[13]),           // N = TypingSpeedAVG
+          rank:(r[14]||'').trim(),      // O = Rank
+          raw:rawStatus, status, batch,
+          sourceTab: GSHEETS.tabPrefix+' '+tab
+        };
+      });
+
     updateMetrics();renderTable();updateReportStats();buildCharts();populateBatchDropdowns();
     document.getElementById('s2').className='step-n done';document.getElementById('s2').textContent='✓';
     document.getElementById('s3').className='step-n done';document.getElementById('s3').textContent='✓';
-    loadMsg.style.display='none';loadedBlock.style.display='block';
+    loadMsg.style.display='none';loadedBlock.style.display='block';const rb=document.getElementById('bRefresh');if(rb)rb.style.display='inline-flex';
     const batches=getUniqueBatches();
-    loadedOk.textContent='✅ '+A.cands.length+' candidates loaded · '+batches.length+' batch(es): '+batches.map(b=>typeof b==='number'?'Batch '+b:b).join(', ');
-    addNotif('Live data loaded',A.cands.length+' candidates fetched from Google Sheet','orange');
+    const tabsLoaded = results.filter(r=>r.status==='fulfilled').length;
+    loadedOk.textContent='✅ '+A.cands.length+' candidates loaded · '+tabsLoaded+' tab(s) · '+batches.length+' batch(es): '+batches.map(b=>typeof b==='number'?'Batch '+b:b).join(', ');
+    addNotif('Live data loaded',A.cands.length+' candidates from '+tabsLoaded+' tabs','orange');
   }catch(e){
     loadMsg.className='alert alert-err';
-    loadMsg.innerHTML='❌ Could not load data: '+e.message+'<br><small>Make sure the sheet is set to "Anyone with link can view"</small> &nbsp;<button class="btn btn-secondary btn-sm" onclick="loadData()" style="margin-top:6px">🔄 Retry</button>';
+    loadMsg.innerHTML='❌ Could not load data: '+e.message+'<br><small>Make sure the sheet is public (Anyone with link can view)</small>&nbsp;<button class="btn btn-secondary btn-sm" onclick="loadData()" style="margin-top:6px">🔄 Retry</button>';
     loadMsg.style.display='block';
   }
 }
@@ -1772,7 +1837,7 @@ function renderTable(){
   if(filt!=='all')list=list.filter(c=>c.status===filt);
   if(srch)list=list.filter(c=>c.nameEn.toLowerCase().includes(srch)||c.nameAr.includes(srch)||c.nid.includes(srch)||(c.notes||'').toLowerCase().includes(srch)||(c.raw||'').toLowerCase().includes(srch));
   const tb=document.getElementById('tBody');
-  if(!list.length){tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:40px;color:var(--text-muted)">No results match your filter</td></tr>';document.getElementById('tFoot').textContent='';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:40px;color:var(--text-muted)">No results match your filter</td></tr>';document.getElementById('tFoot').textContent='';return;}
   tb.innerHTML=list.map(c=>`<tr>
     <td style="color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px">${c.id}</td>
     <td><div style="display:flex;align-items:center;gap:8px">
@@ -1785,6 +1850,7 @@ function renderTable(){
     <td style="color:var(--text-secondary)">${c.iv!=null?c.iv.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.kn!=null?c.kn.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.tac!=null?c.tac.toFixed(1)+'%':'—'}</td>
+    <td style="color:var(--text-secondary)">${c.footballKn!=null?c.footballKn.toFixed(1)+'%':'—'}</td>
     <td style="color:var(--text-secondary)">${c.tspd?c.tspd+' wpm':'—'}</td>
     <td><span class="badge ${c.status==='accepted'?'badge-success':'badge-danger'}">${c.status==='accepted'?'✅ Accepted':'❌ '+shortR(c.raw)}</span></td>
     <td><span class="${rankCls(c.rank)}" style="font-size:11px">${c.rank||'—'}</span></td>
@@ -2086,6 +2152,8 @@ if(savedLang&&savedLang==='ar'){
 injectLogos();
 // Init custom dropdowns
 setTimeout(initNxSelects, 100);
+// Auto-detect tabs on every page load
+setTimeout(()=>{ if(A.cands&&A.cands.length) loadData(); }, 2000);
 
 // Apply saved theme
 (function(){
