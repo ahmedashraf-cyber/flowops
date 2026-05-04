@@ -1687,11 +1687,6 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
-    // QUICK DEBUG
-    console.table(allRows.slice(0,10).map(({row:r})=>({
-      ID:r[0], Name:r[1], K_Status:r[10], L_FootballKn:r[11], R_Batch:r[17]
-    })));
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
@@ -1703,9 +1698,12 @@ async function loadData(){
         if(!/\d/.test(id)) return false;
         // Must have Name (col B)
         if(!r[1]||!r[1].trim()) return false;
-        // Must have Batch (col R = index 17)
-        if(!r[17]||!r[17].trim()) return false;
-        if(r[17].trim().toLowerCase()==='batch') return false;
+        // Must have valid Batch (col R = index 17) — exclude empty batch rows
+        const batchRaw = (r[17]||'').trim();
+        if(!batchRaw || batchRaw.toLowerCase()==='batch') return false;
+        // Exclude #N/A and formula errors in any key column
+        const kVal = (r[10]||'').trim();
+        if(kVal==='#N/A'||kVal==='#REF!'||kVal==='#VALUE!'||kVal==='#ERROR!') return false;
         return true;
       })
       .map(({row:r, tab},i)=>{
@@ -1713,10 +1711,9 @@ async function loadData(){
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
         const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected
-        const footballKnVal = r[11]||'';
-        // Auto-reject if: K is empty OR Football Knowledge (L) is empty
-        const status = (rawStatus.toLowerCase().startsWith('accepted') && footballKnVal.toString().trim()!=='')
-          ? 'accepted' : 'rejected';
+        // Status: accepted only if col K explicitly starts with 'Accepted'
+        // Everything else (empty, rejected variants, #N/A) = rejected
+        const status = rawStatus.toLowerCase().startsWith('accepted') ? 'accepted' : 'rejected';
         const effectiveRaw = rawStatus||'Rejected';
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
