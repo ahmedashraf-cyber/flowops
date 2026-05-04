@@ -1698,8 +1698,10 @@ async function loadData(){
         if(!/\d/.test(id)) return false;
         // Must have Name (col B)
         if(!r[1]||!r[1].trim()) return false;
-        // Skip literal "batch" header
-        if((r[17]||'').trim().toLowerCase()==='batch') return false;
+        // Must have valid Batch (col R index 17) — no batch = skip entirely
+        const batchRaw = (r[17]||'').trim();
+        if(!batchRaw) return false;                          // empty batch = skip
+        if(batchRaw.toLowerCase()==='batch') return false;  // header row = skip
         return true;
       })
       .map(({row:r, tab},i)=>{
