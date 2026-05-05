@@ -1687,16 +1687,6 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
-    // BATCH 82 COL L DEBUG
-    const _b82 = allRows.filter(({row:r})=>(r[17]||'').trim()==='82');
-    const _b82L = {};
-    _b82.forEach(({row:r})=>{
-      const v = (r[11]||'__EMPTY__').toString().trim();
-      _b82L[v] = (_b82L[v]||0)+1;
-    });
-    console.log('Batch 82 total rows:', _b82.length);
-    console.log('Batch 82 col L values:', JSON.stringify(_b82L));
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
@@ -1712,6 +1702,9 @@ async function loadData(){
         const batchRaw = (r[17]||'').trim();
         if(!batchRaw) return false;                          // empty batch = skip
         if(batchRaw.toLowerCase()==='batch') return false;  // header row = skip
+        // Exclude #N/A formula errors in col L — not real candidates
+        const colLRaw = (r[11]||'').toString().trim();
+        if(colLRaw==='#N/A'||colLRaw==='#REF!'||colLRaw==='#VALUE!'||colLRaw==='#ERROR!') return false;
         return true;
       })
       .map(({row:r, tab},i)=>{
