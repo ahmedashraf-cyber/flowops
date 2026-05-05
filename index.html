@@ -1687,6 +1687,16 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
+    // BATCH 82 COL L DEBUG
+    const _b82 = allRows.filter(({row:r})=>(r[17]||'').trim()==='82');
+    const _b82L = {};
+    _b82.forEach(({row:r})=>{
+      const v = (r[11]||'__EMPTY__').toString().trim();
+      _b82L[v] = (_b82L[v]||0)+1;
+    });
+    console.log('Batch 82 total rows:', _b82.length);
+    console.log('Batch 82 col L values:', JSON.stringify(_b82L));
+
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
