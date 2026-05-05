@@ -1708,13 +1708,11 @@ async function loadData(){
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
-        const rawStatus=(r[10]||'').trim(); // col K = Accepted/Rejected text
-        const footballKn = (r[11]||'').toString().trim(); // col L = Football Knowledge
-        // Accepted = col L (Football Knowledge) has a value
-        // Rejected = col L is empty or #N/A
-        const hasFootballKn = footballKn !== '' && footballKn !== '#N/A' && footballKn !== '-';
-        const status = hasFootballKn ? 'accepted' : 'rejected';
-        const effectiveRaw = status==='accepted' ? 'Accepted' : (rawStatus||'Rejected');
+        const colL = (r[11]||'').toString().trim(); // col L = final decision
+        // Accepted = col L is exactly "Accepted" (case-insensitive)
+        // Rejected = anything else (empty, "Rejected", "Rejected - Football Test", "Student", etc.)
+        const status = colL.toLowerCase() === 'accepted' ? 'accepted' : 'rejected';
+        const effectiveRaw = status === 'accepted' ? 'Accepted' : (colL || 'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
