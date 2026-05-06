@@ -1701,10 +1701,10 @@ async function loadData(){
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
-        const colL = (r[11]||'').toString().trim(); // col L = final decision
-        // Accepted = col L contains 'accepted' (handles trailing spaces)
-        const status = colL.toLowerCase().includes('accepted') ? 'accepted' : 'rejected';
-        const effectiveRaw = status === 'accepted' ? 'Accepted' : (colL || 'Rejected');
+        const colK = (r[10]||'').toString().trim(); // col K = Accepted/Rejected
+        // Accepted = col K contains 'accepted' (trim handles trailing spaces)
+        const status = colK.toLowerCase().includes('accept') ? 'accepted' : 'rejected';
+        const effectiveRaw = status === 'accepted' ? 'Accepted' : (colK || 'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
@@ -1719,7 +1719,7 @@ async function loadData(){
           tacc:pct(r[7]),               // H = Typing Accuracy%
           notes:(r[8]||'').trim(),      // I = Notes
           pts:pct(r[9])||0,             // J = Points%
-          footballKn:pct(r[11]),        // L = Football Knowledge
+          footballKn:pct(r[11]),        // L = Football Knowledge score
           ptsAvg:pct(r[12]),            // M = Points AVG
           tspdAvg:num(r[13]),           // N = Typing Speed AVG
           rank:(r[14]||'').trim(),      // P = Rank (index 15)
