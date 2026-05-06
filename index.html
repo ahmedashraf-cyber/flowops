@@ -4543,68 +4543,92 @@ function maExportExcel(){
 
 // ── FIELD CUSTOM DROPDOWN ──────────────────────────
 
-// Initialize custom dropdowns
+// ── FIELD Custom Dropdown System ──────────────────────────────
+let _activeDropdown = null;
+
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(wrap => {
     if(wrap.dataset.nxInit === '1') return;
     wrap.dataset.nxInit = '1';
+    const trigger = wrap.querySelector('.nx-trigger');
+    const sel     = wrap.querySelector('select.nx-native');
+    const label   = wrap.querySelector('.nx-label');
+    const fnName  = wrap.dataset.onchange;
+    if(!trigger || !sel) return;
 
-    const trigger  = wrap.querySelector('.nx-trigger');
-    const dropdown = wrap.querySelector('.nx-dropdown');
-    const label    = wrap.querySelector('.nx-label');
-    const sel      = wrap.querySelector('select.nx-native');
-    const fnName   = wrap.dataset.onchange;
+    // Sync label now
+    const cur = Array.from(sel.options).find(o=>o.value===sel.value);
+    if(cur && label) label.textContent = cur.text;
 
-    if(!trigger || !dropdown || !sel) return;
-
-    // Sync label to current native value
-    function syncLabel(){
-      const opt = Array.from(sel.options).find(o => o.value === sel.value);
-      if(opt && label) label.textContent = opt.text;
-    }
-    syncLabel();
-
-    // Open/close dropdown
-    trigger.addEventListener('click', e => {
+    trigger.addEventListener('click', function(e){
       e.stopPropagation();
-      const isOpen = trigger.classList.contains('open');
+      // If a floating dropdown exists and belongs to this trigger, close it
+      if(_activeDropdown && _activeDropdown._trigger === trigger){
+        _activeDropdown.remove();
+        _activeDropdown = null;
+        trigger.classList.remove('open');
+        return;
+      }
+      // Close any open dropdown
       closeAllDropdowns();
-      if(isOpen) return;
 
-      // Build option list fresh each time
-      dropdown.innerHTML = Array.from(sel.options).map(o =>
-        `<div class="nx-opt${o.value===sel.value?' selected':''}" data-val="${o.value}">${o.text}</div>`
+      // Build floating dropdown positioned below trigger
+      const rect = trigger.getBoundingClientRect();
+      const dd = document.createElement('div');
+      dd.className = 'nx-dropdown-float';
+      dd.style.cssText = [
+        'position:fixed',
+        `top:${rect.bottom+4}px`,
+        `left:${rect.left}px`,
+        `min-width:${rect.width}px`,
+        'z-index:9999',
+        'background:var(--bg-2)',
+        'border:1px solid var(--b-2)',
+        'border-radius:var(--r-lg)',
+        'box-shadow:0 8px 32px rgba(0,0,0,0.6),0 2px 8px rgba(0,0,0,0.4)',
+        'max-height:280px',
+        'overflow-y:auto',
+        'animation:dropIn .15s ease both'
+      ].join(';');
+
+      dd.innerHTML = Array.from(sel.options).map(o=>
+        `<div class="nx-opt${o.value===sel.value?' selected':''}" data-val="${encodeURIComponent(o.value)}" style="padding:10px 14px;font-size:13px;cursor:pointer;color:var(--t-2);border-bottom:0.5px solid var(--b-1);transition:background .1s">${o.text}</div>`
       ).join('');
-      dropdown.style.display = 'block';
-      trigger.classList.add('open');
 
-      // Option click
-      dropdown.querySelectorAll('.nx-opt').forEach(opt => {
-        opt.addEventListener('click', ev => {
+      // Hover effect
+      dd.querySelectorAll('.nx-opt').forEach(opt=>{
+        opt.addEventListener('mouseenter',()=>opt.style.background='var(--glass-1)');
+        opt.addEventListener('mouseleave',()=>opt.style.background='');
+        opt.addEventListener('click', ev=>{
           ev.stopPropagation();
-          sel.value = opt.dataset.val;
+          const val = decodeURIComponent(opt.dataset.val);
+          sel.value = val;
           if(label) label.textContent = opt.textContent;
-          dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
+          // Mark selected
+          dd.querySelectorAll('.nx-opt').forEach(o=>o.classList.remove('selected'));
           opt.classList.add('selected');
           closeAllDropdowns();
-          // Fire the change function
-          if(fnName && typeof window[fnName] === 'function') window[fnName]();
-          else sel.dispatchEvent(new Event('change', {bubbles:true}));
+          if(fnName && typeof window[fnName]==='function') window[fnName]();
+          else sel.dispatchEvent(new Event('change',{bubbles:true}));
         });
       });
+
+      document.body.appendChild(dd);
+      _activeDropdown = dd;
+      _activeDropdown._trigger = trigger;
+      trigger.classList.add('open');
     });
   });
 }
 
 function closeAllDropdowns(){
-  document.querySelectorAll('.nx-trigger.open').forEach(t => {
-    t.classList.remove('open');
-    const dd = t.parentElement.querySelector('.nx-dropdown');
-    if(dd) dd.style.display = 'none';
-  });
+  if(_activeDropdown){ _activeDropdown.remove(); _activeDropdown=null; }
+  document.querySelectorAll('.nx-trigger.open').forEach(t=>t.classList.remove('open'));
 }
 
 document.addEventListener('click', closeAllDropdowns);
+window.addEventListener('scroll', closeAllDropdowns, true);
+window.addEventListener('resize', closeAllDropdowns);
 
 // Re-init after populating selects (call this after any select innerHTML change)
 function refreshNxSelect(selectId){
