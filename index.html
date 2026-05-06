@@ -1677,16 +1677,6 @@ async function loadData(){
     // K=Accepted/Rejected, L=FootballKnowledge, M=PointsAVG,
     // N=TypingSpeedAVG, O=Rank, R=Batch (index 17)
 
-    // BATCH + STATUS DEBUG
-    const _bs={}, _ss={};
-    allRows.forEach(({row:r,tab})=>{
-      const b=String(r[17]||'EMPTY'); _bs[b]=(_bs[b]||0)+1;
-      const s=String(r[10]||'EMPTY'); _ss[s]=(_ss[s]||0)+1;
-    });
-    console.log('BATCHES:',JSON.stringify(_bs));
-    console.log('STATUSES:',JSON.stringify(_ss));
-    console.log('TOTAL_ROWS:',allRows.length);
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
@@ -1700,11 +1690,11 @@ async function loadData(){
         if(!r[1]||!r[1].trim()) return false;
         // Must have valid Batch (col R index 17) — no batch = skip entirely
         const batchRaw = (r[17]||'').trim();
-        if(!batchRaw) return false;                          // empty batch = skip
-        if(batchRaw.toLowerCase()==='batch') return false;  // header row = skip
-        // Exclude #N/A formula errors in col L — not real candidates
-        const colLRaw = (r[11]||'').toString().trim();
-        if(colLRaw==='#N/A'||colLRaw==='#REF!'||colLRaw==='#VALUE!'||colLRaw==='#ERROR!') return false;
+        if(!batchRaw) return false;
+        if(batchRaw.toLowerCase()==='batch') return false;
+        // Exclude rows where col K (status) is #N/A — formula error, not real candidate
+        const kRaw = (r[10]||'').toString().trim();
+        if(kRaw==='#N/A'||kRaw==='#REF!'||kRaw==='#VALUE!'||kRaw==='#ERROR!') return false;
         return true;
       })
       .map(({row:r, tab},i)=>{
@@ -1712,9 +1702,8 @@ async function loadData(){
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
         const colL = (r[11]||'').toString().trim(); // col L = final decision
-        // Accepted = col L is exactly "Accepted" (case-insensitive)
-        // Rejected = anything else (empty, "Rejected", "Rejected - Football Test", "Student", etc.)
-        const status = colL.toLowerCase() === 'accepted' ? 'accepted' : 'rejected';
+        // Accepted = col L contains 'accepted' (handles trailing spaces)
+        const status = colL.toLowerCase().includes('accepted') ? 'accepted' : 'rejected';
         const effectiveRaw = status === 'accepted' ? 'Accepted' : (colL || 'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
