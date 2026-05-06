@@ -1735,6 +1735,7 @@ async function loadData(){
     const tabsLoaded = results.filter(r=>r.status==='fulfilled').length;
     loadedOk.textContent='✅ '+A.cands.length+' candidates loaded · '+tabsLoaded+' tab(s) · '+batches.length+' batch(es): '+batches.map(b=>typeof b==='number'?'Batch '+b:b).join(', ');
     addNotif('Live data loaded',A.cands.length+' candidates from '+tabsLoaded+' tabs','orange');
+    setTimeout(initNxSelects, 100);
   }catch(e){
     loadMsg.className='alert alert-err';
     loadMsg.innerHTML='❌ Could not load data: '+e.message+'<br><small>Make sure the sheet is public (Anyone with link can view)</small>&nbsp;<button class="btn btn-secondary btn-sm" onclick="loadData()" style="margin-top:6px">🔄 Retry</button>';
@@ -1760,8 +1761,14 @@ function populateBatchDropdowns(){
   }).join('');
   const bf=document.getElementById('batchFilter');if(bf)bf.innerHTML=opts;
   const bn=document.getElementById('bName');if(bn)bn.innerHTML=opts;
-  refreshNxSelect('batchFilter');
-  refreshNxSelect('bName');
+  // Reset and reinit dropdowns with new options
+  ['batchFilter','bName'].forEach(function(id){
+    var sel=document.getElementById(id);
+    if(!sel) return;
+    var wrap=sel.closest('.nx-select-wrap');
+    if(wrap){ wrap.dataset.nxInit='0'; }
+  });
+  setTimeout(initNxSelects, 50);
 }
 function getBatchFiltered(){
   const el=document.getElementById('batchFilter');
@@ -4548,61 +4555,73 @@ function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
     if(wrap.dataset.nxInit==='1') return;
     wrap.dataset.nxInit='1';
-    var trigger = wrap.querySelector('.nx-trigger');
-    var dd = wrap.querySelector('.nx-dropdown');
-    var label = wrap.querySelector('.nx-label');
-    var sel = wrap.querySelector('select.nx-native');
-    var fn = wrap.dataset.onchange;
-    if(!trigger || !sel) return;
+    var trigger=wrap.querySelector('.nx-trigger');
+    var label=wrap.querySelector('.nx-label');
+    var sel=wrap.querySelector('select.nx-native');
+    var fn=wrap.dataset.onchange;
+    if(!trigger||!sel) return;
 
-    // Sync label
+    // Sync label to current selected option
     function syncLabel(){
-      var opts = sel.options;
-      for(var i=0;i<opts.length;i++){
-        if(opts[i].value===sel.value){ if(label) label.textContent=opts[i].text; break; }
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value===sel.value){
+          if(label) label.textContent=sel.options[i].text;
+          break;
+        }
       }
     }
     syncLabel();
 
-    trigger.addEventListener('click', function(e){
+    trigger.addEventListener('click',function(e){
       e.stopPropagation();
-      var isOpen = wrap.classList.contains('nx-open');
-      // Close all
-      document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
-        w.classList.remove('nx-open');
-        var d=w.querySelector('.nx-dropdown');
-        if(d) d.style.display='none';
-      });
+      var isOpen=wrap.classList.contains('nx-open');
+      closeAllDropdowns();
       if(isOpen) return;
-      // Build options
+
+      // Create floating dropdown as separate element attached to body
+      var existing=document.getElementById('_nxFloat');
+      if(existing) existing.remove();
+
+      var dd=document.createElement('div');
+      dd.id='_nxFloat';
+      dd.className='nx-dropdown';
+      var r=trigger.getBoundingClientRect();
+      dd.style.cssText='position:fixed;top:'+(r.bottom+4)+'px;left:'+r.left+'px;'+
+        'min-width:'+r.width+'px;width:auto;z-index:99999;'+
+        'max-height:260px;overflow-y:auto;display:block;'+
+        'background:var(--bg-2,#161616);'+
+        'border:1px solid var(--b-2,rgba(255,255,255,0.10));'+
+        'border-radius:12px;'+
+        'box-shadow:0 8px 32px rgba(0,0,0,0.6),0 2px 8px rgba(0,0,0,0.3);';
+
       var html='';
-      var opts=sel.options;
-      for(var i=0;i<opts.length;i++){
-        html+='<div class="nx-opt'+(opts[i].value===sel.value?' selected':'')+
-          '" data-i="'+i+'">'+opts[i].text+'</div>';
+      for(var i=0;i<sel.options.length;i++){
+        var selected=sel.options[i].value===sel.value?' selected':'';
+        html+='<div class="nx-opt'+selected+'" data-i="'+i+'" style="'+
+          'padding:10px 16px;font-size:13px;font-family:DM Sans,sans-serif;'+
+          'color:var(--t-2,#A1A1A6);cursor:pointer;'+
+          'border-bottom:0.5px solid var(--b-1,rgba(255,255,255,0.06));'+
+          'transition:background .1s;white-space:nowrap;"'+
+          '>'+sel.options[i].text+'</div>';
       }
       dd.innerHTML=html;
-      // Position
-      var r=trigger.getBoundingClientRect();
-      dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+4)+'px;'+
-        'left:'+Math.max(0,r.left)+'px;min-width:'+r.width+'px;'+
-        'z-index:99999;max-height:260px;overflow-y:auto;'+
-        'background:var(--bg-2);border:1px solid var(--b-2);'+
-        'border-radius:var(--r-lg);'+
-        'box-shadow:0 8px 32px rgba(0,0,0,0.6);';
       document.body.appendChild(dd);
       wrap.classList.add('nx-open');
+      wrap._floatDd=dd;
+      dd._wrap=wrap;
+      dd._sel=sel;
+      dd._syncLabel=syncLabel;
+      dd._fn=fn;
 
-      // Click option
+      // Hover
       dd.querySelectorAll('.nx-opt').forEach(function(opt){
-        opt.addEventListener('click', function(ev){
+        opt.addEventListener('mouseenter',function(){ opt.style.background='var(--glass-1,rgba(255,255,255,0.04))'; opt.style.color='var(--t-1,#F5F5F7)'; });
+        opt.addEventListener('mouseleave',function(){ opt.style.background=''; opt.style.color=''; });
+        opt.addEventListener('click',function(ev){
           ev.stopPropagation();
-          var idx=parseInt(opt.dataset.i);
-          sel.selectedIndex=idx;
+          sel.selectedIndex=parseInt(opt.dataset.i);
           syncLabel();
-          wrap.classList.remove('nx-open');
-          dd.style.display='none';
-          document.body.appendChild(dd); // keep in body but hidden
+          closeAllDropdowns();
           if(fn && typeof window[fn]==='function') window[fn]();
         });
       });
@@ -4611,13 +4630,15 @@ function initNxSelects(){
 }
 
 function closeAllDropdowns(){
+  var f=document.getElementById('_nxFloat');
+  if(f) f.remove();
   document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
     w.classList.remove('nx-open');
-    var d=w.querySelector('.nx-dropdown');
-    if(d) d.style.display='none';
   });
 }
-document.addEventListener('click', closeAllDropdowns);
+document.addEventListener('click',closeAllDropdowns);
+window.addEventListener('scroll',closeAllDropdowns,true);
+window.addEventListener('resize',closeAllDropdowns);ocument.addEventListener('click', closeAllDropdowns);
 window.addEventListener('scroll', closeAllDropdowns, true);
 window.addEventListener('resize', closeAllDropdowns);
 function refreshNxSelect(id){
