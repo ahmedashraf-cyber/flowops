@@ -1687,6 +1687,27 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
+    // EXPORT BATCH STATS
+    const _stats = {};
+    allRows.forEach(({row:r})=>{
+      const id = (r[0]||'').trim();
+      const colL = (r[11]||'').toString().trim();
+      const batch = (r[17]||'').trim();
+      // Apply same filter rules
+      if(!id || id.toLowerCase()==='id' || !/\d/.test(id)) return;
+      if(!r[1]||!r[1].trim()) return;
+      if(!batch || batch.toLowerCase()==='batch') return;
+      if(['#N/A','#REF!','#VALUE!','#ERROR!'].includes(colL)) return;
+      if(!_stats[batch]) _stats[batch]={total:0,accepted:0,rejected:0};
+      _stats[batch].total++;
+      if(colL.toLowerCase()==='accepted') _stats[batch].accepted++;
+      else _stats[batch].rejected++;
+    });
+    console.log('=== BATCH STATS ===');
+    Object.entries(_stats).sort().forEach(([b,s])=>{
+      console.log(`Batch ${b}: total=${s.total}, accepted=${s.accepted}, rejected=${s.rejected}`);
+    });
+
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
