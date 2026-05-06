@@ -2117,6 +2117,8 @@ function showTab(t){
   setTimeout(initNxSelects, 50);
 }
 function showScreen(id){
+  // Close any open dropdown when navigating
+  document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){ w.classList.remove('nx-open'); var d=w.querySelector('.nx-dropdown'); if(d){ d.style.display='none'; if(d.parentNode===document.body) document.body.removeChild(d); } });
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
@@ -4572,7 +4574,7 @@ function initNxSelects(){
       document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
         w.classList.remove('nx-open');
         var d=w.querySelector('.nx-dropdown');
-        if(d) d.style.display='none';
+        if(d){ d.style.display='none'; if(d.parentNode===document.body) document.body.removeChild(d); }
       });
       if(isOpen) return;
       var html='';
