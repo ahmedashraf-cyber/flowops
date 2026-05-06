@@ -2117,7 +2117,6 @@ function showTab(t){
   setTimeout(initNxSelects, 50);
 }
 function showScreen(id){
-  closeAllDropdowns();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
@@ -4570,8 +4569,12 @@ function initNxSelects(){
     trigger.addEventListener('click', function(e){
       e.stopPropagation();
       var isOpen = wrap.classList.contains('nx-open');
-      closeAllDropdowns();
-      if(isOpen) return; // toggle closed
+      document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
+        w.classList.remove('nx-open');
+        var d=w.querySelector('.nx-dropdown');
+        if(d) d.style.display='none';
+      });
+      if(isOpen) return;
       var html='';
       var opts=sel.options;
       for(var i=0;i<opts.length;i++){
@@ -4613,16 +4616,8 @@ function initNxSelects(){
 function closeAllDropdowns(){
   document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
     w.classList.remove('nx-open');
-  });
-  // Remove any floating dropdown from body
-  document.querySelectorAll('.nx-dropdown').forEach(function(d){
-    d.style.display='none';
-    // Move back to original wrap if orphaned in body
-    if(d.parentNode===document.body){
-      document.querySelectorAll('.nx-select-wrap').forEach(function(w){
-        if(w.dataset.ddId===d.dataset.ddId) w.appendChild(d);
-      });
-    }
+    var d=w.querySelector('.nx-dropdown');
+    if(d) d.style.display='none';
   });
 }
 document.addEventListener('click', closeAllDropdowns);
