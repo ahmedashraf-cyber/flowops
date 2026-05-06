@@ -831,6 +831,44 @@ select option {
 #roleSwitcher{ z-index:600 !important; }
 #nexusToast{ z-index:700 !important; }
 
+
+/* ── Premium Dropdown Panel ── */
+.nx-panel{
+  background:var(--bg-2,#161616);
+  border:0.5px solid var(--b-3,rgba(255,255,255,0.16));
+  border-radius:var(--r-lg,14px);
+  box-shadow:0 8px 40px rgba(0,0,0,0.7),0 2px 8px rgba(0,0,0,0.5),0 0 0 0.5px rgba(255,255,255,0.04);
+  overflow:hidden;
+  animation:nxDrop .15s cubic-bezier(0,0,0.2,1) both;
+}
+@keyframes nxDrop{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.nx-item{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 16px;
+  font-size:13px;font-weight:500;
+  font-family:'DM Sans',sans-serif;
+  color:var(--t-2,#A1A1A6);
+  cursor:pointer;
+  transition:background .1s,color .1s;
+  border-bottom:0.5px solid var(--b-1,rgba(255,255,255,0.06));
+  white-space:nowrap;
+}
+.nx-item:last-child{border-bottom:none}
+.nx-item:hover{background:var(--glass-1,rgba(255,255,255,0.04));color:var(--t-1,#F5F5F7);}
+.nx-item-selected{background:var(--p-subtle,rgba(232,89,12,0.08));color:var(--p2,#FF7A2F);font-weight:600;}
+.nx-item-selected:hover{background:rgba(232,89,12,0.12);}
+.nx-dot{width:6px;height:6px;border-radius:50%;background:var(--p2,#FF7A2F);flex-shrink:0;box-shadow:0 0 6px rgba(232,89,12,0.5);}
+.nx-dot-empty{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0;}
+/* Trigger open state */
+.nx-trigger.open{border-color:var(--p,#E8590C)!important;box-shadow:0 0 0 3px rgba(232,89,12,0.12)!important;}
+.nx-trigger.open svg{transform:rotate(180deg);opacity:.9;}
+[data-theme="light"] .nx-panel{
+  background:#fff;
+  box-shadow:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .nx-item{color:var(--t-2);}
+[data-theme="light"] .nx-item:hover{background:var(--bg-2);}
+
 </style>
 </head>
 <body>
@@ -4554,7 +4592,8 @@ function maExportExcel(){
 
 
 // ── FIELD Dropdown System ──
-// Simple: style native select to look like custom dropdown
+var _nxOpen = null;
+
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
     if(wrap.dataset.nxInit==='1') return;
@@ -4565,30 +4604,64 @@ function initNxSelects(){
     var fn=wrap.dataset.onchange;
     if(!trigger||!sel) return;
 
-    // Style the native select to overlay the trigger exactly
-    sel.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;'+
-      'opacity:0;cursor:pointer;z-index:10;display:block;font-size:16px;';
     wrap.style.position='relative';
+    // Keep native select hidden but accessible
+    sel.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:1;display:block;';
 
-    // Sync label on change
     function syncLabel(){
-      var opts=sel.options;
-      for(var i=0;i<opts.length;i++){
-        if(opts[i].value===sel.value){
-          if(label) label.textContent=opts[i].text;
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value===sel.value){
+          if(label) label.textContent=sel.options[i].text;
           break;
         }
       }
     }
     syncLabel();
 
-    sel.addEventListener('change', function(){
+    trigger.addEventListener('click',function(e){
+      e.stopPropagation();
+      if(_nxOpen){_nxOpen.remove();_nxOpen=null;document.querySelectorAll('.nx-trigger.open').forEach(function(t){t.classList.remove('open');});}
+      var rect=trigger.getBoundingClientRect();
+      var panel=document.createElement('div');
+      panel.className='nx-panel';
+      panel.style.cssText='position:fixed;top:'+(rect.bottom+6)+'px;left:'+rect.left+'px;min-width:'+Math.max(rect.width,180)+'px;z-index:99999;';
+      var html='';
+      for(var i=0;i<sel.options.length;i++){
+        var isSelected=sel.options[i].value===sel.value;
+        html+='<div class="nx-item'+(isSelected?' nx-item-selected':'')+'" data-i="'+i+'">'
+          +(isSelected?'<span class="nx-dot"></span>':'<span class="nx-dot-empty"></span>')
+          +sel.options[i].text+'</div>';
+      }
+      panel.innerHTML=html;
+      document.body.appendChild(panel);
+      _nxOpen=panel;
+      trigger.classList.add('open');
+      panel.querySelectorAll('.nx-item').forEach(function(item){
+        item.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          sel.selectedIndex=parseInt(item.dataset.i);
+          syncLabel();
+          if(_nxOpen){_nxOpen.remove();_nxOpen=null;}
+          trigger.classList.remove('open');
+          if(fn&&typeof window[fn]==='function') window[fn]();
+        });
+      });
+    });
+
+    sel.addEventListener('change',function(){
       syncLabel();
-      if(fn && typeof window[fn]==='function') window[fn]();
+      if(fn&&typeof window[fn]==='function') window[fn]();
     });
   });
 }
-function closeAllDropdowns(){}
+
+function closeAllDropdowns(){
+  if(_nxOpen){_nxOpen.remove();_nxOpen=null;}
+  document.querySelectorAll('.nx-trigger.open').forEach(function(t){t.classList.remove('open');});
+}
+document.addEventListener('click',closeAllDropdowns);
+window.addEventListener('scroll',closeAllDropdowns,true);
+window.addEventListener('resize',closeAllDropdowns);
 
 ocument.addEventListener('click', closeAllDropdowns);
 window.addEventListener('scroll', closeAllDropdowns, true);
