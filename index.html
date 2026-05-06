@@ -4543,120 +4543,97 @@ function maExportExcel(){
 
 // ── FIELD CUSTOM DROPDOWN ──────────────────────────
 
-// ── FIELD Custom Dropdown System ──────────────────────────────
-let _activeDropdown = null;
-
-function initNxSelects(){
-  document.querySelectorAll('.nx-select-wrap').forEach(wrap => {
-    if(wrap.dataset.nxInit === '1') return;
-    wrap.dataset.nxInit = '1';
-    const trigger = wrap.querySelector('.nx-trigger');
-    const sel     = wrap.querySelector('select.nx-native');
-    const label   = wrap.querySelector('.nx-label');
-    const fnName  = wrap.dataset.onchange;
-    if(!trigger || !sel) return;
-
-    // Sync label now
-    const cur = Array.from(sel.options).find(o=>o.value===sel.value);
-    if(cur && label) label.textContent = cur.text;
-
-    trigger.addEventListener('click', function(e){
-      e.stopPropagation();
-      // If a floating dropdown exists and belongs to this trigger, close it
-      if(_activeDropdown && _activeDropdown._trigger === trigger){
-        _activeDropdown.remove();
-        _activeDropdown = null;
-        trigger.classList.remove('open');
-        return;
-      }
-      // Close any open dropdown
-      closeAllDropdowns();
-
-      // Build floating dropdown positioned below trigger
-      const rect = trigger.getBoundingClientRect();
-      const dd = document.createElement('div');
-      dd.className = 'nx-dropdown-float';
-      dd.style.cssText = [
-        'position:fixed',
-        `top:${rect.bottom+4}px`,
-        `left:${rect.left}px`,
-        `min-width:${rect.width}px`,
-        'z-index:9999',
-        'background:var(--bg-2)',
-        'border:1px solid var(--b-2)',
-        'border-radius:var(--r-lg)',
-        'box-shadow:0 8px 32px rgba(0,0,0,0.6),0 2px 8px rgba(0,0,0,0.4)',
-        'max-height:280px',
-        'overflow-y:auto',
-        'animation:dropIn .15s ease both'
-      ].join(';');
-
-      dd.innerHTML = Array.from(sel.options).map(o=>
-        `<div class="nx-opt${o.value===sel.value?' selected':''}" data-val="${encodeURIComponent(o.value)}" style="padding:10px 14px;font-size:13px;cursor:pointer;color:var(--t-2);border-bottom:0.5px solid var(--b-1);transition:background .1s">${o.text}</div>`
-      ).join('');
-
-      // Hover effect
-      dd.querySelectorAll('.nx-opt').forEach(opt=>{
-        opt.addEventListener('mouseenter',()=>opt.style.background='var(--glass-1)');
-        opt.addEventListener('mouseleave',()=>opt.style.background='');
-        opt.addEventListener('click', ev=>{
-          ev.stopPropagation();
-          const val = decodeURIComponent(opt.dataset.val);
-          sel.value = val;
-          if(label) label.textContent = opt.textContent;
-          // Mark selected
-          dd.querySelectorAll('.nx-opt').forEach(o=>o.classList.remove('selected'));
-          opt.classList.add('selected');
-          closeAllDropdowns();
-          if(fnName && typeof window[fnName]==='function') window[fnName]();
-          else sel.dispatchEvent(new Event('change',{bubbles:true}));
-        });
-      });
-
-      document.body.appendChild(dd);
-      _activeDropdown = dd;
-      _activeDropdown._trigger = trigger;
-      trigger.classList.add('open');
-    });
-  });
-}
-
-function closeAllDropdowns(){
-  if(_activeDropdown){ _activeDropdown.remove(); _activeDropdown=null; }
-  document.querySelectorAll('.nx-trigger.open').forEach(t=>t.classList.remove('open'));
-}
-
-document.addEventListener('click', closeAllDropdowns);
-window.addEventListener('scroll', closeAllDropdowns, true);
-window.addEventListener('resize', closeAllDropdowns);
 
 // Re-init after populating selects (call this after any select innerHTML change)
-function refreshNxSelect(selectId){
-  const sel = document.getElementById(selectId);
-  if(!sel) return;
-  const wrap = sel.closest('.nx-select-wrap');
-  if(!wrap) return;
-  wrap.dataset.nxInit = '0'; // force re-init
-  initNxSelects();
-  // Sync label
-  const opt = Array.from(sel.options).find(o => o.value === sel.value);
-  const label = wrap.querySelector('.nx-label');
-  if(opt && label) label.textContent = opt.text;
-}
 
-function syncNxLabel(selectId, value){
-  const sel = document.getElementById(selectId);
-  if(!sel) return;
-  const wrap = sel.closest('.nx-select-wrap');
-  if(!wrap) return;
-  const label = wrap.querySelector('.nx-label');
-  const opt = Array.from(sel.options).find(o => o.value === value);
-  if(label && opt) label.textContent = opt.text;
-}
+
+
 
 
 // Sync nx label when native select changes programmatically
 
+
+
+
+// ── FIELD Dropdown System (clean, single instance) ──
+function initNxSelects(){
+  document.querySelectorAll('.nx-select-wrap').forEach(wrap=>{
+    if(wrap.dataset.nxInit==='1') return;
+    wrap.dataset.nxInit='1';
+    const trigger=wrap.querySelector('.nx-trigger');
+    const dd=wrap.querySelector('.nx-dropdown');
+    const label=wrap.querySelector('.nx-label');
+    const sel=wrap.querySelector('select.nx-native');
+    const fn=wrap.dataset.onchange;
+    if(!trigger||!sel) return;
+    // Sync label to current value
+    const syncLabel=()=>{
+      const o=Array.from(sel.options).find(o=>o.value===sel.value);
+      if(o&&label) label.textContent=o.text;
+    };
+    syncLabel();
+    trigger.addEventListener('click',function(e){
+      e.stopPropagation();
+      const wasOpen=trigger.classList.contains('open');
+      _closeAllDropdowns();
+      if(wasOpen) return;
+      // Rebuild options
+      dd.innerHTML=Array.from(sel.options).map(o=>
+        '<div class="nx-opt'+(o.value===sel.value?' selected':'')+
+        '" data-val="'+o.value.replace(/"/g,'&quot;')+'">'+o.text+'</div>'
+      ).join('');
+      // Position fixed to escape overflow:hidden parents
+      const r=trigger.getBoundingClientRect();
+      dd.style.cssText='position:fixed!important;display:block!important;top:'+(r.bottom+4)+'px;left:'+r.left+'px;min-width:'+r.width+'px;z-index:99999;max-height:280px;overflow-y:auto;';
+      document.body.appendChild(dd);
+      trigger.classList.add('open');
+      dd.querySelectorAll('.nx-opt').forEach(opt=>{
+        opt.addEventListener('click',function(ev){
+          ev.stopPropagation();
+          sel.value=opt.dataset.val;
+          syncLabel();
+          _closeAllDropdowns();
+          if(fn&&typeof window[fn]==='function') window[fn]();
+          else sel.dispatchEvent(new Event('change',{bubbles:true}));
+        });
+      });
+    });
+  });
+}
+
+function _closeAllDropdowns(){
+  document.querySelectorAll('.nx-trigger.open').forEach(t=>t.classList.remove('open'));
+  document.querySelectorAll('.nx-dropdown').forEach(dd=>{
+    dd.style.display='none';
+    // Return to original parent wrap
+    const wrap=document.querySelector('.nx-select-wrap [data-val]');
+    dd.querySelectorAll('[data-val]').length;
+    // Find original wrap by checking all wraps
+    document.querySelectorAll('.nx-select-wrap').forEach(w=>{
+      if(!w.querySelector('.nx-dropdown')&&dd.parentNode===document.body){
+        w.appendChild(dd);
+      }
+    });
+  });
+}
+document.addEventListener('click',_closeAllDropdowns);
+window.addEventListener('scroll',_closeAllDropdowns,true);
+window.addEventListener('resize',_closeAllDropdowns);
+
+function closeAllDropdowns(){ _closeAllDropdowns(); }
+function refreshNxSelect(id){
+  const sel=document.getElementById(id);
+  if(!sel) return;
+  const wrap=sel.closest('.nx-select-wrap');
+  if(wrap){ wrap.dataset.nxInit='0'; initNxSelects(); }
+}
+function syncNxLabel(id,val){
+  const sel=document.getElementById(id);if(!sel)return;
+  const wrap=sel.closest('.nx-select-wrap');if(!wrap)return;
+  const label=wrap.querySelector('.nx-label');
+  const opt=Array.from(sel.options).find(o=>o.value===val);
+  if(label&&opt) label.textContent=opt.text;
+}
 
 </script>
 
@@ -5379,63 +5356,4 @@ function syncNxLabel(selectId, value){
 </div>
 
 </body>
-</html>// Initialize custom dropdowns
-function initNxSelects(){
-  document.querySelectorAll('.nx-select-wrap').forEach(wrap=>{
-    if(wrap.dataset.nxInit==='1') return;
-    wrap.dataset.nxInit='1';
-    const trigger=wrap.querySelector('.nx-trigger');
-    const dd=wrap.querySelector('.nx-dropdown');
-    const label=wrap.querySelector('.nx-label');
-    const sel=wrap.querySelector('select.nx-native');
-    const fn=wrap.dataset.onchange;
-    if(!trigger||!sel) return;
-    // Sync label
-    const cur=Array.from(sel.options).find(o=>o.value===sel.value);
-    if(cur&&label) label.textContent=cur.text;
-    trigger.addEventListener('click',function(e){
-      e.stopPropagation();
-      const isOpen=trigger.classList.contains('open');
-      closeAllDropdowns();
-      if(isOpen) return;
-      trigger.classList.add('open');
-      // Position dropdown using fixed coordinates
-      const rect=trigger.getBoundingClientRect();
-      if(dd){
-        dd.innerHTML=Array.from(sel.options).map(o=>
-          '<div class="nx-opt'+(o.value===sel.value?' selected':'')+'" data-val="'+encodeURIComponent(o.value)+'">'+o.text+'</div>'
-        ).join('');
-        // Use fixed positioning to escape overflow:hidden parents
-        dd.style.cssText='display:block;position:fixed;top:'+(rect.bottom+4)+'px;left:'+rect.left+'px;min-width:'+rect.width+'px;z-index:99999;max-height:280px;overflow-y:auto;';
-        document.body.appendChild(dd);
-        dd._wrap=wrap;
-        dd.querySelectorAll('.nx-opt').forEach(opt=>{
-          opt.addEventListener('click',function(ev){
-            ev.stopPropagation();
-            const val=decodeURIComponent(opt.dataset.val);
-            sel.value=val;
-            if(label) label.textContent=opt.textContent;
-            closeAllDropdowns();
-            if(fn&&window[fn]) window[fn]();
-          });
-        });
-      }
-    });
-  });
-}
-
-function closeAllDropdowns(){
-  document.querySelectorAll('.nx-trigger.open').forEach(t=>t.classList.remove('open'));
-  document.querySelectorAll('.nx-dropdown').forEach(dd=>{
-    dd.style.display='none';
-    // Move back inside wrapper if it was moved to body
-    if(dd._wrap&&dd.parentNode===document.body){
-      dd._wrap.appendChild(dd);
-    }
-  });
-}
-document.addEventListener('click',closeAllDropdowns);
-window.addEventListener('scroll',closeAllDropdowns,true);
-window.addEventListener('resize',closeAllDropdowns);
-
-
+</html>
