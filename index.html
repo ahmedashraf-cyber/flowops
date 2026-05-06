@@ -4616,6 +4616,7 @@ function initNxSelects(){
       dd._sel=sel;
       dd._syncLabel=syncLabel;
       dd._fn=fn;
+      console.log('NX BUILT: opts='+dd.querySelectorAll('.nx-opt').length+' rect='+JSON.stringify({t:Math.round(r.bottom+4),l:Math.round(r.left),w:Math.round(r.width)})+' display='+dd.style.display);
 
       // Hover
       dd.querySelectorAll('.nx-opt').forEach(function(opt){
@@ -4623,10 +4624,12 @@ function initNxSelects(){
         opt.addEventListener('mouseleave',function(){ opt.style.background=''; opt.style.color=''; });
         opt.addEventListener('click',function(ev){
           ev.stopPropagation();
+          console.log('NX OPT CLICK: i='+opt.dataset.i+' val='+sel.options[parseInt(opt.dataset.i)].value+' fn='+fn);
           sel.selectedIndex=parseInt(opt.dataset.i);
           syncLabel();
           closeAllDropdowns();
           if(fn && typeof window[fn]==='function') window[fn]();
+          else console.log('NX: fn not found:', fn, typeof window[fn]);
         });
       });
     });
