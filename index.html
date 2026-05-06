@@ -1692,19 +1692,18 @@ async function loadData(){
         const batchRaw = (r[17]||'').trim();
         if(!batchRaw) return false;
         if(batchRaw.toLowerCase()==='batch') return false;
-        // Exclude rows where col K (status) is #N/A — formula error, not real candidate
-        const kRaw = (r[10]||'').toString().trim();
-        if(kRaw==='#N/A'||kRaw==='#REF!'||kRaw==='#VALUE!'||kRaw==='#ERROR!') return false;
+        // Exclude rows where col L has formula error — not real candidate
+        const lRaw = (r[11]||'').toString().trim();
+        if(lRaw==='#N/A'||lRaw==='#REF!'||lRaw==='#VALUE!'||lRaw==='#ERROR!') return false;
         return true;
       })
       .map(({row:r, tab},i)=>{
         const name=(r[1]||'').trim();
         const nameEn=isAr(name)?arToEn(name):fmt(name);
         const nameAr=isAr(name)?name:'';
-        const colK = (r[10]||'').toString().trim(); // col K = Accepted/Rejected
-        // Accepted = col K contains 'accepted' (trim handles trailing spaces)
-        const status = colK.toLowerCase().includes('accept') ? 'accepted' : 'rejected';
-        const effectiveRaw = status === 'accepted' ? 'Accepted' : (colK || 'Rejected');
+        const colL = (r[11]||'').toString().trim(); // col L = final decision
+        const status = colL.toLowerCase().includes('accept') ? 'accepted' : 'rejected';
+        const effectiveRaw = status === 'accepted' ? 'Accepted' : (colL || 'Rejected');
         const batch=batchVal(r[17]); // col R = index 17 = Batch
         return{
           id:i+1,
@@ -4544,72 +4543,83 @@ function maExportExcel(){
 
 
 
-// ── FIELD Dropdown System (clean, single instance) ──
+// ── FIELD Dropdown System ──
 function initNxSelects(){
-  document.querySelectorAll('.nx-select-wrap').forEach(wrap=>{
+  document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
     if(wrap.dataset.nxInit==='1') return;
     wrap.dataset.nxInit='1';
-    const trigger=wrap.querySelector('.nx-trigger');
-    const dd=wrap.querySelector('.nx-dropdown');
-    const label=wrap.querySelector('.nx-label');
-    const sel=wrap.querySelector('select.nx-native');
-    const fn=wrap.dataset.onchange;
-    if(!trigger||!sel) return;
-    // Sync label to current value
-    const syncLabel=()=>{
-      const o=Array.from(sel.options).find(o=>o.value===sel.value);
-      if(o&&label) label.textContent=o.text;
-    };
+    var trigger = wrap.querySelector('.nx-trigger');
+    var dd = wrap.querySelector('.nx-dropdown');
+    var label = wrap.querySelector('.nx-label');
+    var sel = wrap.querySelector('select.nx-native');
+    var fn = wrap.dataset.onchange;
+    if(!trigger || !sel) return;
+
+    // Sync label
+    function syncLabel(){
+      var opts = sel.options;
+      for(var i=0;i<opts.length;i++){
+        if(opts[i].value===sel.value){ if(label) label.textContent=opts[i].text; break; }
+      }
+    }
     syncLabel();
-    trigger.addEventListener('click',function(e){
+
+    trigger.addEventListener('click', function(e){
       e.stopPropagation();
-      const wasOpen=trigger.classList.contains('open');
-      _closeAllDropdowns();
-      if(wasOpen) return;
-      // Rebuild options
-      dd.innerHTML=Array.from(sel.options).map(o=>
-        '<div class="nx-opt'+(o.value===sel.value?' selected':'')+
-        '" data-val="'+o.value.replace(/"/g,'&quot;')+'">'+o.text+'</div>'
-      ).join('');
-      // Position fixed to escape overflow:hidden parents
-      const r=trigger.getBoundingClientRect();
-      dd.style.cssText='position:fixed!important;display:block!important;top:'+(r.bottom+4)+'px;left:'+r.left+'px;min-width:'+r.width+'px;z-index:99999;max-height:280px;overflow-y:auto;';
+      var isOpen = wrap.classList.contains('nx-open');
+      // Close all
+      document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
+        w.classList.remove('nx-open');
+        var d=w.querySelector('.nx-dropdown');
+        if(d) d.style.display='none';
+      });
+      if(isOpen) return;
+      // Build options
+      var html='';
+      var opts=sel.options;
+      for(var i=0;i<opts.length;i++){
+        html+='<div class="nx-opt'+(opts[i].value===sel.value?' selected':'')+
+          '" data-i="'+i+'">'+opts[i].text+'</div>';
+      }
+      dd.innerHTML=html;
+      // Position
+      var r=trigger.getBoundingClientRect();
+      dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+4)+'px;'+
+        'left:'+Math.max(0,r.left)+'px;min-width:'+r.width+'px;'+
+        'z-index:99999;max-height:260px;overflow-y:auto;'+
+        'background:var(--bg-2);border:1px solid var(--b-2);'+
+        'border-radius:var(--r-lg);'+
+        'box-shadow:0 8px 32px rgba(0,0,0,0.6);';
       document.body.appendChild(dd);
-      trigger.classList.add('open');
-      dd.querySelectorAll('.nx-opt').forEach(opt=>{
-        opt.addEventListener('click',function(ev){
+      wrap.classList.add('nx-open');
+
+      // Click option
+      dd.querySelectorAll('.nx-opt').forEach(function(opt){
+        opt.addEventListener('click', function(ev){
           ev.stopPropagation();
-          sel.value=opt.dataset.val;
+          var idx=parseInt(opt.dataset.i);
+          sel.selectedIndex=idx;
           syncLabel();
-          _closeAllDropdowns();
-          if(fn&&typeof window[fn]==='function') window[fn]();
-          else sel.dispatchEvent(new Event('change',{bubbles:true}));
+          wrap.classList.remove('nx-open');
+          dd.style.display='none';
+          document.body.appendChild(dd); // keep in body but hidden
+          if(fn && typeof window[fn]==='function') window[fn]();
         });
       });
     });
   });
 }
 
-function _closeAllDropdowns(){
-  document.querySelectorAll('.nx-trigger.open').forEach(t=>t.classList.remove('open'));
-  document.querySelectorAll('.nx-dropdown').forEach(dd=>{
-    dd.style.display='none';
-    // Return to original parent wrap
-    const wrap=document.querySelector('.nx-select-wrap [data-val]');
-    dd.querySelectorAll('[data-val]').length;
-    // Find original wrap by checking all wraps
-    document.querySelectorAll('.nx-select-wrap').forEach(w=>{
-      if(!w.querySelector('.nx-dropdown')&&dd.parentNode===document.body){
-        w.appendChild(dd);
-      }
-    });
+function closeAllDropdowns(){
+  document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
+    w.classList.remove('nx-open');
+    var d=w.querySelector('.nx-dropdown');
+    if(d) d.style.display='none';
   });
 }
-document.addEventListener('click',_closeAllDropdowns);
-window.addEventListener('scroll',_closeAllDropdowns,true);
-window.addEventListener('resize',_closeAllDropdowns);
-
-function closeAllDropdowns(){ _closeAllDropdowns(); }
+document.addEventListener('click', closeAllDropdowns);
+window.addEventListener('scroll', closeAllDropdowns, true);
+window.addEventListener('resize', closeAllDropdowns);
 function refreshNxSelect(id){
   const sel=document.getElementById(id);
   if(!sel) return;
