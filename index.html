@@ -1687,27 +1687,6 @@ async function loadData(){
     console.log('STATUSES:',JSON.stringify(_ss));
     console.log('TOTAL_ROWS:',allRows.length);
 
-    // EXPORT BATCH STATS
-    const _stats = {};
-    allRows.forEach(({row:r})=>{
-      const id = (r[0]||'').trim();
-      const colL = (r[11]||'').toString().trim();
-      const batch = (r[17]||'').trim();
-      // Apply same filter rules
-      if(!id || id.toLowerCase()==='id' || !/\d/.test(id)) return;
-      if(!r[1]||!r[1].trim()) return;
-      if(!batch || batch.toLowerCase()==='batch') return;
-      if(['#N/A','#REF!','#VALUE!','#ERROR!'].includes(colL)) return;
-      if(!_stats[batch]) _stats[batch]={total:0,accepted:0,rejected:0};
-      _stats[batch].total++;
-      if(colL.toLowerCase()==='accepted') _stats[batch].accepted++;
-      else _stats[batch].rejected++;
-    });
-    console.log('=== BATCH STATS ===');
-    Object.entries(_stats).sort().forEach(([b,s])=>{
-      console.log(`Batch ${b}: total=${s.total}, accepted=${s.accepted}, rejected=${s.rejected}`);
-    });
-
     A.cands = allRows
       .filter(({row:r})=>{
         // Must have valid ID (col A)
@@ -1793,7 +1772,8 @@ function populateBatchDropdowns(){
   }).join('');
   const bf=document.getElementById('batchFilter');if(bf)bf.innerHTML=opts;
   const bn=document.getElementById('bName');if(bn)bn.innerHTML=opts;
-  initNxSelects();
+  refreshNxSelect('batchFilter');
+  refreshNxSelect('bName');
 }
 function getBatchFiltered(){
   const el=document.getElementById('batchFilter');
@@ -2560,7 +2540,7 @@ function populateBsupBatchFilter(){
   if(!el) return;
   el.innerHTML = '<option value="all">All Batches</option>' +
     batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
-  initNxSelects();
+  refreshNxSelect('bsupBatchFilter');
 }
 
 function populateBsupGroupBatch(){
@@ -4227,6 +4207,7 @@ async function loadMatchesData(){
     if(countrySel) countrySel.innerHTML = '<option value="all">All Countries</option>' + countries.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
 
     maApplyFilters();
+    ['maFilterComp','maFilterWeek','maFilterCountry'].forEach(id=>refreshNxSelect(id));
     addBsupNotif('Matches Loaded', MA.allMatches.length + ' matches loaded from database', 'green');
   } catch(e){
     addBsupNotif('Load Failed', 'Could not load matches: ' + e.message, 'warn');
@@ -4561,67 +4542,84 @@ function maExportExcel(){
 
 
 // ── FIELD CUSTOM DROPDOWN ──────────────────────────
-// nxSelect replaced by initNxSelects
 
 // Initialize custom dropdowns
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(wrap => {
-    if(wrap.dataset.nxInit) return; // already initialized
+    if(wrap.dataset.nxInit === '1') return;
     wrap.dataset.nxInit = '1';
-    const trigger = wrap.querySelector('.nx-trigger');
-    const dropdown = wrap.querySelector('.nx-dropdown');
-    const label = wrap.querySelector('.nx-label');
-    const nativeSelect = wrap.querySelector('select.nx-native');
-    const onChangeFn = wrap.dataset.onchange;
-    if(!trigger || !dropdown) return;
 
+    const trigger  = wrap.querySelector('.nx-trigger');
+    const dropdown = wrap.querySelector('.nx-dropdown');
+    const label    = wrap.querySelector('.nx-label');
+    const sel      = wrap.querySelector('select.nx-native');
+    const fnName   = wrap.dataset.onchange;
+
+    if(!trigger || !dropdown || !sel) return;
+
+    // Sync label to current native value
+    function syncLabel(){
+      const opt = Array.from(sel.options).find(o => o.value === sel.value);
+      if(opt && label) label.textContent = opt.text;
+    }
+    syncLabel();
+
+    // Open/close dropdown
     trigger.addEventListener('click', e => {
       e.stopPropagation();
       const isOpen = trigger.classList.contains('open');
-      // Close all others
-      document.querySelectorAll('.nx-trigger.open').forEach(t => {
-        t.classList.remove('open');
-        const dd = t.parentElement.querySelector('.nx-dropdown');
-        if(dd) dd.style.display = 'none';
-      });
-      if(!isOpen){
-        trigger.classList.add('open');
-        // Build options
-        const opts = nativeSelect ? Array.from(nativeSelect.options) : [];
-        const current = nativeSelect ? nativeSelect.value : '';
-        dropdown.innerHTML = opts.map(o =>
-          '<div class="nx-opt'+(o.value===current?' selected':'')+'" data-val="'+o.value+'">'+o.text+'</div>'
-        ).join('');
-        dropdown.style.display = 'block';
-        // Option click
-        dropdown.querySelectorAll('.nx-opt').forEach(opt => {
-          opt.addEventListener('click', ev => {
-            ev.stopPropagation();
-            const val = opt.getAttribute('data-val');
-            if(nativeSelect){ nativeSelect.value = val; }
-            if(label) label.textContent = opt.textContent;
-            dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
-            opt.classList.add('selected');
-            trigger.classList.remove('open');
-            dropdown.style.display = 'none';
-            if(onChangeFn && window[onChangeFn]) window[onChangeFn]();
-          });
-        });
-      }
-    });
-  });
+      closeAllDropdowns();
+      if(isOpen) return;
 
-  // Close on outside click
-  document.addEventListener('click', () => {
-    document.querySelectorAll('.nx-trigger.open').forEach(t => {
-      t.classList.remove('open');
-      const dd = t.parentElement.querySelector('.nx-dropdown');
-      if(dd) dd.style.display = 'none';
+      // Build option list fresh each time
+      dropdown.innerHTML = Array.from(sel.options).map(o =>
+        `<div class="nx-opt${o.value===sel.value?' selected':''}" data-val="${o.value}">${o.text}</div>`
+      ).join('');
+      dropdown.style.display = 'block';
+      trigger.classList.add('open');
+
+      // Option click
+      dropdown.querySelectorAll('.nx-opt').forEach(opt => {
+        opt.addEventListener('click', ev => {
+          ev.stopPropagation();
+          sel.value = opt.dataset.val;
+          if(label) label.textContent = opt.textContent;
+          dropdown.querySelectorAll('.nx-opt').forEach(o => o.classList.remove('selected'));
+          opt.classList.add('selected');
+          closeAllDropdowns();
+          // Fire the change function
+          if(fnName && typeof window[fnName] === 'function') window[fnName]();
+          else sel.dispatchEvent(new Event('change', {bubbles:true}));
+        });
+      });
     });
   });
 }
 
-// Sync nx label when native select changes programmatically
+function closeAllDropdowns(){
+  document.querySelectorAll('.nx-trigger.open').forEach(t => {
+    t.classList.remove('open');
+    const dd = t.parentElement.querySelector('.nx-dropdown');
+    if(dd) dd.style.display = 'none';
+  });
+}
+
+document.addEventListener('click', closeAllDropdowns);
+
+// Re-init after populating selects (call this after any select innerHTML change)
+function refreshNxSelect(selectId){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  const wrap = sel.closest('.nx-select-wrap');
+  if(!wrap) return;
+  wrap.dataset.nxInit = '0'; // force re-init
+  initNxSelects();
+  // Sync label
+  const opt = Array.from(sel.options).find(o => o.value === sel.value);
+  const label = wrap.querySelector('.nx-label');
+  if(opt && label) label.textContent = opt.text;
+}
+
 function syncNxLabel(selectId, value){
   const sel = document.getElementById(selectId);
   if(!sel) return;
@@ -4631,6 +4629,10 @@ function syncNxLabel(selectId, value){
   const opt = Array.from(sel.options).find(o => o.value === value);
   if(label && opt) label.textContent = opt.text;
 }
+
+
+// Sync nx label when native select changes programmatically
+
 
 </script>
 
