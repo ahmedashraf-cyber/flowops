@@ -1087,10 +1087,11 @@ select option {
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
   <div class="nx-dropdown" style="display:none"></div>
-</div>
 <select style="display:none" class="nx-native" class="input" id="bName" onchange="onBatchChange()">
                 <option value="all">All Batches</option>
               </select>
+</div>
+
             </div>
             <div class="field"><label class="input-label">Start Date</label><input class="input" type="date" id="bStart"/></div>
             <div class="field"><label class="input-label">Est. End Date</label><input class="input" type="date" id="bEnd"/></div>
@@ -1221,10 +1222,11 @@ select option {
     <span class="nx-label">All Batches</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:140px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="coordAttBatch" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:140px;display:none">
               <option value="all">All Batches</option>
             </select>
+</div>
+
 </div>
 
             <div class="nx-select-wrap " id="nx_coordAttDay" data-onchange="coordAttApplyFilter" style="display:inline-block">
@@ -1232,10 +1234,11 @@ select option {
     <span class="nx-label">All Days</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="coordAttDay" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="coordAttDay" onchange="coordAttApplyFilter()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;min-width:160px;display:none">
               <option value="all">All Days</option>
             </select>
+</div>
+
 </div>
 
             <button class="btn btn-ghost btn-sm" onclick="document.getElementById('coordAttBatch').value='all';document.getElementById('coordAttDay').value='all';coordAttApplyFilter()">✕ Clear</button>
@@ -4574,6 +4577,7 @@ function initNxSelects(){
 
     trigger.addEventListener('click',function(e){
       e.stopPropagation();
+      console.log('NX CLICK: wrap='+wrap.id+' sel='+sel.id+' opts='+sel.options.length+' fn='+fn);
       var isOpen=wrap.classList.contains('nx-open');
       closeAllDropdowns();
       if(isOpen) return;
@@ -4825,10 +4829,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Batches</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="bsupGroupBatch" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="bsupGroupBatch" style="padding:7px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;display:none">
                   <option value="all">All Batches</option>
                 </select>
+</div>
+
 </div>
 
                 <button class="btn btn-primary" onclick="generateGroups()">⚡ Generate Groups</button>
@@ -4865,10 +4870,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">Orientation Day</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="attDaySelect" onchange="loadAttendanceDay()" style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="attDaySelect" onchange="loadAttendanceDay()" style="padding:7px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;font-weight:600;display:none">
                 <option value="0">🎯 Orientation Day</option>
               </select>
+</div>
+
 </div>
 
               <button class="btn btn-secondary btn-sm" onclick="switchAttView('take')" id="attBtnTake">📋 Take Attendance</button>
@@ -4984,10 +4990,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Batches</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="tsFilterBatch" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="tsFilterBatch" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Batches</option>
             </select>
+</div>
+
 </div>
 
             <div class="nx-select-wrap " id="nx_tsFilterGroup" data-onchange="tsApplyFilters" style="display:inline-block">
@@ -4995,10 +5002,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Groups</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="tsFilterGroup" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="tsFilterGroup" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Groups</option>
             </select>
+</div>
+
 </div>
 
             <div class="nx-select-wrap " id="nx_tsFilterTrainer" data-onchange="tsApplyFilters" style="display:inline-block">
@@ -5006,10 +5014,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Trainers</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="tsFilterTrainer" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="tsFilterTrainer" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:130px;display:none">
               <option value="all">All Trainers</option>
             </select>
+</div>
+
 </div>
 
             <div class="nx-select-wrap " id="nx_tsFilterStatus" data-onchange="tsApplyFilters" style="display:inline-block">
@@ -5017,12 +5026,13 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Statuses</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="tsFilterStatus" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:150px;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="tsFilterStatus" onchange="tsApplyFilters()" style="padding:6px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:inherit;outline:none;min-width:150px;display:none">
               <option value="all">All Statuses</option>
               <option value="active">✅ Active Only</option>
               <option value="leaving">❌ Leaving Only</option>
             </select>
+</div>
+
 </div>
 
             <button class="btn btn-ghost btn-sm" onclick="tsResetFilters()">✕ Clear</button>
@@ -5247,10 +5257,11 @@ function syncNxLabel(id,val){
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
   <div class="nx-dropdown" style="display:none"></div>
-</div>
 <select style="display:none" class="nx-native" class="input" id="maTargetGroup">
                   <option value="">— Select group —</option>
                 </select>
+</div>
+
               </div>
 
               <div class="field">
@@ -5290,10 +5301,11 @@ function syncNxLabel(id,val){
     <span class="nx-label">All Groups</span>
     <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select class="nx-native" id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;display:none">
+  <div class="nx-dropdown" style="display:none"><select class="nx-native" id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;display:none">
                 <option value="all">All Groups</option>
               </select>
+</div>
+
 </div>
 
               <button class="btn btn-secondary btn-sm" onclick="maExportExcel()">⬇ Excel</button>
