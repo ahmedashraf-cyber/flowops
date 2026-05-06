@@ -832,42 +832,7 @@ select option {
 #nexusToast{ z-index:700 !important; }
 
 
-/* ── Premium Dropdown Panel ── */
-.nx-panel{
-  background:var(--bg-2,#161616);
-  border:0.5px solid var(--b-3,rgba(255,255,255,0.16));
-  border-radius:var(--r-lg,14px);
-  box-shadow:0 8px 40px rgba(0,0,0,0.7),0 2px 8px rgba(0,0,0,0.5),0 0 0 0.5px rgba(255,255,255,0.04);
-  overflow:hidden;
-  animation:nxDrop .15s cubic-bezier(0,0,0.2,1) both;
-}
-@keyframes nxDrop{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
-.nx-item{
-  display:flex;align-items:center;gap:10px;
-  padding:11px 16px;
-  font-size:13px;font-weight:500;
-  font-family:'DM Sans',sans-serif;
-  color:var(--t-2,#A1A1A6);
-  cursor:pointer;
-  transition:background .1s,color .1s;
-  border-bottom:0.5px solid var(--b-1,rgba(255,255,255,0.06));
-  white-space:nowrap;
-}
-.nx-item:last-child{border-bottom:none}
-.nx-item:hover{background:var(--glass-1,rgba(255,255,255,0.04));color:var(--t-1,#F5F5F7);}
-.nx-item-selected{background:var(--p-subtle,rgba(232,89,12,0.08));color:var(--p2,#FF7A2F);font-weight:600;}
-.nx-item-selected:hover{background:rgba(232,89,12,0.12);}
-.nx-dot{width:6px;height:6px;border-radius:50%;background:var(--p2,#FF7A2F);flex-shrink:0;box-shadow:0 0 6px rgba(232,89,12,0.5);}
-.nx-dot-empty{width:6px;height:6px;border-radius:50%;background:transparent;flex-shrink:0;}
-/* Trigger open state */
-.nx-trigger.open{border-color:var(--p,#E8590C)!important;box-shadow:0 0 0 3px rgba(232,89,12,0.12)!important;}
-.nx-trigger.open svg{transform:rotate(180deg);opacity:.9;}
-[data-theme="light"] .nx-panel{
-  background:#fff;
-  box-shadow:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06);
-}
-[data-theme="light"] .nx-item{color:var(--t-2);}
-[data-theme="light"] .nx-item:hover{background:var(--bg-2);}
+
 
 </style>
 </head>
@@ -892,7 +857,99 @@ select option {
   </g>
   <!-- Football ball bottom left -->
   <g transform="translate(50,580)">
-    <circle cx="70" cy="70" r="65" fill="none" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
+    <circle cx="70" cy="70" r="65" fill="no
+/* ══ NX DROPDOWN PANEL ══════════════════════════════════ */
+.nx-panel{
+  background:#141420;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:14px;
+  overflow:hidden;
+  animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;
+  min-width:180px;
+}
+@keyframes nxSlide{
+  from{opacity:0;transform:translateY(-8px) scale(.97)}
+  to{opacity:1;transform:translateY(0) scale(1)}
+}
+.nx-item{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 16px;
+  font-size:13.5px;font-weight:500;
+  font-family:'DM Sans',-apple-system,sans-serif;
+  color:rgba(255,255,255,0.55);
+  cursor:pointer;
+  transition:background .12s,color .12s;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+  white-space:nowrap;
+  letter-spacing:0.01em;
+}
+.nx-item:last-child{border-bottom:none}
+.nx-item:hover{
+  background:rgba(255,255,255,0.06);
+  color:rgba(255,255,255,0.9);
+}
+.nx-item-selected{
+  background:rgba(232,89,12,0.12);
+  color:#FF7A2F;
+  font-weight:600;
+}
+.nx-item-selected:hover{background:rgba(232,89,12,0.18);}
+.nx-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:#FF7A2F;flex-shrink:0;
+}
+.nx-dot-empty{
+  width:7px;height:7px;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,0.2);
+  flex-shrink:0;
+}
+/* Trigger styling */
+.nx-trigger{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 14px;
+  background:var(--bg-2,#161616);
+  border:0.5px solid var(--b-2,rgba(255,255,255,0.10));
+  border-radius:10px;
+  color:var(--t-1,#F5F5F7);
+  font-family:'DM Sans',sans-serif;
+  font-size:13px;font-weight:500;
+  cursor:pointer;
+  transition:border-color .15s,box-shadow .15s;
+  white-space:nowrap;
+  user-select:none;
+  min-width:120px;
+}
+.nx-trigger:hover{
+  border-color:var(--b-3,rgba(255,255,255,0.16));
+  background:var(--bg-3,#1C1C1C);
+}
+.nx-trigger.open{
+  border-color:var(--p,#E8590C);
+  box-shadow:0 0 0 3px rgba(232,89,12,0.15);
+}
+.nx-trigger svg{
+  opacity:.5;flex-shrink:0;
+  transition:transform .2s,opacity .15s;
+}
+.nx-trigger.open svg{transform:rotate(180deg);opacity:.8;}
+.nx-label{color:var(--t-1,#F5F5F7);font-size:13px;font-weight:500;}
+/* Light mode */
+[data-theme="light"] .nx-panel{
+  background:#ffffff;
+  border:1px solid rgba(0,0,0,0.12);
+  box-shadow:0 8px 32px rgba(0,0,0,0.1),0 2px 8px rgba(0,0,0,0.06);
+}
+[data-theme="light"] .nx-item{
+  color:rgba(0,0,0,0.55);
+  border-bottom:1px solid rgba(0,0,0,0.06);
+}
+[data-theme="light"] .nx-item:hover{background:rgba(0,0,0,0.04);color:rgba(0,0,0,0.85);}
+[data-theme="light"] .nx-item-selected{background:rgba(232,89,12,0.08);color:#E8590C;}
+[data-theme="light"] .nx-dot-empty{border-color:rgba(0,0,0,0.2);}
+[data-theme="light"] .nx-trigger{background:#fff;border-color:rgba(0,0,0,0.1);}
+[data-theme="light"] .nx-trigger:hover{background:#f5f5f7;border-color:rgba(0,0,0,0.18);}
+
+ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
     <polygon points="70,20 95,38 95,68 70,82 45,68 45,38" fill="rgba(232,89,12,0.06)" stroke="rgba(232,89,12,0.16)" stroke-width="1"/>
     <polygon points="70,82 95,68 115,78 118,108 95,120 70,118" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
     <polygon points="70,82 45,68 25,78 22,108 45,120 70,118" fill="none" stroke="rgba(232,89,12,0.12)" stroke-width="1"/>
