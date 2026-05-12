@@ -4704,15 +4704,7 @@ async function initTrainerDashboard(){
       sel.appendChild(o);
     });
   }
-  // Build day options
-  const dayEl = document.getElementById('bt_attDay');
-  if(dayEl){
-    for(let i=1;i<=30;i++){
-      const o = document.createElement('option');
-      o.value = i; o.textContent = 'Day ' + i;
-      dayEl.appendChild(o);
-    }
-  }
+  // Day options built in btLogin after group is known
   // Show login panel
   document.getElementById('bt_loginPanel').style.display = 'flex';
   document.getElementById('bt_dashboard').style.display = 'none';
@@ -4743,11 +4735,17 @@ async function btLogin(){
     // Show dashboard
     document.getElementById('bt_loginPanel').style.display = 'none';
     document.getElementById('bt_dashboard').style.display = 'grid';
-    document.getElementById('bt_userInfo').textContent = code;
-    document.getElementById('bt_groupBadge').textContent = '👥 Group ' + BT.groupIndex;
-    document.getElementById('bt_groupSubtitle').textContent = BT.groupData.trainees.length + ' trainees in Group ' + BT.groupIndex;
-    document.getElementById('bt_attSubtitle').textContent = 'Group ' + BT.groupIndex + ' · ' + BT.groupData.trainees.length + ' trainees';
-    document.getElementById('bt_matchSubtitle').textContent = 'Group ' + BT.groupIndex + ' match assignments';
+    document.getElementById('bt_userInfo').textContent = '🏋 ' + code + ' · Group ' + BT.groupIndex;
+    const attSub = document.getElementById('bt_attSubtitle');
+    if(attSub) attSub.textContent = 'Group ' + BT.groupIndex + ' · ' + BT.groupData.trainees.length + ' trainees';
+    const matchSub = document.getElementById('bt_matchSubtitle');
+    if(matchSub) matchSub.textContent = 'Matches assigned to Group ' + BT.groupIndex;
+    // Build day options
+    const dayEl = document.getElementById('bt_attDay');
+    if(dayEl && dayEl.options.length < 2){
+      for(let i=1;i<=30;i++){ const o=document.createElement('option'); o.value=i; o.textContent='Day '+i; dayEl.appendChild(o); }
+      refreshNxSelect('bt_attDay');
+    }
     btRenderGroup();
     btShowPage('group');
     btLoadMatches();
@@ -4787,6 +4785,11 @@ function btShowPage(page){
 function btRenderGroup(){
   const trainees = BT.groupData ? BT.groupData.trainees : [];
   const tierColors = {top:{bg:'rgba(48,209,88,0.12)',color:'#30D158',label:'Top'},mid:{bg:'rgba(255,159,10,0.12)',color:'#FF9F0A',label:'Mid'},low:{bg:'rgba(255,69,58,0.12)',color:'#FF453A',label:'Low'}};
+  // Update header
+  const titleEl = document.getElementById('bt_groupTitle');
+  const subEl = document.getElementById('bt_groupSubtitle');
+  if(titleEl) titleEl.textContent = 'Group ' + BT.groupIndex;
+  if(subEl) subEl.textContent = trainees.length + ' trainees · Code ' + BT.trainerCode;
   // Stats
   const statsEl = document.getElementById('bt_groupStats');
   if(statsEl){
@@ -4794,10 +4797,10 @@ function btRenderGroup(){
     const tops = trainees.filter(t=>t.tier==='top').length;
     statsEl.innerHTML = [
       {label:'Trainees',value:trainees.length,color:'var(--p2)'},
-      {label:'Avg Points',value:avg+'%',color:'var(--t-1)'},
+      {label:'Avg Points%',value:avg+'%',color:'var(--t-1)'},
       {label:'Top Tier',value:tops,color:'var(--green)'},
-      {label:'My Code',value:BT.trainerCode,color:'var(--p2)'}
-    ].map(s=>`<div class="stat-card"><div class="stat-label">${s.label}</div><div class="stat-value" style="color:${s.color}">${s.value}</div></div>`).join('');
+      {label:'Trainer Code',value:BT.trainerCode,color:'var(--p2)'}
+    ].map(s=>`<div class="card-stat"><div class="card-stat__label">${s.label}</div><div class="card-stat__value" style="color:${s.color}">${s.value}</div></div>`).join('');
   }
   btFilterGroup();
 }
@@ -4814,17 +4817,19 @@ function btFilterGroup(){
   if(!trainees.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--t-3);padding:40px">No trainees found</td></tr>'; return; }
   tbody.innerHTML = trainees.map((t,i)=>{
     const tc = tierColors[t.tier]||tierColors.mid;
+    const pts = parseFloat(t.pts)||0;
+    const ptsColor = pts>=80?'var(--green)':pts>=60?'var(--warn)':'var(--red)';
     return `<tr>
-      <td style="color:var(--t-3)">${i+1}</td>
-      <td style="font-weight:600;color:var(--t-1)">${t.name||'—'}</td>
-      <td><span style="background:rgba(232,89,12,0.1);color:var(--p2);padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">${t.trainingCode||'—'}</span></td>
-      <td style="color:var(--p2);font-weight:600">${(parseFloat(t.pts)||0).toFixed(1)}%</td>
-      <td style="color:var(--t-2)">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
-      <td style="color:var(--t-2)">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
-      <td style="color:var(--t-2)">${t.kn!=null?(parseFloat(t.kn)||0).toFixed(1)+'%':'—'}</td>
-      <td style="color:var(--t-2)">${t.tac!=null?(parseFloat(t.tac)||0).toFixed(1)+'%':'—'}</td>
-      <td style="color:var(--t-2)">${t.tspd?t.tspd+' wpm':'—'}</td>
-      <td><span style="background:${tc.bg};color:${tc.color};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${tc.label}</span></td>
+      <td class="text-secondary">${i+1}</td>
+      <td class="font-semibold">${t.name||'—'}</td>
+      <td><span class="badge" style="background:rgba(232,89,12,0.1);color:var(--p2);font-family:'JetBrains Mono',monospace;font-size:11px">${t.trainingCode||'—'}</span></td>
+      <td style="color:${ptsColor};font-weight:700">${pts.toFixed(1)}%</td>
+      <td class="text-secondary">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
+      <td class="text-secondary">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
+      <td class="text-secondary">${t.kn!=null?(parseFloat(t.kn)||0).toFixed(1)+'%':'—'}</td>
+      <td class="text-secondary">${t.tac!=null?(parseFloat(t.tac)||0).toFixed(1)+'%':'—'}</td>
+      <td class="text-secondary">${t.tspd?t.tspd+' wpm':'—'}</td>
+      <td><span class="badge" style="background:${tc.bg};color:${tc.color}">${tc.label}</span></td>
     </tr>`;
   }).join('');
 }
@@ -5674,7 +5679,7 @@ function btRenderMatches(){
 
 <div id="trainerScreen" class="screen">
   <!-- TRAINER LOGIN PANEL -->
-  <div id="bt_loginPanel" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;background:var(--bg);position:relative;z-index:301">
+  <div id="bt_loginPanel" style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;background:var(--bg);position:relative;z-index:2">
     <div class="card" style="max-width:420px;width:100%;padding:40px;text-align:center">
       <div style="font-size:48px;margin-bottom:16px">🏋</div>
       <div style="font-size:24px;font-weight:800;color:var(--t-1);margin-bottom:8px;letter-spacing:-0.02em">Batch Trainer</div>
@@ -5691,15 +5696,15 @@ function btRenderMatches(){
   </div>
 
   <!-- TRAINER DASHBOARD -->
-  <div id="bt_dashboard" style="display:none;position:relative;z-index:301" class="app-shell">
+  <div id="bt_dashboard" style="display:none" class="app-shell">
     <div class="topbar">
       <div class="topbar-brand">
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lg_bt" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E8590C"/><stop offset="100%" stop-color="#FF9350"/></linearGradient></defs><polygon points="14,2 26,8 26,20 14,26 2,20 2,8" fill="none" stroke="url(#lg_bt)" stroke-width="1.5" opacity="0.6"/><rect x="9" y="10" width="10" height="8" rx="1" fill="none" stroke="url(#lg_bt)" stroke-width="1.5"/><line x1="14" y1="10" x2="14" y2="18" stroke="url(#lg_bt)" stroke-width="1"/><circle cx="14" cy="14" r="2" fill="url(#lg_bt)" opacity="0.9"/></svg>
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lg_bt2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E8590C"/><stop offset="100%" stop-color="#FF9350"/></linearGradient></defs><polygon points="14,2 26,8 26,20 14,26 2,20 2,8" fill="none" stroke="url(#lg_bt2)" stroke-width="1.5" opacity="0.6"/><rect x="9" y="10" width="10" height="8" rx="1" fill="none" stroke="url(#lg_bt2)" stroke-width="1.5"/><line x1="14" y1="10" x2="14" y2="18" stroke="url(#lg_bt2)" stroke-width="1"/><circle cx="14" cy="14" r="2" fill="url(#lg_bt2)" opacity="0.9"/></svg>
         <div><div style="font-size:13px;font-weight:800;letter-spacing:-0.03em;color:var(--t-1)">FIELD</div><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;color:var(--p);text-transform:uppercase">TRAINING OPERATIONS</div></div>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <div style="background:rgba(232,89,12,0.12);border:1px solid rgba(232,89,12,0.3);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--p2)" id="bt_userInfo">Batch Trainer</div>
-        <button class="btn-ghost" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+        <button class="btn-ghost" onclick="toggleTheme()">🌙</button>
         <button class="btn-ghost" onclick="signOut()" style="color:var(--red)">Sign out</button>
       </div>
     </div>
@@ -5711,60 +5716,75 @@ function btRenderMatches(){
       <div class="sidebar-item" id="bt_nav_matches" onclick="btShowPage('matches')"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M7.5 1v13M1 7.5h13" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M7.5 1a9 9 0 0 1 0 13M7.5 1a9 9 0 0 0 0 13" stroke="currentColor" stroke-width="1.2"/></svg></span>Match Assignment</div>
     </div>
 
-    <div class="main-content">
-      <!-- MY GROUP -->
+    <div class="container" style="overflow-y:auto">
+
+      <!-- ── MY GROUP PAGE ── -->
       <div id="bt_page_group">
-        <div class="page-header">
-          <div><div class="page-title">My Group</div><div class="page-sub" id="bt_groupSubtitle">Your assigned trainees</div></div>
-          <div id="bt_groupBadge" style="background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.25);border-radius:20px;padding:8px 18px;font-size:13px;font-weight:700;color:var(--p2)"></div>
+        <div class="page-hdr">
+          <h2 id="bt_groupTitle">My Group</h2>
+          <p id="bt_groupSubtitle">Loading your group...</p>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px" id="bt_groupStats"></div>
         <div class="card" style="padding:0;overflow:hidden">
-          <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:600;color:var(--t-1)">Trainees</div>
-            <input type="text" placeholder="Search..." class="input" id="bt_groupSearch" oninput="btFilterGroup()" style="width:200px;padding:7px 12px;font-size:13px"/>
+          <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div class="card-title">Trainees</div>
+            <input type="text" placeholder="Search name or code..." class="input" id="bt_groupSearch" oninput="btFilterGroup()" style="width:220px;padding:7px 12px;font-size:13px"/>
           </div>
-          <div style="overflow-x:auto">
-            <table class="data-table" id="bt_groupTable">
-              <thead><tr><th>#</th><th>Name</th><th>Code</th><th>Points</th><th>Form</th><th>Interview</th><th>Knowledge</th><th>Tactics</th><th>Typing</th><th>Tier</th></tr></thead>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>#</th><th>Name</th><th>Training Code</th><th>Points%</th><th>Form%</th><th>Interview%</th><th>Knowledge%</th><th>Tactics%</th><th>Typing</th><th>Tier</th></tr></thead>
               <tbody id="bt_groupBody"></tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- ATTENDANCE -->
+      <!-- ── ATTENDANCE PAGE ── -->
       <div id="bt_page_attendance" style="display:none">
-        <div class="page-header"><div><div class="page-title">Attendance</div><div class="page-sub" id="bt_attSubtitle">Submit attendance for your group</div></div></div>
-        <div class="card" style="margin-bottom:20px;padding:20px">
+        <div class="page-hdr">
+          <h2>Attendance</h2>
+          <p id="bt_attSubtitle">Submit attendance for your group</p>
+        </div>
+        <div class="card" style="margin-bottom:16px">
           <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-            <div><label class="input-label">Training Day</label><select class="input" id="bt_attDay" onchange="btAttLoadDay()" style="min-width:160px;margin-top:6px"><option value="0">Orientation Day</option></select></div>
-            <div id="bt_attDayStatus" style="margin-top:22px;font-size:13px;font-weight:600"></div>
+            <div>
+              <div class="card-title">Training Day</div>
+              <div class="nx-select-wrap" id="nx_btAttDay" data-onchange="btAttLoadDay" style="margin-top:8px">
+                <div class="nx-trigger" style="min-width:180px"><span class="nx-label">Orientation Day</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="nx-dropdown" style="display:none"></div>
+                <select class="nx-native" id="bt_attDay" onchange="btAttLoadDay()"><option value="0">Orientation Day</option></select>
+              </div>
+            </div>
+            <div id="bt_attDayStatus" style="font-size:13px;font-weight:600;margin-top:24px"></div>
           </div>
         </div>
-        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
-          <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1)">
-            <div style="font-size:14px;font-weight:600;color:var(--t-1)">Mark Attendance</div>
-            <div style="font-size:12px;color:var(--t-3);margin-top:4px">M = Mandatory · UL = UnderLoaded · WV = Waiver · H = Hold</div>
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+          <div style="padding:14px 20px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between">
+            <div class="card-title">Mark Attendance</div>
+            <div style="font-size:12px;color:var(--t-3)">M = Mandatory · UL = UnderLoaded · WV = Waiver · H = Hold</div>
           </div>
           <div id="bt_attGrid" style="padding:16px"></div>
         </div>
-        <div style="display:flex;justify-content:flex-end">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
           <button class="btn-primary" id="bt_attSubmitBtn" onclick="btSubmitAttendance()">✅ Submit & Lock Day</button>
         </div>
-        <div class="card" style="margin-top:20px;padding:20px">
-          <div style="font-size:14px;font-weight:600;color:var(--t-1);margin-bottom:16px">Attendance History</div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:16px">Attendance History</div>
           <div id="bt_attHistory" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px"></div>
         </div>
       </div>
 
-      <!-- MATCHES -->
+      <!-- ── MATCH ASSIGNMENT PAGE ── -->
       <div id="bt_page_matches" style="display:none">
-        <div class="page-header"><div><div class="page-title">Match Assignment</div><div class="page-sub" id="bt_matchSubtitle">Matches assigned to your group</div></div></div>
+        <div class="page-hdr">
+          <h2>Match Assignment</h2>
+          <p id="bt_matchSubtitle">Matches assigned to your group</p>
+        </div>
         <div id="bt_matchesContent"><div style="text-align:center;padding:60px;color:var(--t-3)">Loading matches...</div></div>
       </div>
-    </div>
-  </div>
+
+    </div><!-- end container -->
+  </div><!-- end bt_dashboard -->
 </div>
 </body>
 </html
