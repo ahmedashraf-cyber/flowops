@@ -4781,7 +4781,7 @@ async function btLogin(){
 function btLoadAttendanceData(){
   const key = 'bt_att_g' + BT.groupIndex;
   const saved = localStorage.getItem(key);
-  if(saved){ try{ const p=JSON.parse(saved); BT.att.data=p.data||{}; BT.att.locked=p.locked||{}; }catch(e){} }
+  if(saved){ try{ const p=JSON.parse(saved); BT.att.data=p.data||{}; BT.att.locked=p.locked||{}; BT.att.dates=p.dates||{}; }catch(e){} }
   // Also try to load from Firestore attendance collection
   if(fbDb){
     fbDb.collection('attendance').doc('group_'+BT.groupIndex).get().then(doc=>{
@@ -4857,6 +4857,18 @@ function btFilterGroup(){
 }
 
 // ── Attendance ──
+function btAttDateChange(){
+  // Store date for current day
+  const day = BT.currentDay;
+  const dayKey = 'day_'+day;
+  const date = document.getElementById('bt_attDate')?.value||'';
+  if(!BT.att.dates) BT.att.dates = {};
+  BT.att.dates[dayKey] = date;
+  // Persist locally
+  const key='bt_att_g'+BT.groupIndex;
+  localStorage.setItem(key, JSON.stringify({data:BT.att.data,locked:BT.att.locked,dates:BT.att.dates}));
+}
+
 function btAttLoadDay(){
   const day = parseInt(document.getElementById('bt_attDay')?.value||0);
   BT.currentDay = day;
@@ -4864,6 +4876,9 @@ function btAttLoadDay(){
   const isLocked = BT.att.locked[dayKey];
   const statusEl = document.getElementById('bt_attDayStatus');
   const submitBtn = document.getElementById('bt_attSubmitBtn');
+  // Restore saved date for this day
+  const dateEl = document.getElementById('bt_attDate');
+  if(dateEl){ dateEl.value = (BT.att.dates&&BT.att.dates[dayKey])||''; }
   if(statusEl) statusEl.innerHTML = isLocked ? '<span style="color:var(--green)">✅ Submitted & Locked</span>' : '<span style="color:var(--warn)">⏳ Not submitted yet</span>';
   if(submitBtn){ submitBtn.disabled = isLocked; submitBtn.textContent = isLocked ? '✅ Already Submitted' : '✅ Submit & Lock Day'; }
   const trainees = BT.groupData?.trainees||[];
@@ -4946,6 +4961,7 @@ async function btSubmitAttendance(){
       await fbDb.collection('attendance').doc('group_'+BT.groupIndex).set({
         groupIndex: BT.groupIndex,
         trainerCode: BT.trainerCode,
+        dates: BT.att.dates||{},
         data: BT.att.data,
         locked: BT.att.locked,
         updatedAt: new Date().toISOString()
@@ -5801,7 +5817,7 @@ function btRenderMatches(){
           <p id="bt_attSubtitle">Submit attendance for your group</p>
         </div>
         <div class="card" style="margin-bottom:16px">
-          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
             <div>
               <div class="card-title">Training Day</div>
               <div class="nx-select-wrap" id="nx_btAttDay" data-onchange="btAttLoadDay" style="margin-top:8px">
@@ -5809,6 +5825,10 @@ function btRenderMatches(){
                 <div class="nx-dropdown" style="display:none"></div>
                 <select class="nx-native" id="bt_attDay" onchange="btAttLoadDay()" style="display:none"><option value="0">Orientation Day</option></select>
               </div>
+            </div>
+            <div>
+              <div class="card-title">Date</div>
+              <input type="date" class="input" id="bt_attDate" onchange="btAttDateChange()" style="margin-top:8px;padding:9px 14px;font-size:13px;min-width:160px"/>
             </div>
             <div id="bt_attDayStatus" style="font-size:13px;font-weight:600;margin-top:24px"></div>
           </div>
