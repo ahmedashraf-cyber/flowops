@@ -4873,10 +4873,10 @@ function btAttLoadDay(){
   if(!grid) return;
   grid.innerHTML = trainees.map(t=>{
     const cur = dayData[t.trainingCode]||'M';
-    return `<div style="display:flex;align-items:center;gap:20px;padding:18px 24px;border-bottom:0.5px solid var(--b-1)">
+    return `<div style="display:flex;align-items:center;gap:24px;padding:22px 32px;border-bottom:0.5px solid var(--b-1)">
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600;color:var(--t-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</div>
-        <div style="font-size:12px;color:var(--p2);margin-top:3px;font-family:'JetBrains Mono',monospace;font-weight:600">${t.trainingCode}</div>
+        <div style="font-size:15px;font-weight:600;color:var(--t-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</div>
+        <div style="font-size:13px;color:var(--p2);margin-top:4px;font-family:'JetBrains Mono',monospace;font-weight:600">${t.trainingCode}</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         ${STATUSES.map(s=>`<button onclick="btSetAtt('${t.trainingCode}','${s.v}')" id="bt_att_${t.trainingCode}_${s.v}"
