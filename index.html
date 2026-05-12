@@ -4873,10 +4873,12 @@ function btAttLoadDay(){
   if(!grid) return;
   grid.innerHTML = trainees.map(t=>{
     const cur = dayData[t.trainingCode]||'M';
-    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--b-1)">
-      <div style="flex:1;font-size:13px;font-weight:600;color:var(--t-1)">${t.name}</div>
-      <div style="font-size:11px;color:var(--t-3)">${t.trainingCode}</div>
-      <div style="display:flex;gap:6px">
+    return `<div style="display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:0.5px solid var(--b-1)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13.5px;font-weight:600;color:var(--t-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.name}</div>
+        <div style="font-size:11px;color:var(--t-3);margin-top:2px;font-family:'JetBrains Mono',monospace">${t.trainingCode}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
         ${STATUSES.map(s=>`<button onclick="btSetAtt('${t.trainingCode}','${s.v}')" id="bt_att_${t.trainingCode}_${s.v}"
           style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid;
           ${cur===s.v?'background:'+s.color+';color:#fff;border-color:'+s.color:'background:transparent;color:var(--t-3);border-color:var(--b-2)'};
@@ -4969,9 +4971,11 @@ function btRenderAttHistory(){
     const locked = BT.att.locked[dk];
     const dayData = BT.att.data[dk]||{};
     const present = Object.values(dayData).filter(v=>v==='M').length;
-    return `<div style="background:${locked?'rgba(48,209,88,0.08)':'var(--bg-2)'};border:0.5px solid ${locked?'rgba(48,209,88,0.25)':'var(--b-1)'};border-radius:10px;padding:10px;text-align:center">
-      <div style="font-size:11px;font-weight:600;color:${locked?'var(--green)':'var(--t-3)'}">${label}</div>
-      ${locked?`<div style="font-size:12px;color:var(--green);margin-top:4px">✅ ${present}/${trainees.length}</div>`:'<div style="font-size:11px;color:var(--t-3);margin-top:4px">Pending</div>'}
+    return `<div style="background:${locked?'rgba(48,209,88,0.08)':'var(--bg-2)'};border:0.5px solid ${locked?'rgba(48,209,88,0.25)':'var(--b-1)'};border-radius:12px;padding:14px 12px;text-align:center">
+      <div style="font-size:12px;font-weight:700;color:${locked?'var(--green)':'var(--t-2)'};margin-bottom:6px">${label}</div>
+      ${locked
+        ?`<div style="font-size:20px;font-weight:800;color:var(--green)">${present}</div><div style="font-size:11px;color:var(--t-3);margin-top:2px">of ${trainees.length} M</div><div style="font-size:10px;color:var(--green);margin-top:4px">✅ Submitted</div>`
+        :'<div style="font-size:12px;color:var(--t-3);margin-top:4px">Pending</div>'}
     </div>`;
   }).join('');
 }
@@ -5814,14 +5818,14 @@ function btRenderMatches(){
             <div class="card-title">Mark Attendance</div>
             <div style="font-size:12px;color:var(--t-3)">M = Mandatory · UL = UnderLoaded · WV = Waiver · H = Hold</div>
           </div>
-          <div id="bt_attGrid" style="padding:16px"></div>
+          <div id="bt_attGrid"></div>
         </div>
         <div style="display:flex;justify-content:flex-end;margin-bottom:24px">
           <button class="btn-primary" id="bt_attSubmitBtn" onclick="btSubmitAttendance()">✅ Submit & Lock Day</button>
         </div>
         <div class="card">
           <div class="card-title" style="margin-bottom:16px">Attendance History</div>
-          <div id="bt_attHistory" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px"></div>
+          <div id="bt_attHistory" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px"></div>
         </div>
       </div>
 
