@@ -4730,6 +4730,8 @@ async function btLogin(){
     BT.trainerCode = code;
     BT.groupData = myGroup;
     BT.groupIndex = myGroup.groupIndex;
+    // Get batch from A.cands if available, or from group data
+    BT.batch = myGroup.batch || (A.cands&&A.cands.length?A.cands[0].batch:null);
     // Load attendance data
     btLoadAttendanceData();
     // Show dashboard
@@ -4820,16 +4822,16 @@ function btFilterGroup(){
     const pts = parseFloat(t.pts)||0;
     const ptsColor = pts>=80?'var(--green)':pts>=60?'var(--warn)':'var(--red)';
     return `<tr>
-      <td class="text-secondary">${i+1}</td>
-      <td class="font-semibold">${t.name||'—'}</td>
-      <td><span class="badge" style="background:rgba(232,89,12,0.1);color:var(--p2);font-family:'JetBrains Mono',monospace;font-size:11px">${t.trainingCode||'—'}</span></td>
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--p2)">${t.trainingCode||'—'}</span></td>
+      <td style="font-weight:600;color:var(--t-1)">${t.name||'—'}</td>
+      <td><span style="background:var(--bg-3);color:var(--t-2);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">${BT.batch?'Batch '+BT.batch:'—'}</span></td>
       <td style="color:${ptsColor};font-weight:700">${pts.toFixed(1)}%</td>
-      <td class="text-secondary">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
-      <td class="text-secondary">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
-      <td class="text-secondary">${t.kn!=null?(parseFloat(t.kn)||0).toFixed(1)+'%':'—'}</td>
-      <td class="text-secondary">${t.tac!=null?(parseFloat(t.tac)||0).toFixed(1)+'%':'—'}</td>
-      <td class="text-secondary">${t.tspd?t.tspd+' wpm':'—'}</td>
-      <td><span class="badge" style="background:${tc.bg};color:${tc.color}">${tc.label}</span></td>
+      <td style="color:var(--t-2)">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.kn!=null?(parseFloat(t.kn)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.tac!=null?(parseFloat(t.tac)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.tspd?t.tspd+' wpm':'—'}</td>
+      <td><span style="background:${tc.bg};color:${tc.color};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${tc.label}</span></td>
     </tr>`;
   }).join('');
 }
@@ -5728,11 +5730,11 @@ function btRenderMatches(){
         <div class="card" style="padding:0;overflow:hidden">
           <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between;gap:12px">
             <div class="card-title">Trainees</div>
-            <input type="text" placeholder="Search name or code..." class="input" id="bt_groupSearch" oninput="btFilterGroup()" style="width:220px;padding:7px 12px;font-size:13px"/>
+            <input class="input" type="text" id="bt_groupSearch" placeholder="Search trainee name or code..." oninput="btFilterGroup()" style="flex:1;min-width:180px"/>
           </div>
           <div class="tbl-wrap">
             <table class="tbl">
-              <thead><tr><th>#</th><th>Name</th><th>Training Code</th><th>Points%</th><th>Form%</th><th>Interview%</th><th>Knowledge%</th><th>Tactics%</th><th>Typing</th><th>Tier</th></tr></thead>
+              <thead><tr><th>Code</th><th>Name</th><th>Batch</th><th>Points%</th><th>Form%</th><th>Interview%</th><th>Knowledge%</th><th>Tactics%</th><th>Typing</th><th>Tier</th></tr></thead>
               <tbody id="bt_groupBody"></tbody>
             </table>
           </div>
