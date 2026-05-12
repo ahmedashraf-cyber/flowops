@@ -821,6 +821,10 @@ select option {
 }
 [data-theme="light"] .nx-opt:hover{background:var(--bg-2)}
 
+
+.stat-card{background:var(--bg-2);border:0.5px solid var(--b-1);border-radius:var(--r-lg);padding:16px 20px;}
+.stat-label{font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--t-3);margin-bottom:6px}
+.stat-value{font-size:22px;font-weight:700;color:var(--t-1)}
 </style>
 </head>
 <body>
@@ -2851,6 +2855,12 @@ function switchRole(role){
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
       setTimeout(()=>{ loadData(); }, 100);
+    } else if(role === 'trainer'){
+      injectLogos();
+      showScreen('trainerScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ initTrainerDashboard(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -4645,6 +4655,286 @@ function syncNxLabel(id,val){
   if(label&&opt) label.textContent=opt.text;
 }
 
+
+
+// ══════════════════════════════════════════════════════════════
+// BATCH TRAINER GATE
+// ══════════════════════════════════════════════════════════════
+const BT = {
+  trainerCode: null,
+  groupIndex: null,
+  groupData: null,      // {groupIndex, trainer, trainees:[]}
+  allGroups: null,      // full groups array from Firestore
+  att: { data:{}, locked:{} },
+  currentPage: 'group',
+  currentDay: 0,
+  matchData: null
+};
+
+// ── Init ──
+async function initTrainerDashboard(){
+  // Populate trainer code select
+  const sel = document.getElementById('bt_codeSelect');
+  if(sel){
+    TRAINER_CODES.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+  }
+  // Build day options
+  const dayEl = document.getElementById('bt_attDay');
+  if(dayEl){
+    for(let i=1;i<=30;i++){
+      const o = document.createElement('option');
+      o.value = i; o.textContent = 'Day ' + i;
+      dayEl.appendChild(o);
+    }
+  }
+  // Show login panel
+  document.getElementById('bt_loginPanel').style.display = 'flex';
+  document.getElementById('bt_dashboard').style.display = 'none';
+}
+
+// ── Login: find group assigned to this trainer ──
+async function btLogin(){
+  const sel = document.getElementById('bt_codeSelect');
+  const errEl = document.getElementById('bt_loginError');
+  const code = sel ? sel.value : '';
+  if(!code){ errEl.textContent='Please select your trainer code'; errEl.style.display='block'; return; }
+
+  errEl.style.display='none';
+  try{
+    // Load group assignments from Firestore
+    const doc = await fbDb.collection('group_assignments').doc('current').get();
+    if(!doc.exists){ errEl.textContent='No group assignments found. Ask your Batch Supervisor to assign groups first.'; errEl.style.display='block'; return; }
+    const d = doc.data();
+    BT.allGroups = d.groups || [];
+    // Find group assigned to this trainer
+    const myGroup = BT.allGroups.find(g => g.trainer === code);
+    if(!myGroup){ errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.'; errEl.style.display='block'; return; }
+    BT.trainerCode = code;
+    BT.groupData = myGroup;
+    BT.groupIndex = myGroup.groupIndex;
+    // Load attendance data
+    btLoadAttendanceData();
+    // Show dashboard
+    document.getElementById('bt_loginPanel').style.display = 'none';
+    document.getElementById('bt_dashboard').style.display = 'grid';
+    document.getElementById('bt_userInfo').textContent = code;
+    document.getElementById('bt_groupBadge').textContent = '👥 Group ' + BT.groupIndex;
+    document.getElementById('bt_groupSubtitle').textContent = BT.groupData.trainees.length + ' trainees in Group ' + BT.groupIndex;
+    document.getElementById('bt_attSubtitle').textContent = 'Group ' + BT.groupIndex + ' · ' + BT.groupData.trainees.length + ' trainees';
+    document.getElementById('bt_matchSubtitle').textContent = 'Group ' + BT.groupIndex + ' match assignments';
+    btRenderGroup();
+    btShowPage('group');
+    btLoadMatches();
+  }catch(e){
+    errEl.textContent='Error loading data: '+e.message;
+    errEl.style.display='block';
+  }
+}
+
+// ── Load attendance from Firestore + localStorage ──
+function btLoadAttendanceData(){
+  const key = 'bt_att_g' + BT.groupIndex;
+  const saved = localStorage.getItem(key);
+  if(saved){ try{ const p=JSON.parse(saved); BT.att.data=p.data||{}; BT.att.locked=p.locked||{}; }catch(e){} }
+  // Also try to load from Firestore attendance collection
+  if(fbDb){
+    fbDb.collection('attendance').doc('group_'+BT.groupIndex).get().then(doc=>{
+      if(doc.exists){ const d=doc.data(); if(d.data) BT.att.data=d.data; if(d.locked) BT.att.locked=d.locked; btAttLoadDay(); btRenderAttHistory(); }
+    }).catch(()=>{});
+  }
+}
+
+// ── Page navigation ──
+function btShowPage(page){
+  closeAllDropdowns();
+  BT.currentPage = page;
+  ['group','attendance','matches'].forEach(p=>{
+    document.getElementById('bt_page_'+p).style.display = p===page?'block':'none';
+    document.getElementById('bt_nav_'+p).classList.toggle('active', p===page);
+  });
+  if(page==='attendance') btAttLoadDay();
+  if(page==='matches') btRenderMatches();
+}
+
+// ── Render group table ──
+function btRenderGroup(){
+  const trainees = BT.groupData ? BT.groupData.trainees : [];
+  const tierColors = {top:{bg:'rgba(48,209,88,0.12)',color:'#30D158',label:'Top'},mid:{bg:'rgba(255,159,10,0.12)',color:'#FF9F0A',label:'Mid'},low:{bg:'rgba(255,69,58,0.12)',color:'#FF453A',label:'Low'}};
+  // Stats
+  const statsEl = document.getElementById('bt_groupStats');
+  if(statsEl){
+    const avg = trainees.length ? (trainees.reduce((s,t)=>s+(parseFloat(t.pts)||0),0)/trainees.length).toFixed(1) : 0;
+    const tops = trainees.filter(t=>t.tier==='top').length;
+    statsEl.innerHTML = [
+      {label:'Trainees',value:trainees.length,color:'var(--p2)'},
+      {label:'Avg Points',value:avg+'%',color:'var(--t-1)'},
+      {label:'Top Tier',value:tops,color:'var(--green)'},
+      {label:'My Code',value:BT.trainerCode,color:'var(--p2)'}
+    ].map(s=>`<div class="stat-card"><div class="stat-label">${s.label}</div><div class="stat-value" style="color:${s.color}">${s.value}</div></div>`).join('');
+  }
+  btFilterGroup();
+}
+
+function btFilterGroup(){
+  const q = (document.getElementById('bt_groupSearch')?.value||'').toLowerCase();
+  const trainees = (BT.groupData?.trainees||[]).filter(t=>{
+    if(!q) return true;
+    return (t.name||'').toLowerCase().includes(q)||(t.trainingCode||'').toLowerCase().includes(q);
+  });
+  const tierColors = {top:{bg:'rgba(48,209,88,0.12)',color:'#30D158',label:'Top'},mid:{bg:'rgba(255,159,10,0.12)',color:'#FF9F0A',label:'Mid'},low:{bg:'rgba(255,69,58,0.12)',color:'#FF453A',label:'Low'}};
+  const tbody = document.getElementById('bt_groupBody');
+  if(!tbody) return;
+  if(!trainees.length){ tbody.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--t-3);padding:40px">No trainees found</td></tr>'; return; }
+  tbody.innerHTML = trainees.map((t,i)=>{
+    const tc = tierColors[t.tier]||tierColors.mid;
+    return `<tr>
+      <td style="color:var(--t-3)">${i+1}</td>
+      <td style="font-weight:600;color:var(--t-1)">${t.name||'—'}</td>
+      <td><span style="background:rgba(232,89,12,0.1);color:var(--p2);padding:2px 8px;border-radius:6px;font-size:12px;font-weight:600">${t.trainingCode||'—'}</span></td>
+      <td style="color:var(--p2);font-weight:600">${(parseFloat(t.pts)||0).toFixed(1)}%</td>
+      <td style="color:var(--t-2)">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.kn!=null?(parseFloat(t.kn)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.tac!=null?(parseFloat(t.tac)||0).toFixed(1)+'%':'—'}</td>
+      <td style="color:var(--t-2)">${t.tspd?t.tspd+' wpm':'—'}</td>
+      <td><span style="background:${tc.bg};color:${tc.color};padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">${tc.label}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Attendance ──
+function btAttLoadDay(){
+  const day = parseInt(document.getElementById('bt_attDay')?.value||0);
+  BT.currentDay = day;
+  const dayKey = 'day_'+day;
+  const isLocked = BT.att.locked[dayKey];
+  const statusEl = document.getElementById('bt_attDayStatus');
+  const submitBtn = document.getElementById('bt_attSubmitBtn');
+  if(statusEl) statusEl.innerHTML = isLocked ? '<span style="color:var(--green)">✅ Submitted & Locked</span>' : '<span style="color:var(--warn)">⏳ Not submitted yet</span>';
+  if(submitBtn){ submitBtn.disabled = isLocked; submitBtn.textContent = isLocked ? '✅ Already Submitted' : '✅ Submit & Lock Day'; }
+  const trainees = BT.groupData?.trainees||[];
+  const dayData = BT.att.data[dayKey]||{};
+  const STATUSES = [{v:'M',label:'Mandatory',color:'var(--green)'},{v:'UL',label:'UnderLoaded',color:'var(--warn)'},{v:'WV',label:'Waiver',color:'var(--blue)'},{v:'H',label:'Hold',color:'var(--t-3)'}];
+  const grid = document.getElementById('bt_attGrid');
+  if(!grid) return;
+  grid.innerHTML = trainees.map(t=>{
+    const cur = dayData[t.trainingCode]||'M';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--b-1)">
+      <div style="flex:1;font-size:13px;font-weight:600;color:var(--t-1)">${t.name}</div>
+      <div style="font-size:11px;color:var(--t-3)">${t.trainingCode}</div>
+      <div style="display:flex;gap:6px">
+        ${STATUSES.map(s=>`<button onclick="btSetAtt('${t.trainingCode}','${s.v}')" id="bt_att_${t.trainingCode}_${s.v}"
+          style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid;
+          ${cur===s.v?'background:'+s.color+';color:#fff;border-color:'+s.color:'background:transparent;color:var(--t-3);border-color:var(--b-2)'};
+          ${isLocked?'opacity:0.5;pointer-events:none':''}"
+          ${isLocked?'disabled':''}>${s.v}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+  btRenderAttHistory();
+}
+
+function btSetAtt(code, status){
+  const dayKey = 'day_'+BT.currentDay;
+  if(!BT.att.data[dayKey]) BT.att.data[dayKey]={};
+  BT.att.data[dayKey][code] = status;
+  // Update button styles
+  const STATUSES = ['M','UL','WV','H'];
+  const colors = {M:'var(--green)',UL:'var(--warn)',WV:'var(--blue)',H:'var(--t-3)'};
+  STATUSES.forEach(s=>{
+    const btn = document.getElementById('bt_att_'+code+'_'+s);
+    if(!btn) return;
+    if(s===status){ btn.style.background=colors[s]; btn.style.color='#fff'; btn.style.borderColor=colors[s]; }
+    else{ btn.style.background='transparent'; btn.style.color='var(--t-3)'; btn.style.borderColor='var(--b-2)'; }
+  });
+  // Save locally
+  const key='bt_att_g'+BT.groupIndex;
+  localStorage.setItem(key, JSON.stringify({data:BT.att.data,locked:BT.att.locked}));
+}
+
+async function btSubmitAttendance(){
+  const day = BT.currentDay;
+  const dayKey = 'day_'+day;
+  const dayLabel = day===0?'Orientation Day':'Day '+day;
+  if(!confirm('Submit and lock attendance for '+dayLabel+'? This cannot be undone.')) return;
+  BT.att.locked[dayKey] = true;
+  const key='bt_att_g'+BT.groupIndex;
+  localStorage.setItem(key, JSON.stringify({data:BT.att.data,locked:BT.att.locked}));
+  // Save to Firestore
+  if(fbDb){
+    try{
+      await fbDb.collection('attendance').doc('group_'+BT.groupIndex).set({
+        groupIndex: BT.groupIndex,
+        trainerCode: BT.trainerCode,
+        data: BT.att.data,
+        locked: BT.att.locked,
+        updatedAt: new Date().toISOString()
+      },{merge:true});
+      showToast('✅ Attendance submitted for '+dayLabel,'success');
+    }catch(e){ showToast('Saved locally only','warn'); }
+  }
+  btAttLoadDay();
+}
+
+function btRenderAttHistory(){
+  const histEl = document.getElementById('bt_attHistory');
+  if(!histEl) return;
+  const trainees = BT.groupData?.trainees||[];
+  const days = ['0',...Array.from({length:30},(_,i)=>String(i+1))];
+  const submitted = days.filter(d=>BT.att.locked['day_'+d]);
+  histEl.innerHTML = days.map(d=>{
+    const dk='day_'+d;
+    const label = d==='0'?'Orientation':'Day '+d;
+    const locked = BT.att.locked[dk];
+    const dayData = BT.att.data[dk]||{};
+    const present = Object.values(dayData).filter(v=>v==='M').length;
+    return `<div style="background:${locked?'rgba(48,209,88,0.08)':'var(--bg-2)'};border:0.5px solid ${locked?'rgba(48,209,88,0.25)':'var(--b-1)'};border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:11px;font-weight:600;color:${locked?'var(--green)':'var(--t-3)'}">${label}</div>
+      ${locked?`<div style="font-size:12px;color:var(--green);margin-top:4px">✅ ${present}/${trainees.length}</div>`:'<div style="font-size:11px;color:var(--t-3);margin-top:4px">Pending</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ── Match Assignment ──
+async function btLoadMatches(){
+  if(!fbDb) return;
+  try{
+    const doc = await fbDb.collection('match_assignments').doc('current').get();
+    if(doc.exists) BT.matchData = doc.data();
+    if(BT.currentPage==='matches') btRenderMatches();
+  }catch(e){}
+}
+
+function btRenderMatches(){
+  const el = document.getElementById('bt_matchesContent');
+  if(!el) return;
+  if(!BT.matchData||!BT.groupData){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No match data available</div>'; return; }
+  const groupLabel = 'Group '+BT.groupIndex;
+  const allMatches = BT.matchData.matches||[];
+  // Filter to only this group's matches
+  const myMatches = allMatches.filter(m=>m.group===groupLabel||m.assignedGroup===groupLabel||(m.groups&&m.groups.includes(groupLabel)));
+  if(!myMatches.length){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No matches assigned to '+groupLabel+' yet</div>'; return; }
+  el.innerHTML = `<div style="display:grid;gap:12px">${myMatches.map(m=>`
+    <div class="card" style="padding:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-size:15px;font-weight:700;color:var(--t-1)">${m.competition||m.comp||'—'}</div>
+          <div style="font-size:13px;color:var(--t-2);margin-top:4px">${m.country||''} ${m.week?'· Week '+m.week:''}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="background:rgba(232,89,12,0.1);color:var(--p2);padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">${groupLabel}</span>
+          ${m.locked?'<span style="background:rgba(48,209,88,0.1);color:var(--green);padding:4px 10px;border-radius:8px;font-size:12px">Locked</span>':''}
+        </div>
+      </div>
+      ${m.notes?`<div style="margin-top:12px;padding:10px;background:var(--bg-3);border-radius:8px;font-size:13px;color:var(--t-2)">${m.notes}</div>`:''}
+    </div>
+  `).join('')}</div>`;
+}
+
 </script>
 
 <!-- PWA Install Banner -->
@@ -5358,6 +5648,155 @@ function syncNxLabel(id,val){
     </div>
   </div>
 </div>
+
+<!-- ════════════════════════════════════════════════════════
+     BATCH TRAINER SCREEN
+════════════════════════════════════════════════════════ -->
+<div id="trainerScreen" style="display:none">
+
+  <!-- TOPBAR -->
+  <div class="topbar" id="bt_topbar">
+    <div class="topbar-brand" id="bt_logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><defs><linearGradient id="lg_bt" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E8590C"/><stop offset="100%" stop-color="#FF9350"/></linearGradient></defs><polygon points="14,2 26,8 26,20 14,26 2,20 2,8" fill="none" stroke="url(#lg_bt)" stroke-width="1.5" opacity="0.6"/><rect x="9" y="10" width="10" height="8" rx="1" fill="none" stroke="url(#lg_bt)" stroke-width="1.5"/><line x1="14" y1="10" x2="14" y2="18" stroke="url(#lg_bt)" stroke-width="1"/><circle cx="14" cy="14" r="2" fill="url(#lg_bt)" opacity="0.9"/></svg>
+      <div><div style="font-size:13px;font-weight:800;letter-spacing:-0.03em;color:var(--t-1)">FIELD</div><div style="font-size:9px;font-weight:600;letter-spacing:0.08em;color:var(--p);text-transform:uppercase">TRAINING OPERATIONS</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="bt_trainerBadge" style="background:rgba(232,89,12,0.12);border:1px solid rgba(232,89,12,0.3);border-radius:20px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--p2)">🏋 Batch Trainer</div>
+      <div id="bt_userInfo" style="font-size:13px;font-weight:600;color:var(--t-1)"></div>
+      <button class="btn-ghost" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+      <button class="btn-ghost" onclick="signOut()" style="color:var(--red)">Sign out</button>
+    </div>
+  </div>
+
+  <!-- TRAINER LOGIN PANEL (shown before trainer selects their code) -->
+  <div id="bt_loginPanel" style="display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 60px);padding:40px 20px">
+    <div class="card" style="max-width:420px;width:100%;padding:40px;text-align:center">
+      <div style="font-size:40px;margin-bottom:16px">🏋</div>
+      <div style="font-size:22px;font-weight:700;color:var(--t-1);margin-bottom:8px">Batch Trainer Portal</div>
+      <div style="font-size:14px;color:var(--t-2);margin-bottom:32px">Select your trainer code to access your assigned group</div>
+      <div style="text-align:left;margin-bottom:16px">
+        <label class="input-label">Your Trainer Code</label>
+        <select class="input" id="bt_codeSelect" style="width:100%;margin-top:6px">
+          <option value="">— Select your code —</option>
+        </select>
+      </div>
+      <button class="btn-primary" style="width:100%" onclick="btLogin()">Access My Group →</button>
+      <div id="bt_loginError" style="color:var(--red);font-size:13px;margin-top:12px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- TRAINER DASHBOARD (shown after login) -->
+  <div id="bt_dashboard" style="display:none">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="bt_sidebar">
+      <div style="padding:16px 12px 8px;font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--t-3);text-transform:uppercase">BATCH TRAINER</div>
+      <div class="nav-item active" id="bt_nav_group" onclick="btShowPage('group')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        My Group
+      </div>
+      <div class="nav-item" id="bt_nav_attendance" onclick="btShowPage('attendance')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Attendance
+      </div>
+      <div class="nav-item" id="bt_nav_matches" onclick="btShowPage('matches')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        Match Assignment
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main-content" id="bt_mainContent">
+
+      <!-- ── MY GROUP PAGE ── -->
+      <div id="bt_page_group">
+        <div class="page-header">
+          <div>
+            <div class="page-title">My Group</div>
+            <div class="page-sub" id="bt_groupSubtitle">Your assigned trainees</div>
+          </div>
+          <div id="bt_groupBadge" style="background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.25);border-radius:20px;padding:8px 18px;font-size:13px;font-weight:700;color:var(--p2)"></div>
+        </div>
+
+        <!-- Group stats -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px" id="bt_groupStats"></div>
+
+        <!-- Trainees table -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:14px;font-weight:600;color:var(--t-1)">Trainees</div>
+            <input type="text" placeholder="Search trainee..." class="input" id="bt_groupSearch" oninput="btFilterGroup()" style="width:200px;padding:7px 12px;font-size:13px"/>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="data-table" id="bt_groupTable">
+              <thead><tr>
+                <th>#</th><th>Name</th><th>Code</th><th>Points</th><th>Form</th><th>Interview</th><th>Knowledge</th><th>Tactics</th><th>Typing</th><th>Tier</th>
+              </tr></thead>
+              <tbody id="bt_groupBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ATTENDANCE PAGE ── -->
+      <div id="bt_page_attendance" style="display:none">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Attendance</div>
+            <div class="page-sub" id="bt_attSubtitle">Submit attendance for your group</div>
+          </div>
+        </div>
+
+        <!-- Day selector -->
+        <div class="card" style="margin-bottom:20px;padding:20px">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <div>
+              <label class="input-label">Training Day</label>
+              <select class="input" id="bt_attDay" onchange="btAttLoadDay()" style="min-width:160px;margin-top:6px">
+                <option value="0">Orientation Day</option>
+              </select>
+            </div>
+            <div id="bt_attDayStatus" style="margin-top:22px;font-size:13px;font-weight:600"></div>
+          </div>
+        </div>
+
+        <!-- Attendance grid -->
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+          <div style="padding:16px 20px;border-bottom:0.5px solid var(--b-1)">
+            <div style="font-size:14px;font-weight:600;color:var(--t-1)">Mark Attendance</div>
+            <div style="font-size:12px;color:var(--t-3);margin-top:4px">M = Mandatory · UL = UnderLoaded · WV = Waiver · H = Hold</div>
+          </div>
+          <div id="bt_attGrid" style="padding:16px"></div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end">
+          <button class="btn-primary" id="bt_attSubmitBtn" onclick="btSubmitAttendance()">✅ Submit & Lock Day</button>
+        </div>
+
+        <!-- History calendar -->
+        <div class="card" style="margin-top:20px;padding:20px">
+          <div style="font-size:14px;font-weight:600;color:var(--t-1);margin-bottom:16px">Attendance History</div>
+          <div id="bt_attHistory" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px"></div>
+        </div>
+      </div>
+
+      <!-- ── MATCH ASSIGNMENT PAGE ── -->
+      <div id="bt_page_matches" style="display:none">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Match Assignment</div>
+            <div class="page-sub" id="bt_matchSubtitle">Matches assigned to your group</div>
+          </div>
+        </div>
+        <div id="bt_matchesContent">
+          <div style="text-align:center;padding:60px;color:var(--t-3)">Loading matches...</div>
+        </div>
+      </div>
+
+    </div><!-- end main-content -->
+  </div><!-- end bt_dashboard -->
+
+</div><!-- end trainerScreen -->
+
 
 
 <!-- ROLE SWITCHER - Admin only -->
