@@ -4665,7 +4665,12 @@ document.addEventListener('mousedown',function(e){
     closeAllDropdowns();
   }
 });
-window.addEventListener('scroll',closeAllDropdowns,true);
+window.addEventListener('scroll',function(e){
+  // Only close if scrolling outside the dropdown panel
+  var dd = document.querySelector('.nx-dropdown[style*="display:block"]');
+  if(dd && dd.contains(e.target)) return; // scrolling inside panel - allow it
+  closeAllDropdowns();
+},true);
 window.addEventListener('resize',closeAllDropdowns);
 
 
