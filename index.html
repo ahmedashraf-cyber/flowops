@@ -4573,96 +4573,82 @@ function maExportExcel(){
 
 
 // ── FIELD Dropdown System ──
-var _nxOpenWrap = null; // track which wrap has open dropdown
+var _nxOpenWrap = null;
 
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
     if(wrap.dataset.nxInit==='1') return;
     wrap.dataset.nxInit='1';
-    var trigger = wrap.querySelector('.nx-trigger');
-    var dd = wrap.querySelector('.nx-dropdown');
-    var label = wrap.querySelector('.nx-label');
-    var sel = wrap.querySelector('select.nx-native');
-    var fn = wrap.dataset.onchange;
-    if(!trigger || !sel) return;
+    var trigger=wrap.querySelector('.nx-trigger');
+    var dd=wrap.querySelector('.nx-dropdown');
+    var label=wrap.querySelector('.nx-label');
+    var sel=wrap.querySelector('select.nx-native');
+    var fn=wrap.dataset.onchange;
+    if(!trigger||!sel) return;
 
     function syncLabel(){
       for(var i=0;i<sel.options.length;i++){
-        if(sel.options[i].value===sel.value){ if(label) label.textContent=sel.options[i].text; break; }
+        if(sel.options[i].value===sel.value){if(label)label.textContent=sel.options[i].text;break;}
       }
     }
     syncLabel();
 
-    trigger.addEventListener('click', function(e){
+    trigger.addEventListener('click',function(e){
+      e.preventDefault();
       e.stopPropagation();
-      var isOpen = (_nxOpenWrap === wrap);
+      e.stopImmediatePropagation();
+      var isOpen=(_nxOpenWrap===wrap);
+      if(isOpen){closeAllDropdowns();return;}
       closeAllDropdowns();
-      if(isOpen) return; // toggle off
 
-      // Build options
-      var html = '';
+      // Build items
+      var html='';
       for(var i=0;i<sel.options.length;i++){
-        html += '<div class="nx-opt'+(sel.options[i].value===sel.value?' selected':'')+'" data-i="'+i+'">'+sel.options[i].text+'</div>';
+        var isSel=sel.options[i].value===sel.value;
+        html+='<div class="nx-opt'+(isSel?' selected':'')+'" data-i="'+i+'" style="padding:10px 14px;font-size:13.5px;font-family:DM Sans,sans-serif;color:'+(isSel?'#FF8040':'rgba(255,255,255,0.55)')+';cursor:pointer;border-radius:10px;margin:2px 4px;display:flex;align-items:center;gap:8px;transition:background .1s">'
+          +'<span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;background:'+(isSel?'#FF8040':'transparent')+';'+(isSel?'box-shadow:0 0 8px rgba(232,89,12,0.6)':'border:1.5px solid rgba(255,255,255,0.2)')+'">'
+          +'</span>'+sel.options[i].text+'</div>';
       }
-      dd.innerHTML = html;
 
-      // Position fixed below trigger
-      var r = trigger.getBoundingClientRect();
-      dd.style.cssText = [
-        'display:block',
-        'position:fixed',
-        'top:'+(r.bottom+4)+'px',
-        'left:'+r.left+'px',
-        'width:'+r.width+'px',
-        'z-index:99999',
-        'max-height:260px',
-        'overflow-y:auto',
-        'background:#12121C',
-        'border:1px solid rgba(255,255,255,0.10)',
-        'border-radius:16px',
-        'padding:4px 0',
-        'box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8)'
-      ].join(';');
-
+      var r=trigger.getBoundingClientRect();
+      dd.innerHTML='<div style="padding:4px">'+html+'</div>';
+      dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+6)+'px;left:'+r.left+'px;width:'+r.width+'px;z-index:99999;max-height:280px;overflow-y:auto;background:#12121C;border:1px solid rgba(255,255,255,0.10);border-radius:16px;box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;';
       document.body.appendChild(dd);
       trigger.classList.add('open');
-      _nxOpenWrap = wrap;
+      _nxOpenWrap=wrap;
 
       dd.querySelectorAll('.nx-opt').forEach(function(opt){
-        opt.addEventListener('click', function(ev){
+        opt.addEventListener('mousedown',function(ev){
+          ev.preventDefault();
           ev.stopPropagation();
-          sel.selectedIndex = parseInt(opt.dataset.i);
+          sel.selectedIndex=parseInt(opt.dataset.i);
           syncLabel();
           closeAllDropdowns();
-          if(fn && typeof window[fn]==='function') window[fn]();
+          if(fn&&typeof window[fn]==='function')window[fn]();
         });
+        opt.addEventListener('mouseenter',function(){opt.style.background='rgba(255,255,255,0.06)';opt.style.color='rgba(255,255,255,0.9)';});
+        opt.addEventListener('mouseleave',function(){opt.style.background='';opt.style.color=opt.classList.contains('selected')?'#FF8040':'rgba(255,255,255,0.55)';});
       });
     });
 
-    sel.addEventListener('change', function(){
-      syncLabel();
-      if(fn && typeof window[fn]==='function') window[fn]();
-    });
+    sel.addEventListener('change',function(){syncLabel();if(fn&&typeof window[fn]==='function')window[fn]();});
   });
 }
 
 function closeAllDropdowns(){
-  // Hide the floating dropdown (it's in body when open)
-  document.querySelectorAll('.nx-dropdown').forEach(function(dd){
-    if(dd.style.display !== 'none'){
-      dd.style.display = 'none';
-    }
-  });
-  // Remove open state from all triggers
-  document.querySelectorAll('.nx-trigger.open').forEach(function(t){
-    t.classList.remove('open');
-  });
-  _nxOpenWrap = null;
+  document.querySelectorAll('.nx-dropdown').forEach(function(dd){dd.style.display='none';});
+  document.querySelectorAll('.nx-trigger.open').forEach(function(t){t.classList.remove('open');});
+  _nxOpenWrap=null;
 }
 
-document.addEventListener('click', closeAllDropdowns);
-window.addEventListener('scroll', closeAllDropdowns, true);
-window.addEventListener('resize', closeAllDropdowns);
+// Use mousedown on document so it fires BEFORE trigger click, allowing toggle
+document.addEventListener('mousedown',function(e){
+  if(!e.target.closest('.nx-select-wrap')&&!e.target.closest('.nx-dropdown')){
+    closeAllDropdowns();
+  }
+});
+window.addEventListener('scroll',closeAllDropdowns,true);
+window.addEventListener('resize',closeAllDropdowns);
 
 
 function refreshNxSelect(id){
