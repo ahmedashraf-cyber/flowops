@@ -4668,11 +4668,7 @@ document.addEventListener('mousedown',function(e){
     closeAllDropdowns();
   }
 });
-window.addEventListener('scroll',function(e){
-  var dd=document.querySelector('.nx-dropdown[style*="display:block"]');
-  if(dd && (dd===e.target||dd.contains(e.target))) return;
-  closeAllDropdowns();
-},true);
+// scroll listener removed - mousedown outside handles closing
 window.addEventListener('resize',closeAllDropdowns);
 
 
