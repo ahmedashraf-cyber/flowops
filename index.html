@@ -4725,9 +4725,12 @@ async function initTrainerDashboard(){
   // Show login panel
   document.getElementById('bt_loginPanel').style.display = 'flex';
   document.getElementById('bt_dashboard').style.display = 'none';
+  setTimeout(initNxSelects, 50);
 }
 
 // ── Login: find group assigned to this trainer ──
+function btCodeChanged(){}
+
 async function btLogin(){
   const sel = document.getElementById('bt_codeSelect');
   const errEl = document.getElementById('bt_loginError');
@@ -5732,9 +5735,11 @@ function btRenderMatches(){
       <div style="font-size:14px;color:var(--t-2);margin-bottom:32px">Select your trainer code to access your assigned group</div>
       <div style="text-align:left;margin-bottom:20px">
         <label class="input-label">Your Trainer Code</label>
-        <select class="input" id="bt_codeSelect" style="width:100%;margin-top:6px">
-          <option value="">— Select your code —</option>
-        </select>
+        <div class="nx-select-wrap" id="nx_btCode" data-onchange="btCodeChanged" style="margin-top:6px;display:block">
+          <div class="nx-trigger" style="width:100%;box-sizing:border-box"><span class="nx-label">— Select your code —</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="nx-dropdown" style="display:none"></div>
+          <select class="nx-native" id="bt_codeSelect" style="display:none"><option value="">— Select your code —</option></select>
+        </div>
       </div>
       <button class="btn-primary" style="width:100%;padding:12px" onclick="btLogin()">Access My Group →</button>
       <div id="bt_loginError" style="color:var(--red);font-size:13px;margin-top:12px;display:none"></div>
@@ -5798,7 +5803,7 @@ function btRenderMatches(){
               <div class="nx-select-wrap" id="nx_btAttDay" data-onchange="btAttLoadDay" style="margin-top:8px">
                 <div class="nx-trigger" style="min-width:180px"><span class="nx-label">Orientation Day</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
                 <div class="nx-dropdown" style="display:none"></div>
-                <select class="nx-native" id="bt_attDay" onchange="btAttLoadDay()"><option value="0">Orientation Day</option></select>
+                <select class="nx-native" id="bt_attDay" onchange="btAttLoadDay()" style="display:none"><option value="0">Orientation Day</option></select>
               </div>
             </div>
             <div id="bt_attDayStatus" style="font-size:13px;font-weight:600;margin-top:24px"></div>
