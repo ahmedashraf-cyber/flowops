@@ -3001,6 +3001,24 @@ function loadAttendanceDay(){
   const dayLabel = ATT.currentDay === 0 ? 'Orientation Day' : 'Day ' + ATT.currentDay;
 
   document.getElementById('attDayTitle').textContent = '📅 ' + dayLabel;
+  // Check if trainers have submitted for this day
+  if(fbDb){
+    fbDb.collection('attendance').doc(dayKey).get().then(function(doc){
+      if(doc.exists && doc.data().submittedGroups){
+        const groups = doc.data().submittedGroups;
+        const dateEl = document.getElementById('attDayDate');
+        if(dateEl && groups.length){
+          dateEl.innerHTML += ' &nbsp;·&nbsp; <span style="color:var(--green);font-weight:600">✅ '+groups.length+' group(s) submitted by trainers</span>';
+          // Auto-load trainer data into ATT.records if not already set
+          const dayData = doc.data().records||{};
+          if(!ATT.records[dayKey]||Object.keys(ATT.records[dayKey]).length===0){
+            ATT.records[dayKey] = dayData;
+            renderAttendanceGrid();
+          }
+        }
+      }
+    }).catch(function(){});
+  }
   document.getElementById('attDayDate').textContent = new Date().toLocaleDateString('en-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
 
   // Init day records with M as default if not exists
@@ -4886,13 +4904,37 @@ async function btSubmitAttendance(){
   const day = BT.currentDay;
   const dayKey = 'day_'+day;
   const dayLabel = day===0?'Orientation Day':'Day '+day;
-  if(!confirm('Submit and lock attendance for '+dayLabel+'? This cannot be undone.')) return;
+  if(!confirm('Submit and lock attendance for '+dayLabel+' for Group '+BT.groupIndex+'?\nThis will send to Batch Supervisor for review. This cannot be undone.')) return;
+
   BT.att.locked[dayKey] = true;
   const key='bt_att_g'+BT.groupIndex;
   localStorage.setItem(key, JSON.stringify({data:BT.att.data,locked:BT.att.locked}));
-  // Save to Firestore
+
   if(fbDb){
     try{
+      const dayData = BT.att.data[dayKey]||{};
+
+      // Save to attendance/day_X (same as bsup) so bsup reads it automatically
+      // Use merge so multiple groups contribute to the same day doc
+      const normalizedRecords = {};
+      Object.entries(dayData).forEach(function([k,v]){ normalizedRecords[String(k)]=v; });
+
+      await fbDb.collection('attendance').doc(dayKey).set({
+        dayKey: dayKey,
+        dayLabel: dayLabel,
+        records: normalizedRecords,
+        locked: false,  // bsup can still edit
+        submittedGroups: fbDb.FieldValue ? fbDb.FieldValue.arrayUnion('Group '+BT.groupIndex) : ['Group '+BT.groupIndex],
+        lastSubmittedBy: BT.trainerCode,
+        lastSubmittedAt: new Date().toISOString(),
+        totalTrainees: Object.keys(normalizedRecords).length,
+        totalM:  Object.values(normalizedRecords).filter(function(v){return v==='M';}).length,
+        totalUL: Object.values(normalizedRecords).filter(function(v){return v==='UL';}).length,
+        totalWV: Object.values(normalizedRecords).filter(function(v){return v==='WV';}).length,
+        totalH:  Object.values(normalizedRecords).filter(function(v){return v==='H';}).length
+      },{merge:true});
+
+      // Also save group-level doc for trainer history
       await fbDb.collection('attendance').doc('group_'+BT.groupIndex).set({
         groupIndex: BT.groupIndex,
         trainerCode: BT.trainerCode,
@@ -4900,8 +4942,11 @@ async function btSubmitAttendance(){
         locked: BT.att.locked,
         updatedAt: new Date().toISOString()
       },{merge:true});
-      showToast('✅ Attendance submitted for '+dayLabel,'success');
-    }catch(e){ showToast('Saved locally only','warn'); }
+
+      showToast('✅ Attendance for '+dayLabel+' sent to Batch Supervisor','success');
+    }catch(e){
+      showToast('Saved locally. Sync failed: '+e.message,'warn');
+    }
   }
   btAttLoadDay();
 }
