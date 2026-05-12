@@ -4632,6 +4632,9 @@ function initNxSelects(){
       dd.innerHTML='<div style="padding:4px">'+html+'</div>';
       dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+6)+'px;left:'+r.left+'px;min-width:'+r.width+'px;width:auto;max-width:280px;z-index:99999;max-height:280px;overflow-y:auto;background:#12121C;border:1px solid rgba(255,255,255,0.10);border-radius:16px;box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;';
       document.body.appendChild(dd);
+      // Stop wheel/scroll events from bubbling to window (keeps list open while scrolling)
+      dd.addEventListener('wheel',function(e){ e.stopPropagation(); },{passive:true});
+      dd.addEventListener('scroll',function(e){ e.stopPropagation(); },{passive:true});
       trigger.classList.add('open');
       _nxOpenWrap=wrap;
 
@@ -4666,9 +4669,8 @@ document.addEventListener('mousedown',function(e){
   }
 });
 window.addEventListener('scroll',function(e){
-  // Only close if scrolling outside the dropdown panel
-  var dd = document.querySelector('.nx-dropdown[style*="display:block"]');
-  if(dd && dd.contains(e.target)) return; // scrolling inside panel - allow it
+  var dd=document.querySelector('.nx-dropdown[style*="display:block"]');
+  if(dd && (dd===e.target||dd.contains(e.target))) return;
   closeAllDropdowns();
 },true);
 window.addEventListener('resize',closeAllDropdowns);
