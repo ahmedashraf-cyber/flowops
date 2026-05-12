@@ -1360,6 +1360,18 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
 </div>
 
 <script>
+// BT - Batch Trainer global state (declared first to avoid TDZ issues)
+var BT = {
+  trainerCode: null,
+  groupIndex: null,
+  groupData: null,
+  allGroups: null,
+  att: { data:{}, locked:{} },
+  currentPage: 'group',
+  currentDay: 0,
+  matchData: null
+};
+
 
 // ============================================================
 // FLOWOPS — EmailJS + Google Sheets API
@@ -4662,16 +4674,6 @@ function syncNxLabel(id,val){
 // ══════════════════════════════════════════════════════════════
 // BATCH TRAINER GATE
 // ══════════════════════════════════════════════════════════════
-var BT = {
-  trainerCode: null,
-  groupIndex: null,
-  groupData: null,      // {groupIndex, trainer, trainees:[]}
-  allGroups: null,      // full groups array from Firestore
-  att: { data:{}, locked:{} },
-  currentPage: 'group',
-  currentDay: 0,
-  matchData: null
-};
 
 // ── Init ──
 function btReset(){
