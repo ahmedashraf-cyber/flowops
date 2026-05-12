@@ -2836,6 +2836,8 @@ function switchRole(role){
   }
 
   setTimeout(() => {
+    // Reset trainer state if switching away
+    if(role !== 'trainer' && typeof btReset === 'function') btReset();
     if(role === 'batchsup'){
       injectLogos();
       document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
@@ -2860,7 +2862,7 @@ function switchRole(role){
       showScreen('trainerScreen');
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
-      setTimeout(()=>{ initTrainerDashboard(); }, 100);
+      setTimeout(()=>{ btReset(); initTrainerDashboard(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -4660,7 +4662,7 @@ function syncNxLabel(id,val){
 // ══════════════════════════════════════════════════════════════
 // BATCH TRAINER GATE
 // ══════════════════════════════════════════════════════════════
-const BT = {
+var BT = {
   trainerCode: null,
   groupIndex: null,
   groupData: null,      // {groupIndex, trainer, trainees:[]}
@@ -4672,6 +4674,24 @@ const BT = {
 };
 
 // ── Init ──
+function btReset(){
+  // Reset trainer state when switching roles
+  if(BT){
+    BT.trainerCode = null;
+    BT.groupIndex = null;
+    BT.groupData = null;
+    BT.allGroups = null;
+    BT.att = { data:{}, locked:{} };
+    BT.currentPage = 'group';
+    BT.matchData = null;
+  }
+  // Hide dashboard, show login
+  const lp = document.getElementById('bt_loginPanel');
+  const db = document.getElementById('bt_dashboard');
+  if(lp) lp.style.display = 'flex';
+  if(db) db.style.display = 'none';
+}
+
 async function initTrainerDashboard(){
   // Populate trainer code select
   const sel = document.getElementById('bt_codeSelect');
