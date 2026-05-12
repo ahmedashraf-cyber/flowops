@@ -4573,6 +4573,8 @@ function maExportExcel(){
 
 
 // ── FIELD Dropdown System ──
+var _nxOpenWrap = null; // track which wrap has open dropdown
+
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
     if(wrap.dataset.nxInit==='1') return;
@@ -4585,48 +4587,53 @@ function initNxSelects(){
     if(!trigger || !sel) return;
 
     function syncLabel(){
-      var opts = sel.options;
-      for(var i=0;i<opts.length;i++){
-        if(opts[i].value===sel.value){ if(label) label.textContent=opts[i].text; break; }
+      for(var i=0;i<sel.options.length;i++){
+        if(sel.options[i].value===sel.value){ if(label) label.textContent=sel.options[i].text; break; }
       }
     }
     syncLabel();
 
     trigger.addEventListener('click', function(e){
       e.stopPropagation();
-      var isOpen = wrap.classList.contains('nx-open');
-      document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
-        w.classList.remove('nx-open');
-        var d=w.querySelector('.nx-dropdown');
-        if(d){ d.style.display='none'; if(d.parentNode===document.body) document.body.removeChild(d); }
-      });
-      if(isOpen) return;
-      var html='';
-      var opts=sel.options;
-      for(var i=0;i<opts.length;i++){
-        html+='<div class="nx-opt'+(opts[i].value===sel.value?' selected':'')+
-          '" data-i="'+i+'">'+opts[i].text+'</div>';
+      var isOpen = (_nxOpenWrap === wrap);
+      closeAllDropdowns();
+      if(isOpen) return; // toggle off
+
+      // Build options
+      var html = '';
+      for(var i=0;i<sel.options.length;i++){
+        html += '<div class="nx-opt'+(sel.options[i].value===sel.value?' selected':'')+'" data-i="'+i+'">'+sel.options[i].text+'</div>';
       }
-      dd.innerHTML=html;
-      var r=trigger.getBoundingClientRect();
-      dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+4)+'px;'+
-        'left:'+Math.max(0,r.left)+'px;min-width:'+r.width+'px;'+
-        'z-index:99999;max-height:260px;overflow-y:auto;'+
-        'background:#12121C;border:1px solid rgba(255,255,255,0.10);'+
-        'border-radius:16px;padding:4px 0;'+
-        'box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);';
+      dd.innerHTML = html;
+
+      // Position fixed below trigger
+      var r = trigger.getBoundingClientRect();
+      dd.style.cssText = [
+        'display:block',
+        'position:fixed',
+        'top:'+(r.bottom+4)+'px',
+        'left:'+r.left+'px',
+        'width:'+r.width+'px',
+        'z-index:99999',
+        'max-height:260px',
+        'overflow-y:auto',
+        'background:#12121C',
+        'border:1px solid rgba(255,255,255,0.10)',
+        'border-radius:16px',
+        'padding:4px 0',
+        'box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8)'
+      ].join(';');
+
       document.body.appendChild(dd);
-      wrap.classList.add('nx-open');
+      trigger.classList.add('open');
+      _nxOpenWrap = wrap;
 
       dd.querySelectorAll('.nx-opt').forEach(function(opt){
         opt.addEventListener('click', function(ev){
           ev.stopPropagation();
-          var idx=parseInt(opt.dataset.i);
-          sel.selectedIndex=idx;
+          sel.selectedIndex = parseInt(opt.dataset.i);
           syncLabel();
-          wrap.classList.remove('nx-open');
-          dd.style.display='none';
-          document.body.appendChild(dd);
+          closeAllDropdowns();
           if(fn && typeof window[fn]==='function') window[fn]();
         });
       });
@@ -4640,21 +4647,24 @@ function initNxSelects(){
 }
 
 function closeAllDropdowns(){
-  document.querySelectorAll('.nx-select-wrap.nx-open').forEach(function(w){
-    w.classList.remove('nx-open');
-    var d=w.querySelector('.nx-dropdown');
-    if(d) d.style.display='none';
+  // Hide the floating dropdown (it's in body when open)
+  document.querySelectorAll('.nx-dropdown').forEach(function(dd){
+    if(dd.style.display !== 'none'){
+      dd.style.display = 'none';
+    }
   });
+  // Remove open state from all triggers
+  document.querySelectorAll('.nx-trigger.open').forEach(function(t){
+    t.classList.remove('open');
+  });
+  _nxOpenWrap = null;
 }
+
 document.addEventListener('click', closeAllDropdowns);
 window.addEventListener('scroll', closeAllDropdowns, true);
 window.addEventListener('resize', closeAllDropdowns);
 
 
-
-ocument.addEventListener('click', closeAllDropdowns);
-window.addEventListener('scroll', closeAllDropdowns, true);
-window.addEventListener('resize', closeAllDropdowns);
 function refreshNxSelect(id){
   const sel=document.getElementById(id);
   if(!sel) return;
