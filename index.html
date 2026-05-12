@@ -129,7 +129,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:12px}
 
 /* ── SCREENS WITH TRANSITIONS ── */
 .screen{display:none!important;min-height:100vh;opacity:0;transform:translateY(8px);transition:opacity .35s var(--ease),transform .35s var(--ease)}
-.screen.active{display:block!important;opacity:1;transform:translateY(0)}
+.screen.active{display:block!important;opacity:1;transform:translateY(0);position:relative;z-index:2}
 
 /* ── TOPBAR — True Apple glass ── */
 .topbar{
@@ -829,7 +829,7 @@ select option {
 </head>
 <body>
 <!-- FIELD Background Icons Layer -->
-<div id="fieldBg" style="position:fixed;inset:0;pointer-events:none;z-index:300;overflow:hidden">
+<div id="fieldBg" style="position:fixed;inset:0;pointer-events:none;z-index:1;overflow:hidden">
 <svg width="100%" height="100%" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
   <!-- Football pitch outline top right -->
   <g transform="translate(980,-60) rotate(15)" opacity="1">
