@@ -4408,7 +4408,10 @@ function maPopulateGroups(){
     sel.innerHTML = (isView ? '<option value="all">All Groups</option>' : '<option value="">— Select group —</option>') +
       BSUP.groups.map((g, i) => {
         const trainer = BSUP.groupAssign[i] || 'Unassigned';
-        return '<option value="'+i+'">Group '+(i+1)+' — '+trainer+'</option>';
+        // Pull batch name from first trainee in group
+        const batchName = (g[0]&&g[0].batchName) || '';
+        const batchTag = batchName ? ' ['+batchName+']' : '';
+        return '<option value="'+i+'">Group '+(i+1)+batchTag+' — '+trainer+'</option>';
       }).join('');
   });
 }
@@ -4436,9 +4439,17 @@ async function maAssignMatches(){
   // Save to Firestore
   if(fbDb && A.user){
     try {
+      const trainerCode = BSUP.groupAssign[groupIdx] || 'Unassigned';
+      const groupTrainees = BSUP.groups[groupIdx] || [];
+      const batchLbl = (groupTrainees[0]&&groupTrainees[0].batchName) || '';
       await fbDb.collection('match_assignments').doc(String(groupIdx)).set({
-        groupIdx, matches: MA.assignments[groupIdx],
-        updatedAt: now, updatedBy: A.user.email
+        groupIdx,
+        trainerCode,
+        batchLabel: batchLbl,
+        groupLabel: 'Group '+(groupIdx+1),
+        matches: MA.assignments[groupIdx],
+        updatedAt: now,
+        updatedBy: A.user.email
       });
     } catch(e){ console.warn('MA save error:', e); }
   }
@@ -4468,6 +4479,7 @@ function maRenderAssignedSummary(){
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-default)">'+
       '<div>'+
         '<div style="font-weight:600;font-size:13px">Group '+(gi+1)+'</div>'+
+        '<div style="font-size:11px;color:var(--t-3)">'+((BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'')+'</div>'+
         '<div style="font-size:11px;color:var(--color-primary)">'+trainer+'</div>'+
       '</div>'+
       '<span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">'+count+' match'+(count!==1?'es':'')+'</span>'+
@@ -4491,13 +4503,14 @@ function maRenderAssignedTable(){
   });
 
   if(!rows.length){
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>';
     return;
   }
 
   tbody.innerHTML = rows.map(({gi, mi, trainer, m}) =>
     '<tr>'+
     '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700">G'+(gi+1)+'</span></td>'+
+    '<td style="font-size:11px;color:var(--t-3)">'+((BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'—')+'</td>'+
     '<td style="font-size:12px;color:var(--color-primary);font-weight:600">'+trainer+'</td>'+
     '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-secondary)">'+(m.productionId||'—')+'</td>'+
     '<td style="font-size:12px;color:var(--text-secondary)">'+(m.gameWeek?'GW'+m.gameWeek:'—')+'</td>'+
@@ -4536,8 +4549,11 @@ async function maConfirmEdit(){
   // Save to Firestore
   if(fbDb && A.user){
     try {
+      const tc2 = BSUP.groupAssign[gi]||'Unassigned';
+      const bl2 = (BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'';
       await fbDb.collection('match_assignments').doc(String(gi)).set({
-        groupIdx: gi, matches: MA.assignments[gi],
+        groupIdx: gi, trainerCode: tc2, batchLabel: bl2, groupLabel: 'Group '+(gi+1),
+        matches: MA.assignments[gi],
         updatedAt: new Date().toISOString(), updatedBy: A.user.email
       });
     } catch(e){}
@@ -4556,8 +4572,11 @@ async function maRemoveMatch(gi, mi){
 
   if(fbDb && A.user){
     try {
+      const tc2 = BSUP.groupAssign[gi]||'Unassigned';
+      const bl2 = (BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'';
       await fbDb.collection('match_assignments').doc(String(gi)).set({
-        groupIdx: gi, matches: MA.assignments[gi],
+        groupIdx: gi, trainerCode: tc2, batchLabel: bl2, groupLabel: 'Group '+(gi+1),
+        matches: MA.assignments[gi],
         updatedAt: new Date().toISOString(), updatedBy: A.user.email
       });
     } catch(e){}
@@ -5082,12 +5101,26 @@ function btRenderAttHistory(){
 
 // ── Match Assignment ──
 async function btLoadMatches(){
-  if(!fbDb) return;
+  if(!fbDb || BT.groupIndex == null) return;
   try{
-    const doc = await fbDb.collection('match_assignments').doc('current').get();
-    if(doc.exists) BT.matchData = doc.data();
+    // match_assignments docs are keyed by groupIndex (0-based)
+    // Try the trainer's current groupIndex first, then scan all docs for trainerCode match
+    const targetIdx = BT.groupIndex - 1; // groupIndex is 1-based, doc key is 0-based
+    const doc = await fbDb.collection('match_assignments').doc(String(targetIdx)).get();
+    if(doc.exists){
+      BT.matchData = doc.data();
+    } else {
+      // Fallback: scan all match_assignment docs for this trainerCode
+      const snap = await fbDb.collection('match_assignments').get();
+      let found = null;
+      snap.forEach(d => {
+        const dd = d.data();
+        if(dd.trainerCode && dd.trainerCode === BT.trainerCode) found = dd;
+      });
+      BT.matchData = found;
+    }
     if(BT.currentPage==='matches') btRenderMatches();
-  }catch(e){}
+  }catch(e){ console.warn('btLoadMatches error:', e); }
 }
 
 function btRenderMatches(){
@@ -5096,24 +5129,28 @@ function btRenderMatches(){
   if(!BT.matchData||!BT.groupData){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No match data available</div>'; return; }
   const groupLabel = 'Group '+BT.groupIndex;
   const allMatches = BT.matchData.matches||[];
-  // Filter to only this group's matches
-  const myMatches = allMatches.filter(m=>m.group===groupLabel||m.assignedGroup===groupLabel||(m.groups&&m.groups.includes(groupLabel)));
-  if(!myMatches.length){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No matches assigned to '+groupLabel+' yet</div>'; return; }
-  el.innerHTML = `<div style="display:grid;gap:12px">${myMatches.map(m=>`
-    <div class="card" style="padding:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-size:15px;font-weight:700;color:var(--t-1)">${m.competition||m.comp||'—'}</div>
-          <div style="font-size:13px;color:var(--t-2);margin-top:4px">${m.country||''} ${m.week?'· Week '+m.week:''}</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span style="background:rgba(232,89,12,0.1);color:var(--p2);padding:4px 12px;border-radius:8px;font-size:12px;font-weight:700">${groupLabel}</span>
-          ${m.locked?'<span style="background:rgba(48,209,88,0.1);color:var(--green);padding:4px 10px;border-radius:8px;font-size:12px">Locked</span>':''}
-        </div>
+  // All matches in this doc belong to this group — show them all
+  const myMatches = allMatches;
+  if(!myMatches.length){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No matches assigned to '+groupLabel+' yet.<br><span style="font-size:12px;opacity:.6">Ask your Batch Supervisor to assign matches.</span></div>'; return; }
+  const batchInfo = BT.matchData.batchLabel ? '<span style="background:rgba(255,255,255,0.06);color:var(--t-3);padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600">'+ BT.matchData.batchLabel +'</span>' : '';
+  el.innerHTML = `<div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <span style="font-size:13px;font-weight:700;color:var(--t-1)">${myMatches.length} match${myMatches.length!==1?'es':''} assigned to ${groupLabel}</span>
+    ${batchInfo}
+  </div>
+  <div style="display:grid;gap:10px">${myMatches.map((m,idx)=>`
+    <div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center">
+      <div style="font-family:JetBrains Mono,monospace;font-size:22px;font-weight:700;color:rgba(232,89,12,0.3);min-width:32px;text-align:center">${String(idx+1).padStart(2,'0')}</div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--t-1)">${m.homeTeam||'—'} <span style="color:var(--t-3);font-weight:400">vs</span> ${m.awayTeam||'—'}</div>
+        <div style="font-size:12px;color:var(--t-3);margin-top:3px">${m.competition||'—'} ${m.country?'· '+m.country:''} ${m.matchDate?'· '+m.matchDate:''}</div>
       </div>
-      ${m.notes?`<div style="margin-top:12px;padding:10px;background:var(--bg-3);border-radius:8px;font-size:13px;color:var(--t-2)">${m.notes}</div>`:''}
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        ${m.gameWeek?`<span style="background:rgba(232,89,12,0.12);color:var(--p2);padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700">GW${m.gameWeek}</span>`:''}
+        ${m.productionId?`<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--t-3)">${m.productionId}</span>`:''}
+      </div>
     </div>
-  `).join('')}</div>`;
+  `).join('')}</div></div>`;
 }
 
 </script>
@@ -5770,7 +5807,7 @@ function btRenderMatches(){
           </div>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>Group</th><th>Trainer</th><th>Production ID</th><th>GW</th><th>Competition</th><th>Date</th><th>Home</th><th>Away</th><th>Country</th><th>Assigned</th><th>Action</th></tr></thead>
+              <thead><tr><th>Group</th><th>Batch</th><th>Trainer</th><th>Production ID</th><th>GW</th><th>Competition</th><th>Date</th><th>Home</th><th>Away</th><th>Country</th><th>Assigned</th><th>Action</th></tr></thead>
               <tbody id="maAssignedBody">
                 <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text-muted)">No assignments yet</td></tr>
               </tbody>
