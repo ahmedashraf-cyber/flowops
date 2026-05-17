@@ -4212,20 +4212,18 @@ const MATCHES_TAB      = 'Training Matches';
 
 async function initMatchAssignment(){
   MA.allBatchGroups = [];
-  const debugEl = document.getElementById('maDebugInfo');
-
-  if(!fbDb){ if(debugEl) debugEl.textContent='No Firebase connection'; return; }
+  if(!fbDb) return;
 
   try {
     const gaSnap = await fbDb.collection('group_assignments').get();
-    let debugLines = ['Docs in group_assignments: ' + gaSnap.size];
+    const debugLines = ['Docs: ' + gaSnap.size];
 
     gaSnap.forEach(doc => {
       const d = doc.data();
       const groups = d.groups||[];
-      debugLines.push('Doc "' + doc.id + '": ' + groups.length + ' groups, batchLabel="' + (d.batchLabel||'') + '"');
+
       groups.forEach(g => {
-        debugLines.push('  → groupIndex=' + g.groupIndex + ' trainer="' + (g.trainer||'') + '" batchLabel="' + (g.batchLabel||d.batchLabel||'') + '"');
+
         MA.allBatchGroups.push({
           docId:      doc.id,
           batchLabel: g.batchLabel || d.batchLabel || '',
@@ -4237,23 +4235,19 @@ async function initMatchAssignment(){
       });
     });
 
-    // Deduplicate by (batchLabel+groupIndex+trainer), keep newest
-    const seen = {};
+    // Deduplicate by (docId + groupIndex) — same batch doc saved twice keeps newest doc only
+    const seenDocs = {};
     MA.allBatchGroups.forEach(g => {
-      const k = (g.batchLabel||'') + '__g' + g.groupIndex + '__' + (g.trainer||'');
-      if(!seen[k] || g.savedAt > seen[k].savedAt) seen[k] = g;
+      const k = g.docId + '__g' + g.groupIndex;
+      if(!seenDocs[k] || g.savedAt > seenDocs[k].savedAt) seenDocs[k] = g;
     });
-    MA.allBatchGroups = Object.values(seen);
+    MA.allBatchGroups = Object.values(seenDocs);
     MA.allBatchGroups.sort((a,b) => a.batchLabel.localeCompare(b.batchLabel) || a.groupIndex-b.groupIndex);
 
-    debugLines.push('After dedup: ' + MA.allBatchGroups.length + ' unique groups');
-    if(debugEl){ debugEl.style.display='block'; debugEl.innerHTML = debugLines.join('<br>'); }
+    debugLines.push('Groups: ' + MA.allBatchGroups.length);
     console.log('[FIELD] group_assignments:', debugLines);
 
-  } catch(e){
-    console.warn('MA groups load error:', e);
-    if(debugEl) debugEl.textContent = 'Error: ' + e.message;
-  }
+  } catch(e){ console.warn('MA groups load error:', e); }
 
   try {
     const snap = await fbDb.collection('match_assignments').get();
@@ -6011,7 +6005,7 @@ function btQuickAssignAll(){
           <h2>Match Assignment</h2>
           <p>Assign matches from the live database to each training group — weekly</p>
         </div>
-        <div id="maDebugInfo" style="display:none;background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.3);border-radius:10px;padding:12px 16px;font-size:12px;font-family:JetBrains Mono,monospace;color:var(--p2);margin-bottom:16px;line-height:1.8"></div>
+
 
         <!-- STEP 1: LOAD & FILTER MATCHES -->
         <div class="card" style="margin-bottom:16px">
