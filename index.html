@@ -4461,14 +4461,6 @@ function maPopulateGroups(){
         return '<option value="'+key+'">Group '+g.groupIndex+batchTag+' — '+g.trainer+'</option>';
       }).join('');
   });
-  // Re-init nx wrappers to pick up newly loaded options
-  setTimeout(() => {
-    if(typeof initNxSelects === 'function') initNxSelects();
-    if(typeof refreshNxSelect === 'function'){
-      refreshNxSelect('maTargetGroup');
-      refreshNxSelect('maViewGroup');
-    }
-  }, 50);
 }
 
 async function maAssignMatches(){
@@ -6057,16 +6049,9 @@ function btQuickAssignAll(){
 
               <div class="field">
                 <label class="input-label">Training Group</label>
-                <div class="nx-select-wrap full" id="nx_maTargetGroup" data-onchange="" style="display:inline-block">
-  <div class="nx-trigger" style="width:100%">
-    <span class="nx-label">— Select group —</span>
-    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </div>
-  <div class="nx-dropdown" style="display:none"></div>
-<select style="display:none" class="nx-native" class="input" id="maTargetGroup">
+                <select id="maTargetGroup" style="width:100%;padding:10px 14px;border:1.5px solid var(--border-strong);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;appearance:auto">
                   <option value="">— Select group —</option>
                 </select>
-</div>
 
               </div>
 
@@ -6102,17 +6087,9 @@ function btQuickAssignAll(){
           <div style="padding:14px 20px;border-bottom:1px solid var(--border-default);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div class="card-title">All Group Assignments</div>
             <div style="display:flex;gap:8px">
-              <div class="nx-select-wrap " id="nx_maViewGroup" data-onchange="maRenderAssignedTable" style="display:inline-block">
-  <div class="nx-trigger" style="min-width:130px">
-    <span class="nx-label">All Groups</span>
-    <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </div>
-  <div class="nx-dropdown" style="display:none"></div>
-  <select class="nx-native" id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:5px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;display:none">
+              <select id="maViewGroup" onchange="maRenderAssignedTable()" style="padding:6px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--bg-surface);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;cursor:pointer">
                 <option value="all">All Groups</option>
               </select>
-
-</div>
 
               <button class="btn btn-secondary btn-sm" onclick="maExportExcel()">⬇ Excel</button>
             </div>
