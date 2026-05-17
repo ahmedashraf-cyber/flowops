@@ -1360,6 +1360,19 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
 </div>
 
 <script>
+// Global error catcher - surfaces any JS crash visibly
+window.onerror = function(msg, src, line, col, err) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:12px 16px;font-size:13px;font-family:monospace;z-index:99999;white-space:pre-wrap;word-break:break-all';
+  d.textContent = 'JS ERROR L' + line + ': ' + msg;
+  document.body && document.body.appendChild(d);
+};
+window.addEventListener('unhandledrejection', function(e) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:50px;left:0;right:0;background:#8e44ad;color:#fff;padding:12px 16px;font-size:13px;font-family:monospace;z-index:99999;white-space:pre-wrap;word-break:break-all';
+  d.textContent = 'ASYNC ERROR: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason));
+  document.body && document.body.appendChild(d);
+});
 // BT - Batch Trainer global state (declared first to avoid TDZ issues)
 var BT = {
   trainerCode: null,
