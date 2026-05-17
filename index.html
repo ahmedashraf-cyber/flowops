@@ -2838,7 +2838,7 @@ function showBsupTab(tab){
   if(tab === 'bsupGroups'){ updateBsupGroupsAvailability(); setTimeout(initNxSelects,50); }
   if(tab === 'bsupAttendance'){ initAttendance(); setTimeout(initNxSelects,50); }
   if(tab === 'bsupStatus'){ initTrainingStatus(); setTimeout(initNxSelects,50); }
-  if(tab === 'bsupMatches'){ initMatchAssignment(); setTimeout(initNxSelects,100); }
+  if(tab === 'bsupMatches'){ initNxSelects(); initMatchAssignment(); }
   if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
   setTimeout(initNxSelects, 50);
 }
@@ -4461,8 +4461,14 @@ function maPopulateGroups(){
         return '<option value="'+key+'">Group '+g.groupIndex+batchTag+' — '+g.trainer+'</option>';
       }).join('');
   });
-  refreshNxSelect && refreshNxSelect('maTargetGroup');
-  refreshNxSelect && refreshNxSelect('maViewGroup');
+  // Re-init nx wrappers to pick up newly loaded options
+  setTimeout(() => {
+    if(typeof initNxSelects === 'function') initNxSelects();
+    if(typeof refreshNxSelect === 'function'){
+      refreshNxSelect('maTargetGroup');
+      refreshNxSelect('maViewGroup');
+    }
+  }, 50);
 }
 
 async function maAssignMatches(){
