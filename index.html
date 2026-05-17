@@ -4240,23 +4240,53 @@ const MATCHES_API_KEY  = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 const MATCHES_TAB      = 'Training Matches';
 
 async function initMatchAssignment(){
-  // Load saved assignments from Firestore
+  // Load all saved group assignments from Firestore (all batches)
+  MA.allBatchGroups = []; // [{batchLabel, groupIndex, trainer, trainees, docId}]
   if(fbDb){
+    try {
+      const gaSnap = await fbDb.collection('group_assignments').get();
+      gaSnap.forEach(doc => {
+        if(doc.id === 'current') return;
+        const d = doc.data();
+        (d.groups||[]).forEach(g => {
+          MA.allBatchGroups.push({
+            docId:      doc.id,
+            batchLabel: g.batchLabel || d.batchLabel || '',
+            groupIndex: g.groupIndex,
+            trainer:    g.trainer || 'Unassigned',
+            trainees:   g.trainees || [],
+            savedAt:    d.savedAt || ''
+          });
+        });
+      });
+      // Deduplicate by (batchLabel+groupIndex), keep newest
+      const seen = {};
+      MA.allBatchGroups = MA.allBatchGroups.filter(g => {
+        const k = g.batchLabel+'__g'+g.groupIndex;
+        if(!seen[k] || g.savedAt > seen[k]){ seen[k]=g.savedAt; return true; }
+        return false;
+      });
+      MA.allBatchGroups.sort((a,b) => a.batchLabel.localeCompare(b.batchLabel) || a.groupIndex-b.groupIndex);
+    } catch(e){ console.warn('MA groups load error:', e); }
+
+    // Load saved match assignments — keyed by composite batchSlug_groupIdx
     try {
       const snap = await fbDb.collection('match_assignments').get();
       MA.assignments = {};
       snap.forEach(doc => {
-        MA.assignments[parseInt(doc.id)] = doc.data().matches || [];
+        const d = doc.data();
+        const key = d.compositeKey || String(d.groupIdx ?? doc.id);
+        MA.assignments[key] = d.matches || [];
+        // Store full doc data for display
+        MA.assignmentMeta = MA.assignmentMeta || {};
+        MA.assignmentMeta[key] = { trainerCode: d.trainerCode, batchLabel: d.batchLabel, groupLabel: d.groupLabel };
       });
     } catch(e){ console.warn('MA load error:', e); }
   }
 
-  // Populate group selectors
   maPopulateGroups();
   maRenderAssignedSummary();
   maRenderAssignedTable();
-
-  // Auto-load matches
   if(!MA.allMatches.length) await loadMatchesData();
 }
 
@@ -4443,55 +4473,67 @@ function maUpdatePreview(){
   ).join('');
 }
 
+function maGroupCompositeKey(g){
+  return (g.batchLabel||'batch').replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()+'_g'+g.groupIndex;
+}
+
 function maPopulateGroups(){
+  const allGroups = MA.allBatchGroups && MA.allBatchGroups.length
+    ? MA.allBatchGroups
+    : BSUP.groups.map((g,i)=>({ batchLabel:(g[0]&&g[0].batchName)||'', groupIndex:i+1, trainer:BSUP.groupAssign[i]||'Unassigned', trainees:g }));
+
   const sels = ['maTargetGroup', 'maViewGroup'];
   sels.forEach(id => {
     const sel = document.getElementById(id);
     if(!sel) return;
     const isView = id === 'maViewGroup';
     sel.innerHTML = (isView ? '<option value="all">All Groups</option>' : '<option value="">— Select group —</option>') +
-      BSUP.groups.map((g, i) => {
-        const trainer = BSUP.groupAssign[i] || 'Unassigned';
-        // Pull batch name from first trainee in group
-        const batchName = (g[0]&&g[0].batchName) || '';
-        const batchTag = batchName ? ' ['+batchName+']' : '';
-        return '<option value="'+i+'">Group '+(i+1)+batchTag+' — '+trainer+'</option>';
+      allGroups.map(g => {
+        const key = maGroupCompositeKey(g);
+        const batchTag = g.batchLabel ? ' ['+g.batchLabel+']' : '';
+        return '<option value="'+key+'">Group '+g.groupIndex+batchTag+' — '+g.trainer+'</option>';
       }).join('');
   });
+  refreshNxSelect && refreshNxSelect('maTargetGroup');
+  refreshNxSelect && refreshNxSelect('maViewGroup');
 }
 
 async function maAssignMatches(){
   if(!MA.selected.size){ alert('Select at least one match first.'); return; }
-  const groupIdxStr = document.getElementById('maTargetGroup').value;
-  if(groupIdxStr === ''){ alert('Select a training group.'); return; }
-  const groupIdx = parseInt(groupIdxStr);
+  const compositeKey = document.getElementById('maTargetGroup').value;
+  if(!compositeKey){ alert('Select a training group.'); return; }
+
+  // Resolve group from allBatchGroups using composite key
+  const allGroups = MA.allBatchGroups && MA.allBatchGroups.length
+    ? MA.allBatchGroups
+    : BSUP.groups.map((g,i)=>({ batchLabel:(g[0]&&g[0].batchName)||'', groupIndex:i+1, trainer:BSUP.groupAssign[i]||'Unassigned', trainees:g }));
+  const grp = allGroups.find(g => maGroupCompositeKey(g) === compositeKey);
+  if(!grp){ alert('Group not found. Try refreshing.'); return; }
 
   const selectedMatches = MA.allMatches.filter(m => MA.selected.has(m.idx));
   const now = new Date().toISOString();
 
-  if(!MA.assignments[groupIdx]) MA.assignments[groupIdx] = [];
+  if(!MA.assignments[compositeKey]) MA.assignments[compositeKey] = [];
 
   // Add new matches (avoid duplicates by productionId)
-  const existingIds = new Set(MA.assignments[groupIdx].map(m => m.productionId));
+  const existingIds = new Set(MA.assignments[compositeKey].map(m => m.productionId));
   const newMatches  = selectedMatches.filter(m => !existingIds.has(m.productionId));
   const dupeCount   = selectedMatches.length - newMatches.length;
 
   newMatches.forEach(m => {
-    MA.assignments[groupIdx].push({ ...m, assignedAt: now, assignedBy: A.user?.email || '', editHistory: [] });
+    MA.assignments[compositeKey].push({ ...m, assignedAt: now, assignedBy: A.user?.email || '', editHistory: [] });
   });
 
-  // Save to Firestore
+  // Save to Firestore — doc key = compositeKey so each batch+group has its own doc
   if(fbDb && A.user){
     try {
-      const trainerCode = BSUP.groupAssign[groupIdx] || 'Unassigned';
-      const groupTrainees = BSUP.groups[groupIdx] || [];
-      const batchLbl = (groupTrainees[0]&&groupTrainees[0].batchName) || '';
-      await fbDb.collection('match_assignments').doc(String(groupIdx)).set({
-        groupIdx,
-        trainerCode,
-        batchLabel: batchLbl,
-        groupLabel: 'Group '+(groupIdx+1),
-        matches: MA.assignments[groupIdx],
+      await fbDb.collection('match_assignments').doc(compositeKey).set({
+        compositeKey,
+        groupIdx:   grp.groupIndex - 1,
+        trainerCode: grp.trainer,
+        batchLabel:  grp.batchLabel,
+        groupLabel:  'Group '+grp.groupIndex,
+        matches: MA.assignments[compositeKey],
         updatedAt: now,
         updatedBy: A.user.email
       });
@@ -4505,7 +4547,7 @@ async function maAssignMatches(){
   maRenderAssignedSummary();
   maRenderAssignedTable();
 
-  let msg = newMatches.length + ' matches assigned to Group ' + (groupIdx+1);
+  let msg = newMatches.length + ' matches assigned to ' + grp.batchLabel + ' Group ' + grp.groupIndex;
   if(dupeCount) msg += ' (' + dupeCount + ' duplicates skipped)';
   addBsupNotif('Matches Assigned', msg, 'green');
   alert('✅ ' + msg);
@@ -4514,16 +4556,19 @@ async function maAssignMatches(){
 function maRenderAssignedSummary(){
   const el = document.getElementById('maAssignedSummary');
   if(!el) return;
-  const keys = Object.keys(MA.assignments).filter(k => MA.assignments[k].length > 0);
+  const keys = Object.keys(MA.assignments).filter(k => MA.assignments[k] && MA.assignments[k].length > 0);
   if(!keys.length){ el.innerHTML = '<div style="color:var(--text-muted)">No assignments yet</div>'; return; }
   el.innerHTML = keys.map(k => {
-    const gi = parseInt(k);
-    const trainer = BSUP.groupAssign[gi] || 'Unassigned';
-    const count = MA.assignments[gi].length;
+    const meta = (MA.assignmentMeta && MA.assignmentMeta[k]) || {};
+    const grp = (MA.allBatchGroups||[]).find(g => maGroupCompositeKey(g) === k);
+    const trainer = meta.trainerCode || (grp && grp.trainer) || 'Unassigned';
+    const batchLabel = meta.batchLabel || (grp && grp.batchLabel) || '';
+    const groupLabel = meta.groupLabel || (grp ? 'Group '+grp.groupIndex : k);
+    const count = MA.assignments[k].length;
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border-default)">'+
       '<div>'+
-        '<div style="font-weight:600;font-size:13px">Group '+(gi+1)+'</div>'+
-        '<div style="font-size:11px;color:var(--t-3)">'+((BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'')+'</div>'+
+        '<div style="font-weight:600;font-size:13px">'+groupLabel+'</div>'+
+        '<div style="font-size:11px;color:var(--t-3)">'+batchLabel+'</div>'+
         '<div style="font-size:11px;color:var(--color-primary)">'+trainer+'</div>'+
       '</div>'+
       '<span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:700">'+count+' match'+(count!==1?'es':'')+'</span>'+
@@ -4537,12 +4582,16 @@ function maRenderAssignedTable(){
   if(!tbody) return;
 
   const rows = [];
-  Object.keys(MA.assignments).forEach(k => {
-    const gi = parseInt(k);
-    if(viewGrp !== 'all' && gi !== parseInt(viewGrp)) return;
-    const trainer = BSUP.groupAssign[gi] || '—';
-    MA.assignments[gi].forEach((m, mi) => {
-      rows.push({ gi, mi, trainer, m });
+  Object.keys(MA.assignments).forEach(ck => {
+    if(viewGrp !== 'all' && ck !== viewGrp) return;
+    if(!MA.assignments[ck] || !MA.assignments[ck].length) return;
+    const meta = (MA.assignmentMeta && MA.assignmentMeta[ck]) || {};
+    const grp = (MA.allBatchGroups||[]).find(g => maGroupCompositeKey(g) === ck);
+    const trainer = meta.trainerCode || (grp && grp.trainer) || '—';
+    const batchLabel = meta.batchLabel || (grp && grp.batchLabel) || '—';
+    const groupLabel = meta.groupLabel || (grp ? 'Group '+grp.groupIndex : ck);
+    MA.assignments[ck].forEach((m, mi) => {
+      rows.push({ ck, mi, trainer, batchLabel, groupLabel, m });
     });
   });
 
@@ -4551,10 +4600,10 @@ function maRenderAssignedTable(){
     return;
   }
 
-  tbody.innerHTML = rows.map(({gi, mi, trainer, m}) =>
+  tbody.innerHTML = rows.map(({ck, mi, trainer, batchLabel, groupLabel, m}) =>
     '<tr>'+
-    '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700">G'+(gi+1)+'</span></td>'+
-    '<td style="font-size:11px;color:var(--t-3)">'+((BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'—')+'</td>'+
+    '<td><span style="background:var(--color-primary-subtle);color:var(--color-primary);padding:2px 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700">'+groupLabel+'</span></td>'+
+    '<td style="font-size:11px;color:var(--t-3)">'+batchLabel+'</td>'+
     '<td style="font-size:12px;color:var(--color-primary);font-weight:600">'+trainer+'</td>'+
     '<td style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-secondary)">'+(m.productionId||'—')+'</td>'+
     '<td style="font-size:12px;color:var(--text-secondary)">'+(m.gameWeek?'GW'+m.gameWeek:'—')+'</td>'+
@@ -4564,14 +4613,14 @@ function maRenderAssignedTable(){
     '<td style="font-size:13px;font-weight:500">'+m.awayTeam+'</td>'+
     '<td style="font-size:11px;color:var(--text-muted)">'+m.country+'</td>'+
     '<td style="font-size:11px;color:var(--text-muted)">'+new Date(m.assignedAt).toLocaleDateString('en-EG')+'</td>'+
-    '<td><button class="btn btn-ghost btn-sm" onclick="maOpenEdit('+gi+','+mi+')" style="font-size:11px">✏️ Edit</button>'+
-    '<button class="btn btn-ghost btn-sm" onclick="maRemoveMatch('+gi+','+mi+')" style="font-size:11px;color:var(--color-danger)">✕</button></td>'+
+    '<td><button class="btn btn-ghost btn-sm" onclick="maOpenEdit(''+ck+'','+mi+')" style="font-size:11px">✏️ Edit</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="maRemoveMatch(''+ck+'','+mi+')" style="font-size:11px;color:var(--color-danger)">✕</button></td>'+
     '</tr>'
   ).join('');
 }
 
-function maOpenEdit(gi, mi){
-  MA.editTarget = { gi, mi };
+function maOpenEdit(ck, mi){
+  MA.editTarget = { ck, mi };
   document.getElementById('maEditReason').value = '';
   document.getElementById('maEditDetails').value = '';
   document.getElementById('maEditModal').style.display = 'flex';
@@ -4582,22 +4631,20 @@ async function maConfirmEdit(){
   const details = document.getElementById('maEditDetails').value;
   if(!reason){ alert('Please select a reason.'); return; }
 
-  const { gi, mi } = MA.editTarget;
-  const match = MA.assignments[gi][mi];
+  const { ck, mi } = MA.editTarget;
+  const match = MA.assignments[ck][mi];
 
-  // Log the edit
   if(!match.editHistory) match.editHistory = [];
   match.editHistory.push({ reason, details, editedAt: new Date().toISOString(), editedBy: A.user?.email || '' });
   match.lastEditReason = reason;
 
-  // Save to Firestore
   if(fbDb && A.user){
     try {
-      const tc2 = BSUP.groupAssign[gi]||'Unassigned';
-      const bl2 = (BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'';
-      await fbDb.collection('match_assignments').doc(String(gi)).set({
-        groupIdx: gi, trainerCode: tc2, batchLabel: bl2, groupLabel: 'Group '+(gi+1),
-        matches: MA.assignments[gi],
+      const meta = (MA.assignmentMeta && MA.assignmentMeta[ck]) || {};
+      await fbDb.collection('match_assignments').doc(ck).set({
+        compositeKey: ck,
+        trainerCode: meta.trainerCode||'', batchLabel: meta.batchLabel||'', groupLabel: meta.groupLabel||'',
+        matches: MA.assignments[ck],
         updatedAt: new Date().toISOString(), updatedBy: A.user.email
       });
     } catch(e){}
@@ -4608,19 +4655,19 @@ async function maConfirmEdit(){
   addBsupNotif('Assignment Edited', 'Reason: ' + reason, 'warn');
 }
 
-async function maRemoveMatch(gi, mi){
-  const m = MA.assignments[gi][mi];
-  if(!confirm('Remove ' + m.homeTeam + ' vs ' + m.awayTeam + ' from Group ' + (gi+1) + '?')) return;
+async function maRemoveMatch(ck, mi){
+  const m = MA.assignments[ck][mi];
+  if(!confirm('Remove ' + m.homeTeam + ' vs ' + m.awayTeam + '?')) return;
 
-  MA.assignments[gi].splice(mi, 1);
+  MA.assignments[ck].splice(mi, 1);
 
   if(fbDb && A.user){
     try {
-      const tc2 = BSUP.groupAssign[gi]||'Unassigned';
-      const bl2 = (BSUP.groups[gi]&&BSUP.groups[gi][0]&&BSUP.groups[gi][0].batchName)||'';
-      await fbDb.collection('match_assignments').doc(String(gi)).set({
-        groupIdx: gi, trainerCode: tc2, batchLabel: bl2, groupLabel: 'Group '+(gi+1),
-        matches: MA.assignments[gi],
+      const meta = (MA.assignmentMeta && MA.assignmentMeta[ck]) || {};
+      await fbDb.collection('match_assignments').doc(ck).set({
+        compositeKey: ck,
+        trainerCode: meta.trainerCode||'', batchLabel: meta.batchLabel||'', groupLabel: meta.groupLabel||'',
+        matches: MA.assignments[ck],
         updatedAt: new Date().toISOString(), updatedBy: A.user.email
       });
     } catch(e){}
@@ -5158,19 +5205,30 @@ function btRenderAttHistory(){
 async function btLoadMatches(){
   if(!fbDb || BT.groupIndex == null) return;
   try{
-    const targetIdx = BT.groupIndex - 1;
-    const doc = await fbDb.collection('match_assignments').doc(String(targetIdx)).get();
-    if(doc.exists){
-      BT.matchData = doc.data();
-    } else {
+    // Build composite key matching what BSup used when saving
+    const batchSlug = (BT.batch||'').replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();
+    const compositeKey = batchSlug ? batchSlug+'_g'+BT.groupIndex : null;
+    let found = null;
+
+    // Try composite key first (new format)
+    if(compositeKey){
+      const doc = await fbDb.collection('match_assignments').doc(compositeKey).get();
+      if(doc.exists) found = doc.data();
+    }
+    // Fallback: scan all docs for matching trainerCode + batchLabel
+    if(!found){
       const snap = await fbDb.collection('match_assignments').get();
-      let found = null;
       snap.forEach(d => {
         const dd = d.data();
-        if(dd.trainerCode && dd.trainerCode === BT.trainerCode) found = dd;
+        if(dd.trainerCode === BT.trainerCode && dd.batchLabel === BT.batch) found = dd;
       });
-      BT.matchData = found;
     }
+    // Last fallback: legacy integer key
+    if(!found){
+      const legacyDoc = await fbDb.collection('match_assignments').doc(String(BT.groupIndex-1)).get();
+      if(legacyDoc.exists && legacyDoc.data().trainerCode === BT.trainerCode) found = legacyDoc.data();
+    }
+    BT.matchData = found;
     // Load trainer's own match assignments from Firestore
     const taDoc = await fbDb.collection('trainer_match_assignments').doc(BT.trainerCode).get();
     BT.matchAssignments = taDoc.exists ? (taDoc.data().assignments||{}) : {};
