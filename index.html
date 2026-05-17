@@ -1368,6 +1368,7 @@ var BT = {
   allGroups: null,
   allAssignments: [],      // all batch assignments for this trainer code
   activeAssignmentIdx: 0,  // which assignment is currently active
+  matchAssignments: {},    // { productionId: { traineeCode, tasks[], date, note } }
   att: { data:{}, locked:{} },
   currentPage: 'group',
   currentDay: 0,
@@ -4737,6 +4738,7 @@ function btReset(){
     BT.allGroups = null;
     BT.allAssignments = [];
     BT.activeAssignmentIdx = 0;
+    BT.matchAssignments = {};
     BT.att = { data:{}, locked:{} };
     BT.currentPage = 'group';
     BT.matchData = null;
@@ -5100,17 +5102,16 @@ function btRenderAttHistory(){
 }
 
 // ── Match Assignment ──
+// BT.matchAssignments = { matchProductionId: { traineeCode, tasks:[], date, note, groupKey } }
+
 async function btLoadMatches(){
   if(!fbDb || BT.groupIndex == null) return;
   try{
-    // match_assignments docs are keyed by groupIndex (0-based)
-    // Try the trainer's current groupIndex first, then scan all docs for trainerCode match
-    const targetIdx = BT.groupIndex - 1; // groupIndex is 1-based, doc key is 0-based
+    const targetIdx = BT.groupIndex - 1;
     const doc = await fbDb.collection('match_assignments').doc(String(targetIdx)).get();
     if(doc.exists){
       BT.matchData = doc.data();
     } else {
-      // Fallback: scan all match_assignment docs for this trainerCode
       const snap = await fbDb.collection('match_assignments').get();
       let found = null;
       snap.forEach(d => {
@@ -5119,38 +5120,267 @@ async function btLoadMatches(){
       });
       BT.matchData = found;
     }
+    // Load trainer's own match assignments from Firestore
+    const taDoc = await fbDb.collection('trainer_match_assignments').doc(BT.trainerCode).get();
+    BT.matchAssignments = taDoc.exists ? (taDoc.data().assignments||{}) : {};
     if(BT.currentPage==='matches') btRenderMatches();
-  }catch(e){ console.warn('btLoadMatches error:', e); }
+  }catch(e){ console.warn('btLoadMatches error:', e); BT.matchAssignments={}; }
+}
+
+async function btSaveMatchAssignments(){
+  if(!fbDb || !BT.trainerCode) return;
+  try{
+    await fbDb.collection('trainer_match_assignments').doc(BT.trainerCode).set({
+      trainerCode: BT.trainerCode,
+      groupIndex: BT.groupIndex,
+      batchLabel: BT.batch||'',
+      assignments: BT.matchAssignments,
+      updatedAt: new Date().toISOString()
+    });
+  }catch(e){ console.warn('btSaveMatchAssignments error:', e); }
+}
+
+const BT_TASKS = ['Base','Extras','FF','Players','Location','Validation','All'];
+
+// Group accent colors for multi-batch differentiation
+const BT_GROUP_ACCENTS = [
+  {bg:'rgba(232,89,12,0.12)',  border:'rgba(232,89,12,0.35)',  color:'#E8590C',  label:'A'},
+  {bg:'rgba(48,209,88,0.10)',  border:'rgba(48,209,88,0.30)',  color:'#30D158',  label:'B'},
+  {bg:'rgba(10,132,255,0.10)', border:'rgba(10,132,255,0.30)', color:'#0A84FF',  label:'C'},
+  {bg:'rgba(255,214,10,0.10)', border:'rgba(255,214,10,0.30)', color:'#FFD60A',  label:'D'},
+  {bg:'rgba(191,90,242,0.10)', border:'rgba(191,90,242,0.30)', color:'#BF5AF2',  label:'E'},
+];
+
+function btGetGroupAccent(assignmentIdx){
+  return BT_GROUP_ACCENTS[assignmentIdx % BT_GROUP_ACCENTS.length];
 }
 
 function btRenderMatches(){
   const el = document.getElementById('bt_matchesContent');
   if(!el) return;
-  if(!BT.matchData||!BT.groupData){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No match data available</div>'; return; }
-  const groupLabel = 'Group '+BT.groupIndex;
-  const allMatches = BT.matchData.matches||[];
-  // All matches in this doc belong to this group — show them all
-  const myMatches = allMatches;
-  if(!myMatches.length){ el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No matches assigned to '+groupLabel+' yet.<br><span style="font-size:12px;opacity:.6">Ask your Batch Supervisor to assign matches.</span></div>'; return; }
-  const batchInfo = BT.matchData.batchLabel ? '<span style="background:rgba(255,255,255,0.06);color:var(--t-3);padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600">'+ BT.matchData.batchLabel +'</span>' : '';
-  el.innerHTML = `<div>
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <span style="font-size:13px;font-weight:700;color:var(--t-1)">${myMatches.length} match${myMatches.length!==1?'es':''} assigned to ${groupLabel}</span>
-    ${batchInfo}
-  </div>
-  <div style="display:grid;gap:10px">${myMatches.map((m,idx)=>`
-    <div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center">
-      <div style="font-family:JetBrains Mono,monospace;font-size:22px;font-weight:700;color:rgba(232,89,12,0.3);min-width:32px;text-align:center">${String(idx+1).padStart(2,'0')}</div>
-      <div>
-        <div style="font-size:14px;font-weight:700;color:var(--t-1)">${m.homeTeam||'—'} <span style="color:var(--t-3);font-weight:400">vs</span> ${m.awayTeam||'—'}</div>
-        <div style="font-size:12px;color:var(--t-3);margin-top:3px">${m.competition||'—'} ${m.country?'· '+m.country:''} ${m.matchDate?'· '+m.matchDate:''}</div>
-      </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-        ${m.gameWeek?`<span style="background:rgba(232,89,12,0.12);color:var(--p2);padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700">GW${m.gameWeek}</span>`:''}
-        ${m.productionId?`<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--t-3)">${m.productionId}</span>`:''}
-      </div>
+
+  // Build list of (assignmentIdx, matchData, matches[]) across all assignments
+  const allAssignments = BT.allAssignments || [];
+  const sections = [];
+
+  // If we have allAssignments, render all groups the trainer is assigned to
+  allAssignments.forEach((asgn, aIdx) => {
+    // We need match data per assignment — stored keyed by batchKey
+    const groupIdx = asgn.groupIndex - 1;
+    sections.push({ aIdx, asgn, groupIdx, matches: null, loading: true });
+  });
+
+  if(sections.length === 0 && BT.matchData){
+    sections.push({ aIdx:0, asgn:{ batchLabel: BT.matchData.batchLabel||'', groupIndex: BT.groupIndex }, groupIdx: BT.groupIndex-1, matches: BT.matchData.matches||[], loading:false });
+  }
+
+  if(sections.length === 0){
+    el.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No match data available.<br><span style="font-size:12px;opacity:.6">Your Batch Supervisor needs to assign matches first.</span></div>';
+    return;
+  }
+
+  // Use current group's matchData for rendering (active assignment)
+  const activeAsgn = allAssignments[BT.activeAssignmentIdx||0];
+  const activeMatches = (BT.matchData && BT.matchData.matches) || [];
+  const accent = btGetGroupAccent(BT.activeAssignmentIdx||0);
+  const trainees = BT.groupData ? BT.groupData.trainees : [];
+
+  if(!activeMatches.length){
+    el.innerHTML=`<div style="text-align:center;padding:60px;color:var(--t-3)">No matches assigned to Group ${BT.groupIndex} yet.<br><span style="font-size:12px;opacity:.6">Ask your Batch Supervisor to assign matches.</span></div>`;
+    return;
+  }
+
+  if(!BT.matchAssignments) BT.matchAssignments = {};
+
+  // Build HTML
+  el.innerHTML = `
+  <div style="display:grid;gap:0">
+
+  <!-- HEADER ROW: group identity + stats -->
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+    <div style="padding:6px 14px;border-radius:20px;border:1.5px solid ${accent.border};background:${accent.bg};color:${accent.color};font-size:12px;font-weight:800;font-family:'JetBrains Mono',monospace;letter-spacing:.04em">
+      GRP ${BT.groupIndex}${activeAsgn&&activeAsgn.batchLabel?' · '+activeAsgn.batchLabel:''}
     </div>
-  `).join('')}</div></div>`;
+    <div style="font-size:13px;color:var(--t-2)"><span style="font-weight:700;color:var(--t-1)">${activeMatches.length}</span> matches · <span style="font-weight:700;color:var(--t-1)">${trainees.length}</span> trainees</div>
+    <div style="margin-left:auto;display:flex;gap:8px">
+      <button onclick="btQuickAssignAll()" style="padding:6px 14px;border-radius:10px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer">⚡ Quick Assign All</button>
+      <button onclick="btSaveAllAssignments()" style="padding:6px 16px;border-radius:10px;border:none;background:var(--p2);color:#fff;font-size:12px;font-weight:700;cursor:pointer">💾 Save</button>
+    </div>
+  </div>
+
+  <!-- MATCH CARDS -->
+  <div style="display:grid;gap:12px" id="bt_matchCards">
+  ${activeMatches.map((m, idx) => {
+    const pid = m.productionId || String(idx);
+    const saved = BT.matchAssignments[pid] || {};
+    const assignedTrainee = saved.traineeCode || '';
+    const assignedTasks = saved.tasks || [];
+    const assignedDate = saved.date || '';
+    const assignedNote = saved.note || '';
+    const isDone = assignedTrainee && assignedTasks.length > 0;
+
+    return `<div id="btmc_${pid}" style="background:var(--bg-2);border:1.5px solid ${isDone ? accent.border : 'var(--b-1)'};border-radius:14px;overflow:hidden;transition:border-color .2s">
+
+      <!-- Match Header -->
+      <div style="padding:14px 18px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;cursor:pointer" onclick="btToggleMatchCard('${pid}')">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:800;color:${accent.color};opacity:${isDone?'1':'0.35'};min-width:28px;text-align:center">${String(idx+1).padStart(2,'0')}</div>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:var(--t-1)">${m.homeTeam||'—'} <span style="color:var(--t-3);font-size:12px;font-weight:400">vs</span> ${m.awayTeam||'—'}</div>
+          <div style="font-size:11px;color:var(--t-3);margin-top:2px">${m.competition||'—'}${m.country?' · '+m.country:''}${m.matchDate?' · '+m.matchDate:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${m.gameWeek?`<span style="background:${accent.bg};color:${accent.color};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid ${accent.border}">GW${m.gameWeek}</span>`:''}
+          ${isDone ? `<span class="bt-assign-badge" style="background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700">✓ ${assignedTrainee}</span>` : `<span class="bt-assign-badge" style="color:var(--t-3);font-size:11px">Unassigned</span>`}
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" id="btmc_chev_${pid}" style="color:var(--t-3);transition:transform .2s"><path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <!-- Expand Panel -->
+      <div id="btmc_panel_${pid}" style="display:none;border-top:1px solid var(--b-1);padding:16px 18px;background:var(--bg-1)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+          <!-- Trainee picker -->
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Trainee</div>
+            <select onchange="btUpdateAssignment('${pid}','trainee',this.value)" style="width:100%;padding:8px 12px;border:1.5px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer">
+              <option value="">— Pick trainee —</option>
+              ${trainees.map(t=>`<option value="${t.trainingCode||t.name}" ${(t.trainingCode||t.name)==assignedTrainee?'selected':''}>#${t.trainingCode||'?'} ${t.name||'?'}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Date picker -->
+          <div>
+            <div style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Date</div>
+            <input type="date" value="${assignedDate}" onchange="btUpdateAssignment('${pid}','date',this.value)" style="width:100%;padding:8px 12px;border:1.5px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box"/>
+          </div>
+        </div>
+
+        <!-- Tasks (multi-select pills) -->
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Tasks <span style="font-weight:400;text-transform:none;letter-spacing:0">(tap multiple)</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${BT_TASKS.map(task => {
+              const isOn = assignedTasks.includes(task);
+              return `<button onclick="btToggleTask('${pid}','${task}',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid ${isOn?accent.border:'rgba(255,255,255,0.1)'};background:${isOn?accent.bg:'transparent'};color:${isOn?accent.color:'var(--t-3)'};font-size:12px;font-weight:${isOn?'700':'500'};cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif">${task}</button>`;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Note <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+          <input type="text" placeholder="e.g. Focus on ball tracking" value="${assignedNote}" onchange="btUpdateAssignment('${pid}','note',this.value)" style="width:100%;padding:8px 12px;border:1.5px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box"/>
+        </div>
+      </div>
+    </div>`;
+  }).join('')}
+  </div>
+
+  <!-- SAVE BUTTON BOTTOM -->
+  <div style="display:flex;justify-content:flex-end;margin-top:20px">
+    <button onclick="btSaveAllAssignments()" style="padding:10px 28px;border-radius:12px;border:none;background:var(--p2);color:#fff;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.02em">💾 Save Assignments</button>
+  </div>
+  </div>`;
+
+  // Auto-expand first unassigned
+  const firstUnassigned = activeMatches.find((m,idx) => {
+    const pid = m.productionId || String(idx);
+    const saved = BT.matchAssignments[pid]||{};
+    return !saved.traineeCode;
+  });
+  if(firstUnassigned){
+    const pid = firstUnassigned.productionId || String(activeMatches.indexOf(firstUnassigned));
+    btToggleMatchCard(pid);
+  }
+}
+
+function btToggleMatchCard(pid){
+  const panel = document.getElementById('btmc_panel_'+pid);
+  const chev = document.getElementById('btmc_chev_'+pid);
+  if(!panel) return;
+  const open = panel.style.display !== 'none';
+  // Close all others first
+  document.querySelectorAll('[id^="btmc_panel_"]').forEach(p => { p.style.display='none'; });
+  document.querySelectorAll('[id^="btmc_chev_"]').forEach(c => { c.style.transform=''; });
+  if(!open){
+    panel.style.display='block';
+    if(chev) chev.style.transform='rotate(180deg)';
+  }
+}
+
+function btUpdateAssignment(pid, field, value){
+  if(!BT.matchAssignments) BT.matchAssignments = {};
+  if(!BT.matchAssignments[pid]) BT.matchAssignments[pid] = { tasks:[] };
+  BT.matchAssignments[pid][field] = value;
+  btRefreshMatchCard(pid);
+}
+
+function btToggleTask(pid, task, btn){
+  if(!BT.matchAssignments) BT.matchAssignments = {};
+  if(!BT.matchAssignments[pid]) BT.matchAssignments[pid] = { tasks:[] };
+  const tasks = BT.matchAssignments[pid].tasks;
+  const idx = tasks.indexOf(task);
+  if(idx === -1) tasks.push(task); else tasks.splice(idx,1);
+  const accent = btGetGroupAccent(BT.activeAssignmentIdx||0);
+  const isOn = tasks.includes(task);
+  btn.style.border = '1.5px solid '+(isOn?accent.border:'rgba(255,255,255,0.1)');
+  btn.style.background = isOn ? accent.bg : 'transparent';
+  btn.style.color = isOn ? accent.color : 'var(--t-3)';
+  btn.style.fontWeight = isOn ? '700' : '500';
+  btRefreshMatchCard(pid);
+}
+
+function btRefreshMatchCard(pid){
+  const card = document.getElementById('btmc_'+pid);
+  if(!card) return;
+  const saved = BT.matchAssignments[pid]||{};
+  const isDone = saved.traineeCode && saved.tasks && saved.tasks.length > 0;
+  const accent = btGetGroupAccent(BT.activeAssignmentIdx||0);
+  card.style.borderColor = isDone ? accent.border : 'var(--b-1)';
+  // Update badge in header
+  const header = card.querySelector('[onclick^="btToggleMatchCard"]');
+  if(header){
+    const badge = header.querySelector('.bt-assign-badge') || header.querySelectorAll('span')[header.querySelectorAll('span').length-1];
+    if(badge){
+      if(isDone){
+        badge.style.background='rgba(48,209,88,0.12)';
+        badge.style.color='#30D158';
+        badge.style.border='1px solid rgba(48,209,88,0.3)';
+        badge.textContent='✓ '+saved.traineeCode;
+      } else {
+        badge.style.background='transparent';
+        badge.style.color='var(--t-3)';
+        badge.style.border='none';
+        badge.textContent='Unassigned';
+      }
+    }
+  }
+}
+
+async function btSaveAllAssignments(){
+  const btn = event.target;
+  btn.textContent='Saving...'; btn.disabled=true;
+  await btSaveMatchAssignments();
+  btn.textContent='✅ Saved!'; btn.disabled=false;
+  setTimeout(()=>{ btn.textContent='💾 Save Assignments'; },2000);
+  addBsupNotif && addBsupNotif('Saved','Match assignments saved','green');
+}
+
+function btQuickAssignAll(){
+  const trainees = BT.groupData ? BT.groupData.trainees : [];
+  if(!trainees.length){ alert('No trainees in your group.'); return; }
+  if(!BT.matchData) return;
+  const matches = BT.matchData.matches||[];
+  if(!BT.matchAssignments) BT.matchAssignments = {};
+  // Round-robin assignment across trainees
+  matches.forEach((m, i) => {
+    const pid = m.productionId || String(i);
+    if(!BT.matchAssignments[pid]) BT.matchAssignments[pid] = { tasks:[] };
+    const t = trainees[i % trainees.length];
+    BT.matchAssignments[pid].traineeCode = t.trainingCode||t.name;
+    if(!BT.matchAssignments[pid].tasks.length) BT.matchAssignments[pid].tasks = ['Base'];
+  });
+  btRenderMatches();
 }
 
 </script>
