@@ -2760,9 +2760,11 @@ async function saveGroupAssignments(){
   const batchLabel = BSUP.trainees.length
     ? ((BSUP.trainees.find(t=>t.batchName)||{}).batchName||null)
     : null;
+  // Include timestamp so same-batch re-assignments never overwrite each other
+  const ts = Date.now();
   const batchKey = batchLabel
-    ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()
-    : 'batch_' + Date.now();
+    ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase() + '_' + ts
+    : 'batch_' + ts;
   const groupsPayload = BSUP.groups.map((g,i) => ({
     groupIndex: i+1,
     trainer: BSUP.groupAssign[i]||'Unassigned',
@@ -4757,27 +4759,41 @@ async function btLogin(){
     // Scan ALL docs (including legacy 'current') to collect every group for this trainer
     const snap = await fbDb.collection('group_assignments').get();
     const myGroups = [];
-    const seen = new Set(); // deduplicate by batchKey+groupIndex
-    function normLabel(lbl){ return lbl ? lbl.replace(/^Batch\s+/i,'').trim() : lbl; }
+    // Deduplicate by (batchKey_groupIndex) — each unique doc+group is one assignment
+    // 'current' is skipped entirely since its data is always duplicated in a named batch_* doc
+    const seen = new Set();
     snap.forEach(doc => {
+      if(doc.id === 'current') return; // always a mirror of the latest batch_* doc
       const d = doc.data();
-      // For 'current', use activeBatchKey if present so we can skip duplicate
-      const effectiveKey = doc.id === 'current' ? (d.activeBatchKey||'current') : doc.id;
       (d.groups||[]).forEach(g => {
         if(g.trainer === code){
-          const dedupeKey = effectiveKey + '_g' + g.groupIndex;
+          const dedupeKey = doc.id + '_g' + g.groupIndex;
           if(seen.has(dedupeKey)) return;
           seen.add(dedupeKey);
           const rawLabel = g.batchLabel||d.batchLabel||'';
-          const batchLabel = rawLabel || normLabel(g.trainees&&g.trainees[0]&&g.trainees[0].batchName||'') || 'Batch';
-          myGroups.push({ batchKey:effectiveKey, batchLabel:batchLabel, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          const bLabel = rawLabel || (g.trainees&&g.trainees[0]&&g.trainees[0].batchName) || 'Batch';
+          myGroups.push({ batchKey:doc.id, batchLabel:bLabel, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
         }
       });
     });
+    // Fallback: if no batch_* docs exist yet (legacy), read 'current'
+    if(myGroups.length === 0){
+      const cur = await fbDb.collection('group_assignments').doc('current').get();
+      if(cur.exists){
+        const d = cur.data();
+        (d.groups||[]).forEach(g => {
+          if(g.trainer === code){
+            const bLabel = g.batchLabel||d.batchLabel||(g.trainees&&g.trainees[0]&&g.trainees[0].batchName)||'Current';
+            myGroups.push({ batchKey:'current', batchLabel:bLabel, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          }
+        });
+      }
+    }
     if(myGroups.length === 0){
       errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.';
       errEl.style.display='block'; return;
     }
+    console.log('[FIELD] group_assignments docs found:', snap.size, '| myGroups for', code, ':', myGroups.map(g=>g.batchKey+'/grp'+g.groupIndex+'/'+g.batchLabel));
     myGroups.sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
     BT.trainerCode = code;
     BT.allAssignments = myGroups;
