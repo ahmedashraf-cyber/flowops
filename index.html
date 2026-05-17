@@ -577,6 +577,66 @@ tbody tr:hover{
   box-shadow:inset -1px 0 0 var(--b-1);
 }
 
+/* NX Custom Date Picker ─────────────────────────────── */
+.nx-date-wrap{ position:relative; display:inline-block; width:100%; }
+.nx-date-trigger{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px; border-radius:16px; cursor:pointer; user-select:none;
+  background:#12121C; border:1px solid rgba(255,255,255,0.10);
+  color:var(--t-1); font-size:13px; font-family:'DM Sans',sans-serif; font-weight:500;
+  transition:border-color .15s, box-shadow .15s;
+}
+.nx-date-trigger:hover{ border-color:rgba(255,255,255,0.22); }
+.nx-date-trigger.open{ border-color:rgba(232,89,12,0.5); box-shadow:0 0 0 3px rgba(232,89,12,0.12); }
+.nx-date-panel{
+  position:fixed; z-index:99999;
+  background:#12121C; border:1px solid rgba(255,255,255,0.10);
+  border-radius:16px; padding:16px;
+  box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);
+  animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;
+  min-width:280px; display:none;
+}
+.nx-date-panel.open{ display:block; }
+.nx-date-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.nx-date-month{ font-size:13px; font-weight:700; color:var(--t-1); cursor:pointer; }
+.nx-date-nav{ display:flex; gap:4px; }
+.nx-date-nav button{
+  background:rgba(255,255,255,0.06); border:none; color:var(--t-2);
+  border-radius:8px; width:28px; height:28px; cursor:pointer; font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s;
+}
+.nx-date-nav button:hover{ background:rgba(255,255,255,0.12); color:var(--t-1); }
+.nx-date-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+.nx-date-dayname{
+  text-align:center; font-size:10px; font-weight:600;
+  color:rgba(255,255,255,0.3); padding:4px 0; text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.nx-date-cell{
+  text-align:center; font-size:12px; padding:6px 2px; border-radius:8px;
+  cursor:pointer; color:rgba(255,255,255,0.55); transition:background .12s, color .12s;
+  font-family:'DM Sans',sans-serif;
+}
+.nx-date-cell:hover{ background:rgba(255,255,255,0.08); color:var(--t-1); }
+.nx-date-cell.other-month{ color:rgba(255,255,255,0.2); }
+.nx-date-cell.today{ color:var(--p2); font-weight:700; }
+.nx-date-cell.selected{
+  background:var(--p2); color:#fff; font-weight:700;
+  box-shadow:0 0 12px rgba(232,89,12,0.4);
+}
+.nx-date-cell.selected:hover{ background:var(--p2); }
+.nx-date-footer{ display:flex; justify-content:space-between; margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); }
+.nx-date-footer button{
+  background:none; border:none; font-size:12px; font-weight:600;
+  cursor:pointer; padding:4px 8px; border-radius:8px;
+  font-family:'DM Sans',sans-serif; transition:background .12s;
+}
+.nx-date-footer .nx-date-clear{ color:rgba(255,255,255,0.4); }
+.nx-date-footer .nx-date-clear:hover{ background:rgba(255,255,255,0.06); color:var(--t-1); }
+.nx-date-footer .nx-date-today{ color:var(--p2); }
+.nx-date-footer .nx-date-today:hover{ background:rgba(232,89,12,0.1); }
+
 /* FIX 5: Premium custom selects ──────────────────────── */
 select,
 .search-row select,
@@ -2232,6 +2292,192 @@ function installPWA(){
     if(banner) banner.style.display = 'none';
   }
 }
+
+// ── NX Custom Date Picker ──────────────────────────────────
+var _nxDateOpen = null;
+
+function nxDateFormat(d){
+  if(!d) return '';
+  var m = d.getMonth()+1, day = d.getDate(), y = d.getFullYear();
+  return (m<10?'0':'')+m+'/'+(day<10?'0':'')+day+'/'+y;
+}
+function nxDateParse(str){
+  if(!str) return null;
+  // yyyy-mm-dd or mm/dd/yyyy
+  var p = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(p) return new Date(+p[1], +p[2]-1, +p[3]);
+  p = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(p) return new Date(+p[3], +p[1]-1, +p[2]);
+  return null;
+}
+function nxDateIso(d){
+  if(!d) return '';
+  var m = d.getMonth()+1, day = d.getDate();
+  return d.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(day<10?'0':'')+day;
+}
+
+function nxDateInit(){
+  document.querySelectorAll('input[type="date"]:not([data-nx-date])').forEach(function(inp){
+    inp.dataset.nxDate = '1';
+    // Create wrapper
+    var wrap = document.createElement('div');
+    wrap.className = 'nx-date-wrap';
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    inp.style.display = 'none';
+
+    var trigger = document.createElement('div');
+    trigger.className = 'nx-date-trigger';
+    var label = document.createElement('span');
+    label.className = 'nx-date-label';
+    var parsed = nxDateParse(inp.value);
+    label.textContent = parsed ? nxDateFormat(parsed) : (inp.placeholder || 'Select date');
+    label.style.color = parsed ? '' : 'rgba(255,255,255,0.3)';
+    var chev = document.createElement('span');
+    chev.innerHTML = '<svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    chev.style.color = 'rgba(255,255,255,0.35)';
+    trigger.appendChild(label);
+    trigger.appendChild(chev);
+    wrap.appendChild(trigger);
+
+    var panel = document.createElement('div');
+    panel.className = 'nx-date-panel';
+    document.body.appendChild(panel);
+
+    var curYear, curMonth;
+    var todayD = new Date();
+
+    function openPanel(){
+      if(_nxDateOpen && _nxDateOpen !== panel){ closeNxDate(_nxDateOpen); }
+      var sel = nxDateParse(inp.value) || new Date();
+      curYear = sel.getFullYear(); curMonth = sel.getMonth();
+      renderPanel();
+      var r = trigger.getBoundingClientRect();
+      panel.style.top = (r.bottom+6)+'px';
+      panel.style.left = r.left+'px';
+      panel.classList.add('open');
+      trigger.classList.add('open');
+      _nxDateOpen = panel;
+    }
+
+    function closePanel(){
+      panel.classList.remove('open');
+      trigger.classList.remove('open');
+      if(_nxDateOpen===panel) _nxDateOpen=null;
+    }
+
+    function pickDate(y,m,d){
+      var picked = new Date(y,m,d);
+      inp.value = nxDateIso(picked);
+      label.textContent = nxDateFormat(picked);
+      label.style.color = '';
+      inp.dispatchEvent(new Event('change',{bubbles:true}));
+      closePanel();
+    }
+
+    function renderPanel(){
+      var DAY_NAMES = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+      var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var selVal = nxDateParse(inp.value);
+      var todayStr = nxDateIso(todayD);
+
+      var html = '<div class="nx-date-header">';
+      html += '<div class="nx-date-month">'+MONTHS[curMonth]+' '+curYear+'</div>';
+      html += '<div class="nx-date-nav">';
+      html += '<button id="_nxPrev">&#8593;</button>';
+      html += '<button id="_nxNext">&#8595;</button>';
+      html += '</div></div>';
+      html += '<div class="nx-date-grid">';
+      DAY_NAMES.forEach(function(d){ html += '<div class="nx-date-dayname">'+d+'</div>'; });
+
+      var first = new Date(curYear, curMonth, 1).getDay();
+      var days = new Date(curYear, curMonth+1, 0).getDate();
+      var prevDays = new Date(curYear, curMonth, 0).getDate();
+
+      for(var i=0;i<first;i++){
+        var d = prevDays-first+1+i;
+        html += '<div class="nx-date-cell other-month" data-y="'+(curMonth===0?curYear-1:curYear)+'" data-m="'+(curMonth===0?11:curMonth-1)+'" data-d="'+d+'">'+d+'</div>';
+      }
+      for(var d=1;d<=days;d++){
+        var iso = curYear+'-'+(curMonth+1<10?'0':'')+(curMonth+1)+'-'+(d<10?'0':'')+d;
+        var cls = 'nx-date-cell';
+        if(iso===todayStr) cls+=' today';
+        if(selVal && nxDateIso(selVal)===iso) cls+=' selected';
+        html += '<div class="'+cls+'" data-y="'+curYear+'" data-m="'+curMonth+'" data-d="'+d+'">'+d+'</div>';
+      }
+      var total = first+days;
+      var nextCells = total%7===0?0:7-(total%7);
+      for(var i=1;i<=nextCells;i++){
+        html += '<div class="nx-date-cell other-month" data-y="'+(curMonth===11?curYear+1:curYear)+'" data-m="'+(curMonth===11?0:curMonth+1)+'" data-d="'+i+'">'+i+'</div>';
+      }
+      html += '</div>';
+      html += '<div class="nx-date-footer">';
+      html += '<button class="nx-date-clear">Clear</button>';
+      html += '<button class="nx-date-today">Today</button>';
+      html += '</div>';
+
+      panel.innerHTML = html;
+
+      panel.querySelector('#_nxPrev').addEventListener('click',function(e){
+        e.stopPropagation();
+        curMonth--; if(curMonth<0){curMonth=11;curYear--;}
+        renderPanel();
+      });
+      panel.querySelector('#_nxNext').addEventListener('click',function(e){
+        e.stopPropagation();
+        curMonth++; if(curMonth>11){curMonth=0;curYear++;}
+        renderPanel();
+      });
+      panel.querySelectorAll('.nx-date-cell').forEach(function(cell){
+        cell.addEventListener('click',function(e){
+          e.stopPropagation();
+          pickDate(+cell.dataset.y, +cell.dataset.m, +cell.dataset.d);
+        });
+      });
+      panel.querySelector('.nx-date-clear').addEventListener('click',function(e){
+        e.stopPropagation();
+        inp.value=''; label.textContent='Select date'; label.style.color='rgba(255,255,255,0.3)';
+        inp.dispatchEvent(new Event('change',{bubbles:true}));
+        closePanel();
+      });
+      panel.querySelector('.nx-date-today').addEventListener('click',function(e){
+        e.stopPropagation();
+        pickDate(todayD.getFullYear(),todayD.getMonth(),todayD.getDate());
+      });
+    }
+
+    trigger.addEventListener('click',function(e){
+      e.stopPropagation();
+      if(panel.classList.contains('open')) closePanel(); else openPanel();
+    });
+
+    // Keep inp.value in sync if changed programmatically
+    var obs2 = new MutationObserver(function(){
+      var p = nxDateParse(inp.value);
+      label.textContent = p ? nxDateFormat(p) : 'Select date';
+      label.style.color = p ? '' : 'rgba(255,255,255,0.3)';
+    });
+    obs2.observe(inp, {attributes:true, attributeFilter:['value']});
+  });
+}
+
+function closeNxDate(panel){
+  if(!panel) return;
+  panel.classList.remove('open');
+  var wrap = document.querySelector('.nx-date-wrap');
+  document.querySelectorAll('.nx-date-trigger.open').forEach(function(t){ t.classList.remove('open'); });
+  if(_nxDateOpen===panel) _nxDateOpen=null;
+}
+
+document.addEventListener('click',function(e){
+  if(!e.target.closest('.nx-date-wrap')&&!e.target.closest('.nx-date-panel')){
+    if(_nxDateOpen){ _nxDateOpen.classList.remove('open'); _nxDateOpen=null; }
+    document.querySelectorAll('.nx-date-trigger.open').forEach(function(t){ t.classList.remove('open'); });
+  }
+});
+
+// Initialize after DOM ready — called after page loads
+setTimeout(nxDateInit, 200);
 
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
