@@ -1366,6 +1366,8 @@ var BT = {
   groupIndex: null,
   groupData: null,
   allGroups: null,
+  allAssignments: [],      // all batch assignments for this trainer code
+  activeAssignmentIdx: 0,  // which assignment is currently active
   att: { data:{}, locked:{} },
   currentPage: 'group',
   currentDay: 0,
@@ -2755,26 +2757,38 @@ async function saveGroupAssignments(){
   if(unassigned > 0){
     if(!confirm(unassigned + ' group(s) have no trainer assigned. Save anyway?')) return;
   }
+  const batchLabel = BSUP.trainees.length
+    ? ((BSUP.trainees.find(t=>t.batchName)||{}).batchName||null)
+    : null;
+  const batchKey = batchLabel
+    ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()
+    : 'batch_' + Date.now();
+  const groupsPayload = BSUP.groups.map((g,i) => ({
+    groupIndex: i+1,
+    trainer: BSUP.groupAssign[i]||'Unassigned',
+    batchLabel: batchLabel||'Unknown',
+    trainees: g.map(t => ({
+      trainingCode: t.trainingCode,
+      name: t.name,
+      pts: t.pts,
+      tier: t.tier,
+      batchName: t.batchName||batchLabel||''
+    }))
+  }));
+  const payload = {
+    groups: groupsPayload,
+    batchLabel: batchLabel||'Unknown',
+    savedBy: A.user ? A.user.email : 'system',
+    savedAt: new Date().toISOString()
+  };
   try {
     if(fbDb && A.user){
-      await fbDb.collection('group_assignments').doc('current').set({
-        groups: BSUP.groups.map((g,i) => ({
-          groupIndex: i+1,
-          trainer: BSUP.groupAssign[i]||'Unassigned',
-          trainees: g.map(t => ({
-            trainingCode: t.trainingCode,
-            name: t.name,
-            pts: t.pts,
-            tier: t.tier
-          }))
-        })),
-        savedBy: A.user.email,
-        savedAt: new Date().toISOString()
-      });
+      await fbDb.collection('group_assignments').doc(batchKey).set(payload);
+      await fbDb.collection('group_assignments').doc('current').set(Object.assign({},payload,{activeBatchKey:batchKey}));
     }
     localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
     localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
-    addBsupNotif('Groups saved', BSUP.groups.length + ' groups assigned to trainers', 'green');
+    addBsupNotif('Groups saved', BSUP.groups.length + ' groups saved for ' + (batchLabel||'batch'), 'green');
     alert('✅ Group assignments saved successfully!');
   } catch(e){
     localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
@@ -4700,6 +4714,8 @@ function btReset(){
     BT.groupIndex = null;
     BT.groupData = null;
     BT.allGroups = null;
+    BT.allAssignments = [];
+    BT.activeAssignmentIdx = 0;
     BT.att = { data:{}, locked:{} };
     BT.currentPage = 'group';
     BT.matchData = null;
@@ -4736,38 +4752,47 @@ async function btLogin(){
   const errEl = document.getElementById('bt_loginError');
   const code = sel ? sel.value : '';
   if(!code){ errEl.textContent='Please select your trainer code'; errEl.style.display='block'; return; }
-
   errEl.style.display='none';
   try{
-    // Load group assignments from Firestore
-    const doc = await fbDb.collection('group_assignments').doc('current').get();
-    if(!doc.exists){ errEl.textContent='No group assignments found. Ask your Batch Supervisor to assign groups first.'; errEl.style.display='block'; return; }
-    const d = doc.data();
-    BT.allGroups = d.groups || [];
-    // Find group assigned to this trainer
-    const myGroup = BT.allGroups.find(g => g.trainer === code);
-    if(!myGroup){ errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.'; errEl.style.display='block'; return; }
+    const snap = await fbDb.collection('group_assignments').get();
+    const myGroups = [];
+    snap.forEach(doc => {
+      if(doc.id === 'current') return;
+      const d = doc.data();
+      (d.groups||[]).forEach(g => {
+        if(g.trainer === code){
+          myGroups.push({ batchKey:doc.id, batchLabel:g.batchLabel||d.batchLabel||doc.id, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+        }
+      });
+    });
+    if(myGroups.length === 0){
+      const cur = await fbDb.collection('group_assignments').doc('current').get();
+      if(cur.exists){
+        const d = cur.data();
+        (d.groups||[]).forEach(g => {
+          if(g.trainer === code){
+            myGroups.push({ batchKey:'current', batchLabel:g.batchLabel||d.batchLabel||'Current', savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          }
+        });
+      }
+    }
+    if(myGroups.length === 0){
+      errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.';
+      errEl.style.display='block'; return;
+    }
+    myGroups.sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
     BT.trainerCode = code;
-    BT.groupData = myGroup;
-    BT.groupIndex = myGroup.groupIndex;
-    // Get batch from A.cands if available, or from group data
-    BT.batch = myGroup.batch || (A.cands&&A.cands.length?A.cands[0].batch:null);
-    // Load attendance data
-    btLoadAttendanceData();
-    // Show dashboard
-    document.getElementById('bt_loginPanel').style.display = 'none';
-    document.getElementById('bt_dashboard').style.display = 'grid';
-    document.getElementById('bt_userInfo').textContent = '🏋 ' + code + ' · Group ' + BT.groupIndex;
-    const attSub = document.getElementById('bt_attSubtitle');
-    if(attSub) attSub.textContent = 'Group ' + BT.groupIndex + ' · ' + BT.groupData.trainees.length + ' trainees';
-    const matchSub = document.getElementById('bt_matchSubtitle');
-    if(matchSub) matchSub.textContent = 'Matches assigned to Group ' + BT.groupIndex;
-    // Build day options
+    BT.allAssignments = myGroups;
+    BT.activeAssignmentIdx = 0;
+    btActivateAssignment(0);
     const dayEl = document.getElementById('bt_attDay');
     if(dayEl && dayEl.options.length < 2){
       for(let i=1;i<=30;i++){ const o=document.createElement('option'); o.value=i; o.textContent='Day '+i; dayEl.appendChild(o); }
       refreshNxSelect('bt_attDay');
     }
+    document.getElementById('bt_loginPanel').style.display='none';
+    document.getElementById('bt_dashboard').style.display='grid';
+    btRenderBatchSwitcher();
     btRenderGroup();
     btShowPage('group');
     btLoadMatches();
@@ -4775,6 +4800,46 @@ async function btLogin(){
     errEl.textContent='Error loading data: '+e.message;
     errEl.style.display='block';
   }
+}
+
+function btActivateAssignment(idx){
+  const asgn = BT.allAssignments[idx];
+  if(!asgn) return;
+  BT.activeAssignmentIdx = idx;
+  BT.groupData = { trainees:asgn.trainees, batchLabel:asgn.batchLabel };
+  BT.groupIndex = asgn.groupIndex;
+  BT.batch = asgn.batchLabel;
+  btLoadAttendanceData();
+  const ui = document.getElementById('bt_userInfo');
+  if(ui) ui.textContent = '🏋 ' + BT.trainerCode + ' · Group ' + BT.groupIndex;
+  const attSub = document.getElementById('bt_attSubtitle');
+  if(attSub) attSub.textContent = 'Group '+BT.groupIndex+' · '+asgn.trainees.length+' trainees · '+asgn.batchLabel;
+  const matchSub = document.getElementById('bt_matchSubtitle');
+  if(matchSub) matchSub.textContent = 'Matches assigned to Group '+BT.groupIndex;
+}
+
+function btRenderBatchSwitcher(){
+  const container = document.getElementById('bt_batchSwitcher');
+  if(!container) return;
+  const all = BT.allAssignments||[];
+  if(all.length <= 1){ container.style.display='none'; return; }
+  container.style.display='flex';
+  container.innerHTML = all.map((a,i)=>{
+    const isActive = i===(BT.activeAssignmentIdx||0);
+    const dateStr = a.savedAt ? (' · '+a.savedAt.slice(0,10)) : '';
+    const bCol = isActive ? 'var(--p2)' : 'rgba(255,255,255,0.12)';
+    const bgCol = isActive ? 'rgba(232,89,12,0.18)' : 'rgba(255,255,255,0.04)';
+    const tCol = isActive ? 'var(--p2)' : 'var(--t-2)';
+    return '<button onclick="btSwitchBatch('+i+')" style="padding:7px 16px;border-radius:20px;border:1.5px solid '+bCol+';background:'+bgCol+';color:'+tCol+';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s;font-family:DM Sans,sans-serif;">'+a.batchLabel+' · Grp '+a.groupIndex+dateStr+'</button>';
+  }).join('');
+}
+
+function btSwitchBatch(idx){
+  btActivateAssignment(idx);
+  btRenderBatchSwitcher();
+  btRenderGroup();
+  if(BT.currentPage==='attendance') btAttLoadDay();
+  if(BT.currentPage==='matches') btLoadMatches();
 }
 
 // ── Load attendance from Firestore + localStorage ──
@@ -5794,6 +5859,10 @@ function btRenderMatches(){
         <div class="page-hdr">
           <h2 id="bt_groupTitle">My Group</h2>
           <p id="bt_groupSubtitle">Loading your group...</p>
+        </div>
+        <!-- Batch switcher: shown when trainer has multiple batch assignments -->
+        <div id="bt_batchSwitcher" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:20px;padding:14px 18px;background:rgba(232,89,12,0.06);border:1px solid rgba(232,89,12,0.2);border-radius:14px;align-items:center">
+          <span style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-right:4px">Your Batches</span>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px" id="bt_groupStats"></div>
         <div class="card" style="padding:0;overflow:hidden">
