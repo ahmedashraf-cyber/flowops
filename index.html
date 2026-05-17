@@ -5636,6 +5636,8 @@ function btRenderMatches(){
     const pid = firstUnassigned.productionId || String(activeMatches.indexOf(firstUnassigned));
     btToggleMatchCard(pid);
   }
+  // Init date pickers for any date inputs just rendered
+  setTimeout(nxDateInit, 50);
 }
 
 function btToggleMatchCard(pid){
@@ -5649,6 +5651,8 @@ function btToggleMatchCard(pid){
   if(!open){
     panel.style.display='block';
     if(chev) chev.style.transform='rotate(180deg)';
+    // Init date pickers inside newly opened panel
+    setTimeout(nxDateInit, 30);
   }
 }
 
