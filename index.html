@@ -4580,8 +4580,8 @@ function maRenderAssignedTable(){
     '<td style="font-size:13px;font-weight:500">'+m.awayTeam+'</td>'+
     '<td style="font-size:11px;color:var(--text-muted)">'+m.country+'</td>'+
     '<td style="font-size:11px;color:var(--text-muted)">'+new Date(m.assignedAt).toLocaleDateString('en-EG')+'</td>'+
-    '<td><button class="btn btn-ghost btn-sm" onclick="maOpenEdit(''+ck+'','+mi+')" style="font-size:11px">✏️ Edit</button>'+
-    '<button class="btn btn-ghost btn-sm" onclick="maRemoveMatch(''+ck+'','+mi+')" style="font-size:11px;color:var(--color-danger)">✕</button></td>'+
+    '<td><button class="btn btn-ghost btn-sm" onclick="maOpenEdit(\'' + ck + '\','+mi+')" style="font-size:11px">✏️ Edit</button>'+
+    '<button class="btn btn-ghost btn-sm" onclick="maRemoveMatch(\'' + ck + '\','+mi+')" style="font-size:11px;color:var(--color-danger)">✕</button></td>'+
     '</tr>'
   ).join('');
 }
