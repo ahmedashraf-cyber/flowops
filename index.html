@@ -4211,13 +4211,12 @@ const MATCHES_API_KEY  = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 const MATCHES_TAB      = 'Training Matches';
 
 async function initMatchAssignment(){
-  // Load all saved group assignments from Firestore (all batches)
-  MA.allBatchGroups = []; // [{batchLabel, groupIndex, trainer, trainees, docId}]
+  MA.allBatchGroups = [];
   if(fbDb){
     try {
       const gaSnap = await fbDb.collection('group_assignments').get();
+      // Collect from ALL docs including 'current' (legacy data lives there)
       gaSnap.forEach(doc => {
-        if(doc.id === 'current') return;
         const d = doc.data();
         (d.groups||[]).forEach(g => {
           MA.allBatchGroups.push({
@@ -4230,14 +4229,18 @@ async function initMatchAssignment(){
           });
         });
       });
-      // Deduplicate by (batchLabel+groupIndex), keep newest
+      // Deduplicate by (batchLabel+groupIndex), keep newest savedAt
       const seen = {};
-      MA.allBatchGroups = MA.allBatchGroups.filter(g => {
-        const k = g.batchLabel+'__g'+g.groupIndex;
-        if(!seen[k] || g.savedAt > seen[k]){ seen[k]=g.savedAt; return true; }
-        return false;
+      const deduped = [];
+      MA.allBatchGroups.forEach(g => {
+        const k = (g.batchLabel||'') + '__g' + g.groupIndex + '__' + (g.trainer||'');
+        if(!seen[k] || g.savedAt > seen[k].savedAt){
+          seen[k] = g;
+        }
       });
+      MA.allBatchGroups = Object.values(seen);
       MA.allBatchGroups.sort((a,b) => a.batchLabel.localeCompare(b.batchLabel) || a.groupIndex-b.groupIndex);
+      console.log('[FIELD] MA groups loaded:', MA.allBatchGroups.length, MA.allBatchGroups.map(g=>g.batchLabel+' G'+g.groupIndex+' '+g.trainer));
     } catch(e){ console.warn('MA groups load error:', e); }
 
     // Load saved match assignments — keyed by composite batchSlug_groupIdx
@@ -4445,9 +4448,18 @@ function maUpdatePreview(){
 }
 
 function maPopulateGroups(){
-  const allGroups = MA.allBatchGroups && MA.allBatchGroups.length
-    ? MA.allBatchGroups
-    : BSUP.groups.map((g,i)=>({ batchLabel:(g[0]&&g[0].batchName)||'', groupIndex:i+1, trainer:BSUP.groupAssign[i]||'Unassigned', trainees:g }));
+  // Primary: groups loaded from Firestore by initMatchAssignment
+  // Fallback: in-memory BSUP.groups (if user just generated groups this session)
+  let allGroups = MA.allBatchGroups && MA.allBatchGroups.length ? MA.allBatchGroups : [];
+  if(!allGroups.length && BSUP.groups && BSUP.groups.length){
+    allGroups = BSUP.groups.map((g,i)=>({
+      batchLabel: (g[0]&&g[0].batchName)||'',
+      groupIndex: i+1,
+      trainer: BSUP.groupAssign[i]||'Unassigned',
+      trainees: g
+    }));
+  }
+  console.log('[FIELD] maPopulateGroups:', allGroups.length, 'groups');
 
   const sels = ['maTargetGroup', 'maViewGroup'];
   sels.forEach(id => {
