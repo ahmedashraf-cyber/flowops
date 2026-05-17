@@ -4450,6 +4450,10 @@ function maUpdatePreview(){
   ).join('');
 }
 
+function maGroupCompositeKey(g){
+  return (g.batchLabel||'batch').replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()+'_g'+g.groupIndex;
+}
+
 function maPopulateGroups(){
   // Primary: groups loaded from Firestore by initMatchAssignment
   // Fallback: in-memory BSUP.groups (if user just generated groups this session)
