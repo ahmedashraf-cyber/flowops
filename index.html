@@ -2760,29 +2760,27 @@ async function cleanupDuplicateGroupDocs(){
   if(!fbDb || !A.user) return;
   try{
     const snap = await fbDb.collection('group_assignments').get();
-    // Map: dedupeKey -> { docId, savedAt }
-    const best = {};
-    const toDelete = [];
+    // Group docs by their batchLabel — keep only the newest doc per batch name.
+    // A doc with a stable key (batch_batch_84) naturally deduplicates itself on save.
+    // We only need to clean up OLD timestamp-based docs (batch_batch_84_1747xxx).
+    const byBatch = {}; // batchLabel -> [ {docId, savedAt} ]
     snap.forEach(doc => {
       if(doc.id === 'current') return;
       const d = doc.data();
-      (d.groups||[]).forEach(g => {
-        const bLabel = g.batchLabel||d.batchLabel||'';
-        const key = bLabel+'__g'+g.groupIndex+'__'+(g.trainer||'');
-        const savedAt = d.savedAt||'';
-        if(!best[key]){ best[key] = { docId:doc.id, savedAt }; }
-        else if(savedAt > best[key].savedAt){ 
-          toDelete.push(best[key].docId);
-          best[key] = { docId:doc.id, savedAt };
-        } else {
-          toDelete.push(doc.id);
-        }
-      });
+      const bLabel = d.batchLabel || '';
+      if(!byBatch[bLabel]) byBatch[bLabel] = [];
+      byBatch[bLabel].push({ docId: doc.id, savedAt: d.savedAt||'' });
     });
-    const uniqueToDelete = [...new Set(toDelete)].filter(id => !Object.values(best).some(b=>b.docId===id));
-    if(uniqueToDelete.length > 0){
-      console.log('[FIELD] Cleaning up', uniqueToDelete.length, 'duplicate group docs:', uniqueToDelete);
-      await Promise.all(uniqueToDelete.map(id => fbDb.collection('group_assignments').doc(id).delete()));
+    const toDelete = [];
+    Object.values(byBatch).forEach(docs => {
+      if(docs.length <= 1) return; // no duplicates
+      // Sort newest first, keep first, delete rest
+      docs.sort((a,b) => b.savedAt.localeCompare(a.savedAt));
+      docs.slice(1).forEach(d => toDelete.push(d.docId));
+    });
+    if(toDelete.length > 0){
+      console.log('[FIELD] Cleaning up', toDelete.length, 'stale group docs:', toDelete);
+      await Promise.all(toDelete.map(id => fbDb.collection('group_assignments').doc(id).delete()));
     }
   }catch(e){ console.warn('cleanupDuplicateGroupDocs error:', e); }
 }
@@ -4856,7 +4854,7 @@ async function btLogin(){
       errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.';
       errEl.style.display='block'; return;
     }
-    console.log('[FIELD] group_assignments docs found:', snap.size, '| myGroups for', code, ':', myGroups.map(g=>g.batchKey+'/grp'+g.groupIndex+'/'+g.batchLabel));
+    console.log('[FIELD] Docs in Firestore:', snap.size, '| Assignments found for', code+':', myGroups.length, myGroups.map(g=>'['+g.batchLabel+' Grp'+g.groupIndex+' trainees:'+g.trainees.length+' savedAt:'+g.savedAt.slice(0,16)+']'));
     myGroups.sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
     BT.trainerCode = code;
     BT.allAssignments = myGroups;
