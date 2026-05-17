@@ -2790,40 +2790,51 @@ async function saveGroupAssignments(){
   if(unassigned > 0){
     if(!confirm(unassigned + ' group(s) have no trainer assigned. Save anyway?')) return;
   }
-  const batchLabel = BSUP.trainees.length
-    ? ((BSUP.trainees.find(t=>t.batchName)||{}).batchName||null)
+  // Derive batchLabel from the GROUPS being saved, not from BSUP.trainees
+  // BSUP.trainees has all batches loaded; the groups contain only the filtered batch
+  const batchLabel = BSUP.groups.length
+    ? ((BSUP.groups.flat().find(t=>t.batchName)||{}).batchName||null)
     : null;
   // Stable key = batchLabel slug, so same batch always updates the same doc
   // This prevents duplicate docs for the same batch
   const batchKey = batchLabel
     ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()
     : 'batch_unset_' + new Date().toISOString().slice(0,10);
-  const groupsPayload = BSUP.groups.map((g,i) => ({
-    groupIndex: i+1,
-    trainer: BSUP.groupAssign[i]||'Unassigned',
-    batchLabel: batchLabel||'Unknown',
-    trainees: g.map(t => ({
-      trainingCode: t.trainingCode,
-      name: t.name,
-      pts: t.pts,
-      tier: t.tier,
-      batchName: t.batchName||batchLabel||''
-    }))
-  }));
+  const groupsPayload = BSUP.groups.map((g,i) => {
+    // Each group gets its own batchLabel from its own trainees
+    const grpBatch = (g.find(t=>t.batchName)||{}).batchName || batchLabel || 'Unknown';
+    return {
+      groupIndex: i+1,
+      trainer: BSUP.groupAssign[i]||'Unassigned',
+      batchLabel: grpBatch,
+      trainees: g.map(t => ({
+        trainingCode: t.trainingCode,
+        name: t.name,
+        pts: t.pts,
+        tier: t.tier,
+        batchName: t.batchName||grpBatch
+      }))
+    };
+  });
+  // Use the actual batch from the groups, not the stale top-level one
+  const effectiveBatch = batchLabel || (groupsPayload[0]&&groupsPayload[0].batchLabel) || 'Unknown';
+  const effectiveKey = effectiveBatch !== 'Unknown'
+    ? 'batch_' + effectiveBatch.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()
+    : batchKey;
   const payload = {
     groups: groupsPayload,
-    batchLabel: batchLabel||'Unknown',
+    batchLabel: effectiveBatch,
     savedBy: A.user ? A.user.email : 'system',
     savedAt: new Date().toISOString()
   };
   try {
     if(fbDb && A.user){
-      await fbDb.collection('group_assignments').doc(batchKey).set(payload);
-      await fbDb.collection('group_assignments').doc('current').set(Object.assign({},payload,{activeBatchKey:batchKey}));
+      await fbDb.collection('group_assignments').doc(effectiveKey).set(payload);
+      await fbDb.collection('group_assignments').doc('current').set(Object.assign({},payload,{activeBatchKey:effectiveKey}));
     }
     localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
     localStorage.setItem('flowops_group_assign', JSON.stringify(BSUP.groupAssign));
-    addBsupNotif('Groups saved', BSUP.groups.length + ' groups saved for ' + (batchLabel||'batch'), 'green');
+    addBsupNotif('Groups saved', BSUP.groups.length + ' groups saved for ' + effectiveBatch, 'green');
     alert('✅ Group assignments saved successfully!');
   } catch(e){
     localStorage.setItem('flowops_groups', JSON.stringify(BSUP.groups));
