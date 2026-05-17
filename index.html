@@ -2264,6 +2264,7 @@ async function initBsupDashboard(){
   listenForBatchNotifications();
   await loadSavedCodes();
   await loadSavedGroups();
+  cleanupDuplicateGroupDocs(); // async, runs in background
 }
 
 // Load accepted trainees from Firestore (saved by coordinator on End of Batch)
@@ -2753,6 +2754,39 @@ async function loadSavedGroups(){
   } catch(e){ console.warn('loadSavedGroups error:', e); }
 }
 
+// One-time cleanup: remove duplicate group_assignment docs (old timestamped ones)
+// Keeps only the newest doc per (batchLabel+groupIndex+trainer) combination
+async function cleanupDuplicateGroupDocs(){
+  if(!fbDb || !A.user) return;
+  try{
+    const snap = await fbDb.collection('group_assignments').get();
+    // Map: dedupeKey -> { docId, savedAt }
+    const best = {};
+    const toDelete = [];
+    snap.forEach(doc => {
+      if(doc.id === 'current') return;
+      const d = doc.data();
+      (d.groups||[]).forEach(g => {
+        const bLabel = g.batchLabel||d.batchLabel||'';
+        const key = bLabel+'__g'+g.groupIndex+'__'+(g.trainer||'');
+        const savedAt = d.savedAt||'';
+        if(!best[key]){ best[key] = { docId:doc.id, savedAt }; }
+        else if(savedAt > best[key].savedAt){ 
+          toDelete.push(best[key].docId);
+          best[key] = { docId:doc.id, savedAt };
+        } else {
+          toDelete.push(doc.id);
+        }
+      });
+    });
+    const uniqueToDelete = [...new Set(toDelete)].filter(id => !Object.values(best).some(b=>b.docId===id));
+    if(uniqueToDelete.length > 0){
+      console.log('[FIELD] Cleaning up', uniqueToDelete.length, 'duplicate group docs:', uniqueToDelete);
+      await Promise.all(uniqueToDelete.map(id => fbDb.collection('group_assignments').doc(id).delete()));
+    }
+  }catch(e){ console.warn('cleanupDuplicateGroupDocs error:', e); }
+}
+
 async function saveGroupAssignments(){
   const unassigned = BSUP.groups.filter((_,i) => !BSUP.groupAssign[i]).length;
   if(unassigned > 0){
@@ -2761,11 +2795,11 @@ async function saveGroupAssignments(){
   const batchLabel = BSUP.trainees.length
     ? ((BSUP.trainees.find(t=>t.batchName)||{}).batchName||null)
     : null;
-  // Include timestamp so same-batch re-assignments never overwrite each other
-  const ts = Date.now();
+  // Stable key = batchLabel slug, so same batch always updates the same doc
+  // This prevents duplicate docs for the same batch
   const batchKey = batchLabel
-    ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase() + '_' + ts
-    : 'batch_' + ts;
+    ? 'batch_' + batchLabel.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()
+    : 'batch_unset_' + new Date().toISOString().slice(0,10);
   const groupsPayload = BSUP.groups.map((g,i) => ({
     groupIndex: i+1,
     trainer: BSUP.groupAssign[i]||'Unassigned',
@@ -4780,20 +4814,28 @@ async function btLogin(){
     // Scan ALL docs (including legacy 'current') to collect every group for this trainer
     const snap = await fbDb.collection('group_assignments').get();
     const myGroups = [];
-    // Deduplicate by (batchKey_groupIndex) — each unique doc+group is one assignment
-    // 'current' is skipped entirely since its data is always duplicated in a named batch_* doc
-    const seen = new Set();
+    // Collect all assignments for this trainer, deduplicate by (batchLabel + groupIndex)
+    // keeping only the most recent savedAt for each unique combo
+    const seen = {}; // key -> { idx in myGroups, savedAt }
     snap.forEach(doc => {
-      if(doc.id === 'current') return; // always a mirror of the latest batch_* doc
+      if(doc.id === 'current') return;
       const d = doc.data();
       (d.groups||[]).forEach(g => {
         if(g.trainer === code){
-          const dedupeKey = doc.id + '_g' + g.groupIndex;
-          if(seen.has(dedupeKey)) return;
-          seen.add(dedupeKey);
           const rawLabel = g.batchLabel||d.batchLabel||'';
           const bLabel = rawLabel || (g.trainees&&g.trainees[0]&&g.trainees[0].batchName) || 'Batch';
-          myGroups.push({ batchKey:doc.id, batchLabel:bLabel, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          // Unique identity = batchLabel + groupIndex (not docId, which varies by timestamp)
+          const dedupeKey = bLabel + '__g' + g.groupIndex;
+          const savedAt = d.savedAt||'';
+          if(seen[dedupeKey] !== undefined){
+            // Keep newer one
+            if(savedAt > myGroups[seen[dedupeKey]].savedAt){
+              myGroups[seen[dedupeKey]] = { batchKey:doc.id, batchLabel:bLabel, savedAt, groupIndex:g.groupIndex, trainees:g.trainees||[] };
+            }
+          } else {
+            seen[dedupeKey] = myGroups.length;
+            myGroups.push({ batchKey:doc.id, batchLabel:bLabel, savedAt, groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          }
         }
       });
     });
