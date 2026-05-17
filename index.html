@@ -3132,7 +3132,7 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
     const pills = ATT_STATUS.map(s => {
       const p = ATT_PIlL[s];
       const isAct = s === status;
-      const clickAttr = isLocked ? '' : 'onclick="setStatus('+code+',''+dayKey+'',''+s+'')" ';
+      const clickAttr = isLocked ? '' : 'onclick="setStatus('+code+',\''+dayKey+'\',\''+s+'\')" ';
       return '<button '+clickAttr+'style="'+
         'flex:1;padding:4px 2px;border-radius:8px;font-size:11px;font-weight:800;'+
         'font-family:JetBrains Mono,monospace;cursor:'+(isLocked?'default':'pointer')+';'+
