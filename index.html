@@ -2754,37 +2754,6 @@ async function loadSavedGroups(){
   } catch(e){ console.warn('loadSavedGroups error:', e); }
 }
 
-// One-time cleanup: remove duplicate group_assignment docs (old timestamped ones)
-// Keeps only the newest doc per (batchLabel+groupIndex+trainer) combination
-async function cleanupDuplicateGroupDocs(){
-  if(!fbDb || !A.user) return;
-  try{
-    const snap = await fbDb.collection('group_assignments').get();
-    // Group docs by their batchLabel — keep only the newest doc per batch name.
-    // A doc with a stable key (batch_batch_84) naturally deduplicates itself on save.
-    // We only need to clean up OLD timestamp-based docs (batch_batch_84_1747xxx).
-    const byBatch = {}; // batchLabel -> [ {docId, savedAt} ]
-    snap.forEach(doc => {
-      if(doc.id === 'current') return;
-      const d = doc.data();
-      const bLabel = d.batchLabel || '';
-      if(!byBatch[bLabel]) byBatch[bLabel] = [];
-      byBatch[bLabel].push({ docId: doc.id, savedAt: d.savedAt||'' });
-    });
-    const toDelete = [];
-    Object.values(byBatch).forEach(docs => {
-      if(docs.length <= 1) return; // no duplicates
-      // Sort newest first, keep first, delete rest
-      docs.sort((a,b) => b.savedAt.localeCompare(a.savedAt));
-      docs.slice(1).forEach(d => toDelete.push(d.docId));
-    });
-    if(toDelete.length > 0){
-      console.log('[FIELD] Cleaning up', toDelete.length, 'stale group docs:', toDelete);
-      await Promise.all(toDelete.map(id => fbDb.collection('group_assignments').doc(id).delete()));
-    }
-  }catch(e){ console.warn('cleanupDuplicateGroupDocs error:', e); }
-}
-
 async function saveGroupAssignments(){
   const unassigned = BSUP.groups.filter((_,i) => !BSUP.groupAssign[i]).length;
   if(unassigned > 0){
@@ -4227,12 +4196,12 @@ function tsExportExcel(){
 // MATCH ASSIGNMENT SYSTEM
 // ============================================================
 const MA = {
-  allMatches:     [],   // raw from sheet
-  filtered:       [],   // after filters
-  selected:       new Set(), // selected match indices
-  assignments:    {},   // { compositeKey: [ {match, assignedAt, reason} ] }
-  assignmentMeta: {},   // { compositeKey: { trainerCode, batchLabel, groupLabel } }
-  allBatchGroups: [],   // all groups from all batches loaded from Firestore
+  allMatches:     [],
+  filtered:       [],
+  selected:       new Set(),
+  assignments:    {},
+  assignmentMeta: {},
+  allBatchGroups: [],
   editTarget:     null,
   charts:         {}
 };
@@ -4473,10 +4442,6 @@ function maUpdatePreview(){
     '<span style="color:var(--text-muted);margin-inline-start:6px">'+m.competition+(m.gameWeek?' · GW'+m.gameWeek:'')+'</span>'+
     '</div>'
   ).join('');
-}
-
-function maGroupCompositeKey(g){
-  return (g.batchLabel||'batch').replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()+'_g'+g.groupIndex;
 }
 
 function maPopulateGroups(){
@@ -6327,6 +6292,8 @@ function btQuickAssignAll(){
     </div><!-- end container -->
   </div><!-- end bt_dashboard -->
 </div>
+</body>
+</html
 
 
 
