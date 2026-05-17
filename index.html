@@ -4227,12 +4227,14 @@ function tsExportExcel(){
 // MATCH ASSIGNMENT SYSTEM
 // ============================================================
 const MA = {
-  allMatches:   [],   // raw from sheet
-  filtered:     [],   // after filters
-  selected:     new Set(), // selected match indices
-  assignments:  {},   // { groupIdx: [ {match, assignedAt, reason} ] }
-  editTarget:   null, // { groupIdx, matchIdx }
-  charts:       {}
+  allMatches:     [],   // raw from sheet
+  filtered:       [],   // after filters
+  selected:       new Set(), // selected match indices
+  assignments:    {},   // { compositeKey: [ {match, assignedAt, reason} ] }
+  assignmentMeta: {},   // { compositeKey: { trainerCode, batchLabel, groupLabel } }
+  allBatchGroups: [],   // all groups from all batches loaded from Firestore
+  editTarget:     null,
+  charts:         {}
 };
 
 const MATCHES_SHEET_ID = '1dPwnYhIOiLUy_aBuVijPH3xtU6kxnEu-8FF115kXjSc';
@@ -6325,8 +6327,6 @@ function btQuickAssignAll(){
     </div><!-- end container -->
   </div><!-- end bt_dashboard -->
 </div>
-</body>
-</html
 
 
 
