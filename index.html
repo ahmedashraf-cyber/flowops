@@ -4754,28 +4754,26 @@ async function btLogin(){
   if(!code){ errEl.textContent='Please select your trainer code'; errEl.style.display='block'; return; }
   errEl.style.display='none';
   try{
+    // Scan ALL docs (including legacy 'current') to collect every group for this trainer
     const snap = await fbDb.collection('group_assignments').get();
     const myGroups = [];
+    const seen = new Set(); // deduplicate by batchKey+groupIndex
+    function normLabel(lbl){ return lbl ? lbl.replace(/^Batch\s+/i,'').trim() : lbl; }
     snap.forEach(doc => {
-      if(doc.id === 'current') return;
       const d = doc.data();
+      // For 'current', use activeBatchKey if present so we can skip duplicate
+      const effectiveKey = doc.id === 'current' ? (d.activeBatchKey||'current') : doc.id;
       (d.groups||[]).forEach(g => {
         if(g.trainer === code){
-          myGroups.push({ batchKey:doc.id, batchLabel:g.batchLabel||d.batchLabel||doc.id, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
+          const dedupeKey = effectiveKey + '_g' + g.groupIndex;
+          if(seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
+          const rawLabel = g.batchLabel||d.batchLabel||'';
+          const batchLabel = rawLabel || normLabel(g.trainees&&g.trainees[0]&&g.trainees[0].batchName||'') || 'Batch';
+          myGroups.push({ batchKey:effectiveKey, batchLabel:batchLabel, savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
         }
       });
     });
-    if(myGroups.length === 0){
-      const cur = await fbDb.collection('group_assignments').doc('current').get();
-      if(cur.exists){
-        const d = cur.data();
-        (d.groups||[]).forEach(g => {
-          if(g.trainer === code){
-            myGroups.push({ batchKey:'current', batchLabel:g.batchLabel||d.batchLabel||'Current', savedAt:d.savedAt||'', groupIndex:g.groupIndex, trainees:g.trainees||[] });
-          }
-        });
-      }
-    }
     if(myGroups.length === 0){
       errEl.textContent='No group assigned to code '+code+'. Ask your Batch Supervisor.';
       errEl.style.display='block'; return;
@@ -4822,16 +4820,21 @@ function btRenderBatchSwitcher(){
   const container = document.getElementById('bt_batchSwitcher');
   if(!container) return;
   const all = BT.allAssignments||[];
-  if(all.length <= 1){ container.style.display='none'; return; }
+  // Always show: even 1 batch shows as confirmation; 2+ allows switching
+  if(all.length === 0){ container.style.display='none'; return; }
   container.style.display='flex';
-  container.innerHTML = all.map((a,i)=>{
+  const pills = all.map((a,i)=>{
     const isActive = i===(BT.activeAssignmentIdx||0);
     const dateStr = a.savedAt ? (' · '+a.savedAt.slice(0,10)) : '';
     const bCol = isActive ? 'var(--p2)' : 'rgba(255,255,255,0.12)';
     const bgCol = isActive ? 'rgba(232,89,12,0.18)' : 'rgba(255,255,255,0.04)';
     const tCol = isActive ? 'var(--p2)' : 'var(--t-2)';
-    return '<button onclick="btSwitchBatch('+i+')" style="padding:7px 16px;border-radius:20px;border:1.5px solid '+bCol+';background:'+bgCol+';color:'+tCol+';font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .2s;font-family:DM Sans,sans-serif;">'+a.batchLabel+' · Grp '+a.groupIndex+dateStr+'</button>';
+    const clickable = all.length > 1 ? 'onclick="btSwitchBatch('+i+')" ' : '';
+    const cursor = all.length > 1 ? 'pointer' : 'default';
+    return '<button '+clickable+'style="padding:7px 16px;border-radius:20px;border:1.5px solid '+bCol+';background:'+bgCol+';color:'+tCol+';font-size:12px;font-weight:700;cursor:'+cursor+';white-space:nowrap;transition:all .2s;font-family:DM Sans,sans-serif;">'+a.batchLabel+' · Grp '+a.groupIndex+dateStr+'</button>';
   }).join('');
+  const hint = all.length > 1 ? '<span style="font-size:11px;color:var(--t-3);margin-left:4px;align-self:center">← tap to switch</span>' : '';
+  container.innerHTML = pills + hint;
 }
 
 function btSwitchBatch(idx){
@@ -4909,7 +4912,7 @@ function btFilterGroup(){
     return `<tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--p2)">${t.trainingCode||'—'}</span></td>
       <td style="font-weight:600;color:var(--t-1)">${t.name||'—'}</td>
-      <td><span style="background:var(--bg-3);color:var(--t-2);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">${BT.batch?'Batch '+BT.batch:'—'}</span></td>
+      <td><span style="background:var(--bg-3);color:var(--t-2);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600">${BT.batch?BT.batch:'—'}</span></td>
       <td style="color:${ptsColor};font-weight:700">${pts.toFixed(1)}%</td>
       <td style="color:var(--t-2)">${t.form!=null?(parseFloat(t.form)||0).toFixed(1)+'%':'—'}</td>
       <td style="color:var(--t-2)">${t.iv!=null?(parseFloat(t.iv)||0).toFixed(1)+'%':'—'}</td>
