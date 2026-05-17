@@ -4730,6 +4730,17 @@ function maPopulateGroups(){
         const batchTag = g.batchLabel ? ' ['+g.batchLabel+']' : '';
         return '<option value="'+key+'">Group '+g.groupIndex+batchTag+' — '+g.trainer+'</option>';
       }).join('');
+    // If already nx-wrapped, sync the label; otherwise wrap it now
+    const wrap = sel.closest('.nx-select-wrap');
+    if(wrap){
+      const lbl = wrap.querySelector('.nx-label');
+      const o = sel.options[sel.selectedIndex];
+      if(lbl && o) lbl.textContent = o.text;
+      wrap.dataset.nxInit = '0';
+      initNxSelects();
+    } else {
+      nxWrapSelect(sel, id === 'maViewGroup' ? function(){ maRenderAssignedTable(); } : null);
+    }
   });
 }
 
@@ -4953,6 +4964,84 @@ function maExportExcel(){
 
 // ── FIELD Dropdown System ──
 var _nxOpenWrap = null;
+
+function nxWrapSelect(sel, onChangeFn){
+  // Already wrapped
+  if(sel.closest('.nx-select-wrap') || sel.dataset.nxWrapped) return;
+  sel.dataset.nxWrapped = '1';
+  sel.style.display = 'none';
+
+  var wrap = document.createElement('div');
+  wrap.className = 'nx-select-wrap full';
+  wrap.dataset.nxInit = '0';
+  sel.parentNode.insertBefore(wrap, sel);
+
+  var trigger = document.createElement('div');
+  trigger.className = 'nx-trigger';
+  trigger.style.width = '100%';
+
+  var label = document.createElement('span');
+  label.className = 'nx-label';
+  var selOpt = sel.options[sel.selectedIndex];
+  label.textContent = selOpt ? selOpt.text : '— Select —';
+
+  var chev = document.createElement('span');
+  chev.innerHTML = '<svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  trigger.appendChild(label);
+  trigger.appendChild(chev);
+
+  var dd = document.createElement('div');
+  dd.className = 'nx-dropdown';
+  dd.style.display = 'none';
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(dd);
+  wrap.appendChild(sel);
+
+  function syncLabel(){
+    var o = sel.options[sel.selectedIndex];
+    if(o) label.textContent = o.text;
+  }
+
+  trigger.addEventListener('click', function(e){
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    var isOpen = (_nxOpenWrap === wrap);
+    if(isOpen){ closeAllDropdowns(); return; }
+    closeAllDropdowns();
+
+    var html = '';
+    for(var i=0;i<sel.options.length;i++){
+      var isSel = sel.options[i].value === sel.value;
+      html += '<div class="nx-opt'+(isSel?' selected':'')+'" data-i="'+i+'" style="padding:10px 14px;font-size:13.5px;font-family:DM Sans,sans-serif;color:'+(isSel?'#FF8040':'rgba(255,255,255,0.55)')+';cursor:pointer;border-radius:10px;margin:2px 4px;display:flex;align-items:center;gap:8px;transition:background .1s">'
+        +'<span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;background:'+(isSel?'#FF8040':'transparent')+';'+(isSel?'box-shadow:0 0 8px rgba(232,89,12,0.6)':'border:1.5px solid rgba(255,255,255,0.2)')+'"></span>'
+        +sel.options[i].text+'</div>';
+    }
+    var r = trigger.getBoundingClientRect();
+    dd.innerHTML = '<div style="padding:4px">'+html+'</div>';
+    dd.style.cssText = 'display:block;position:fixed;top:'+(r.bottom+6)+'px;left:'+r.left+'px;min-width:'+r.width+'px;width:auto;max-width:360px;z-index:99999;max-height:320px;overflow-y:auto;background:#12121C;border:1px solid rgba(255,255,255,0.10);border-radius:16px;box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;';
+    document.body.appendChild(dd);
+    dd.addEventListener('wheel',function(e){e.stopPropagation();},{passive:true});
+    trigger.classList.add('open');
+    _nxOpenWrap = wrap;
+
+    dd.querySelectorAll('.nx-opt').forEach(function(opt){
+      opt.addEventListener('mousedown',function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        sel.selectedIndex = parseInt(opt.dataset.i);
+        syncLabel();
+        closeAllDropdowns();
+        if(onChangeFn) onChangeFn(sel.value);
+        else sel.dispatchEvent(new Event('change',{bubbles:true}));
+      });
+      opt.addEventListener('mouseenter',function(){opt.style.background='rgba(255,255,255,0.06)';opt.style.color='rgba(255,255,255,0.9)';});
+      opt.addEventListener('mouseleave',function(){opt.style.background='';opt.style.color=opt.classList.contains('selected')?'#FF8040':'rgba(255,255,255,0.55)';});
+    });
+  });
+
+  sel.addEventListener('change', syncLabel);
+  return { syncLabel: syncLabel };
+}
 
 function initNxSelects(){
   document.querySelectorAll('.nx-select-wrap').forEach(function(wrap){
@@ -5636,8 +5725,13 @@ function btRenderMatches(){
     const pid = firstUnassigned.productionId || String(activeMatches.indexOf(firstUnassigned));
     btToggleMatchCard(pid);
   }
-  // Init date pickers for any date inputs just rendered
-  setTimeout(nxDateInit, 50);
+  // Wrap trainee selects and init date pickers for dynamically created inputs
+  setTimeout(function(){
+    document.querySelectorAll('#bt_matchesContent select:not([data-nx-wrapped])').forEach(function(sel){
+      if(!sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+    nxDateInit();
+  }, 50);
 }
 
 function btToggleMatchCard(pid){
@@ -5651,8 +5745,14 @@ function btToggleMatchCard(pid){
   if(!open){
     panel.style.display='block';
     if(chev) chev.style.transform='rotate(180deg)';
-    // Init date pickers inside newly opened panel
-    setTimeout(nxDateInit, 30);
+    // Wrap trainee select + init date pickers when panel opens
+    setTimeout(function(){
+      var p2 = document.getElementById('btmc_panel_'+pid);
+      if(p2) p2.querySelectorAll('select:not([data-nx-wrapped])').forEach(function(sel){
+        nxWrapSelect(sel);
+      });
+      nxDateInit();
+    }, 30);
   }
 }
 
