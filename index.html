@@ -4212,51 +4212,60 @@ const MATCHES_TAB      = 'Training Matches';
 
 async function initMatchAssignment(){
   MA.allBatchGroups = [];
-  if(fbDb){
-    try {
-      const gaSnap = await fbDb.collection('group_assignments').get();
-      // Collect from ALL docs including 'current' (legacy data lives there)
-      gaSnap.forEach(doc => {
-        const d = doc.data();
-        (d.groups||[]).forEach(g => {
-          MA.allBatchGroups.push({
-            docId:      doc.id,
-            batchLabel: g.batchLabel || d.batchLabel || '',
-            groupIndex: g.groupIndex,
-            trainer:    g.trainer || 'Unassigned',
-            trainees:   g.trainees || [],
-            savedAt:    d.savedAt || ''
-          });
+  const debugEl = document.getElementById('maDebugInfo');
+
+  if(!fbDb){ if(debugEl) debugEl.textContent='No Firebase connection'; return; }
+
+  try {
+    const gaSnap = await fbDb.collection('group_assignments').get();
+    let debugLines = ['Docs in group_assignments: ' + gaSnap.size];
+
+    gaSnap.forEach(doc => {
+      const d = doc.data();
+      const groups = d.groups||[];
+      debugLines.push('Doc "' + doc.id + '": ' + groups.length + ' groups, batchLabel="' + (d.batchLabel||'') + '"');
+      groups.forEach(g => {
+        debugLines.push('  → groupIndex=' + g.groupIndex + ' trainer="' + (g.trainer||'') + '" batchLabel="' + (g.batchLabel||d.batchLabel||'') + '"');
+        MA.allBatchGroups.push({
+          docId:      doc.id,
+          batchLabel: g.batchLabel || d.batchLabel || '',
+          groupIndex: g.groupIndex,
+          trainer:    g.trainer || 'Unassigned',
+          trainees:   g.trainees || [],
+          savedAt:    d.savedAt || ''
         });
       });
-      // Deduplicate by (batchLabel+groupIndex), keep newest savedAt
-      const seen = {};
-      const deduped = [];
-      MA.allBatchGroups.forEach(g => {
-        const k = (g.batchLabel||'') + '__g' + g.groupIndex + '__' + (g.trainer||'');
-        if(!seen[k] || g.savedAt > seen[k].savedAt){
-          seen[k] = g;
-        }
-      });
-      MA.allBatchGroups = Object.values(seen);
-      MA.allBatchGroups.sort((a,b) => a.batchLabel.localeCompare(b.batchLabel) || a.groupIndex-b.groupIndex);
-      console.log('[FIELD] MA groups loaded:', MA.allBatchGroups.length, MA.allBatchGroups.map(g=>g.batchLabel+' G'+g.groupIndex+' '+g.trainer));
-    } catch(e){ console.warn('MA groups load error:', e); }
+    });
 
-    // Load saved match assignments — keyed by composite batchSlug_groupIdx
-    try {
-      const snap = await fbDb.collection('match_assignments').get();
-      MA.assignments = {};
-      snap.forEach(doc => {
-        const d = doc.data();
-        const key = d.compositeKey || String(d.groupIdx ?? doc.id);
-        MA.assignments[key] = d.matches || [];
-        // Store full doc data for display
-        MA.assignmentMeta = MA.assignmentMeta || {};
-        MA.assignmentMeta[key] = { trainerCode: d.trainerCode, batchLabel: d.batchLabel, groupLabel: d.groupLabel };
-      });
-    } catch(e){ console.warn('MA load error:', e); }
+    // Deduplicate by (batchLabel+groupIndex+trainer), keep newest
+    const seen = {};
+    MA.allBatchGroups.forEach(g => {
+      const k = (g.batchLabel||'') + '__g' + g.groupIndex + '__' + (g.trainer||'');
+      if(!seen[k] || g.savedAt > seen[k].savedAt) seen[k] = g;
+    });
+    MA.allBatchGroups = Object.values(seen);
+    MA.allBatchGroups.sort((a,b) => a.batchLabel.localeCompare(b.batchLabel) || a.groupIndex-b.groupIndex);
+
+    debugLines.push('After dedup: ' + MA.allBatchGroups.length + ' unique groups');
+    if(debugEl){ debugEl.style.display='block'; debugEl.innerHTML = debugLines.join('<br>'); }
+    console.log('[FIELD] group_assignments:', debugLines);
+
+  } catch(e){
+    console.warn('MA groups load error:', e);
+    if(debugEl) debugEl.textContent = 'Error: ' + e.message;
   }
+
+  try {
+    const snap = await fbDb.collection('match_assignments').get();
+    MA.assignments = {};
+    snap.forEach(doc => {
+      const d = doc.data();
+      const key = d.compositeKey || String(d.groupIdx ?? doc.id);
+      MA.assignments[key] = d.matches || [];
+      MA.assignmentMeta = MA.assignmentMeta || {};
+      MA.assignmentMeta[key] = { trainerCode: d.trainerCode, batchLabel: d.batchLabel, groupLabel: d.groupLabel };
+    });
+  } catch(e){ console.warn('MA load error:', e); }
 
   maPopulateGroups();
   maRenderAssignedSummary();
@@ -6002,6 +6011,7 @@ function btQuickAssignAll(){
           <h2>Match Assignment</h2>
           <p>Assign matches from the live database to each training group — weekly</p>
         </div>
+        <div id="maDebugInfo" style="display:none;background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.3);border-radius:10px;padding:12px 16px;font-size:12px;font-family:JetBrains Mono,monospace;color:var(--p2);margin-bottom:16px;line-height:1.8"></div>
 
         <!-- STEP 1: LOAD & FILTER MATCHES -->
         <div class="card" style="margin-bottom:16px">
