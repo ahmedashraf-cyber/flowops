@@ -580,23 +580,27 @@ tbody tr:hover{
 /* FIX 5: Premium custom selects ──────────────────────── */
 select,
 .search-row select,
-.input[type="date"] {
-  background:var(--bg-2) !important;
-  border:0.5px solid var(--b-2) !important;
-  border-radius:var(--r-md) !important;
+.input[type="date"],input[type="date"] {
+  background:#12121C !important;
+  border:1px solid rgba(255,255,255,0.10) !important;
+  border-radius:16px !important;
   color:var(--t-1) !important;
   font-family:'DM Sans',sans-serif !important;
   font-size:13px !important;
   font-weight:500 !important;
-  padding:9px 36px 9px 14px !important;
+  padding:10px 14px !important;
   outline:none !important;
   cursor:pointer;
-  appearance:none;
-  -webkit-appearance:none;
-  background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236E6E73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-  background-repeat:no-repeat !important;
-  background-position:right 12px center !important;
-  transition:border-color .15s,box-shadow .15s,background .15s !important;
+  appearance:auto;
+  -webkit-appearance:auto;
+  width:100%;
+  box-sizing:border-box;
+  transition:border-color .15s,box-shadow .15s !important;
+  color-scheme: dark !important;
+}
+.input[type="date"]:focus,input[type="date"]:focus {
+  border-color:rgba(232,89,12,0.5) !important;
+  box-shadow:0 0 0 3px rgba(232,89,12,0.12) !important;
 }
 select:focus,
 .search-row select:focus {
@@ -3123,14 +3127,18 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
     const code = t.trainingCode;
     const status = (ATT.records[dayKey]||{})[code] || 'M';
     const col = ATT_COLORS[status];
-    const disabledAttr = isLocked ? 'disabled' : '';
-    const opts = ATT_STATUS.map(s =>
-      '<option value="'+s+'"'+(s===status?' selected':'')+'>'+s+'</option>'
-    ).join('');
+    const ATT_COLS2 = {M:{bg:'rgba(48,209,88,0.15)',border:'rgba(48,209,88,0.5)',text:'#30D158'},UL:{bg:'rgba(255,69,58,0.15)',border:'rgba(255,69,58,0.5)',text:'#FF453A'},WV:{bg:'rgba(10,132,255,0.15)',border:'rgba(10,132,255,0.5)',text:'#0A84FF'},H:{bg:'rgba(255,255,255,0.08)',border:'rgba(255,255,255,0.2)',text:'rgba(255,255,255,0.4)'}};
+    const ATT_TIPS = {M:'Mandatory',UL:'UnderLoaded',WV:'Waiver',H:'Hold'};
+    const pillsHTML = isLocked
+      ? '<div style="display:flex;gap:3px;justify-content:center"><span style="padding:3px 8px;border-radius:8px;font-size:11px;font-weight:800;font-family:JetBrains Mono,monospace;background:'+ATT_COLS2[status].bg+';color:'+ATT_COLS2[status].text+';border:1px solid '+ATT_COLS2[status].border+'">'+status+'</span></div>'
+      : '<div style="display:flex;gap:3px;justify-content:center">'+ATT_STATUS.map(s => {
+          const isAct = s===status; const c2 = ATT_COLS2[s];
+          return '<button onclick="bsupSetAtt('+code+',''+s+'',''+dayKey+'',this)" title="'+ATT_TIPS[s]+'" style="padding:3px 7px;border-radius:8px;font-size:11px;font-weight:800;font-family:JetBrains Mono,monospace;cursor:pointer;border:1.5px solid '+(isAct?c2.border:'rgba(255,255,255,0.1)')+';background:'+(isAct?c2.bg:'transparent')+';color:'+(isAct?c2.text:'rgba(255,255,255,0.3)')+';transition:all .15s">'+s+'</button>';
+        }).join('')+'</div>';
     return '<div style="background:'+col.bg+';border:2px solid '+col.border+';border-radius:var(--radius-md);padding:10px 8px;text-align:center;transition:all 0.15s;min-width:0">'+
       '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);margin-bottom:3px">#'+code+'</div>'+
       '<div style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px">'+(t.name||t.nameEn||'').split(' ')[0]+'</div>'+
-      '<select '+disabledAttr+' data-attcode="'+code+'" data-attday="'+dayKey+'" style="width:100%;padding:4px 2px;border:1px solid '+col.border+';border-radius:var(--radius-sm);background:'+col.bg+';color:'+col.text+';font-size:13px;font-weight:800;font-family:JetBrains Mono,monospace;text-align:center;cursor:'+(isLocked?'default':'pointer')+';outline:none">'+opts+'</select>'+
+      pillsHTML+
     '</div>';
   }).join('');
 
@@ -3155,16 +3163,27 @@ function renderGroupAttCard(trainees, groupLabel, trainerCode, isLocked, dayKey)
 }
 
 function attachAttendanceClicks(){
-  const grid = document.getElementById('attGroupsGrid');
-  if(!grid) return;
-  grid.querySelectorAll('select[data-attcode]').forEach(function(el){
-    el.addEventListener('change', function(){
-      const code = parseInt(el.getAttribute('data-attcode'));
-      const dayKey = el.getAttribute('data-attday');
-      const newStatus = el.value;
-      setStatus(code, dayKey, newStatus);
-    });
+  // Buttons now handle clicks directly via bsupSetAtt — nothing to attach
+}
+
+function bsupSetAtt(code, newStatus, dayKey, btn){
+  setStatus(parseInt(code), dayKey, newStatus);
+  // Update pill button styles in the card
+  const card = btn.closest('div[style*="border-radius"]');
+  if(!card) return;
+  const ATT_COLS2 = {M:{bg:'rgba(48,209,88,0.15)',border:'rgba(48,209,88,0.5)',text:'#30D158'},UL:{bg:'rgba(255,69,58,0.15)',border:'rgba(255,69,58,0.5)',text:'#FF453A'},WV:{bg:'rgba(10,132,255,0.15)',border:'rgba(10,132,255,0.5)',text:'#0A84FF'},H:{bg:'rgba(255,255,255,0.08)',border:'rgba(255,255,255,0.2)',text:'rgba(255,255,255,0.4)'}};
+  card.querySelectorAll('button').forEach(function(b){
+    const s = b.textContent.trim();
+    const isAct = s===newStatus; const c2 = ATT_COLS2[s]||{};
+    b.style.border = '1.5px solid '+(isAct?c2.border:'rgba(255,255,255,0.1)');
+    b.style.background = isAct?c2.bg:'transparent';
+    b.style.color = isAct?c2.text:'rgba(255,255,255,0.3)';
   });
+  // Update card background/border to reflect new status
+  const ATT_COLORS_MAP = {M:{bg:'rgba(48,209,88,0.05)',border:'rgba(48,209,88,0.3)'},UL:{bg:'rgba(255,69,58,0.05)',border:'rgba(255,69,58,0.3)'},WV:{bg:'rgba(10,132,255,0.05)',border:'rgba(10,132,255,0.3)'},H:{bg:'rgba(255,255,255,0.03)',border:'rgba(255,255,255,0.1)'}};
+  const cm = ATT_COLORS_MAP[newStatus]||ATT_COLORS_MAP.M;
+  card.style.background = cm.bg;
+  card.style.borderColor = cm.border;
 }
 
 function setStatus(code, dayKey, newStatus){
@@ -4775,8 +4794,11 @@ function nxAutoWrap(sel){
   wrap.appendChild(trigger);
   wrap.appendChild(dd);
   wrap.appendChild(sel);
+  sel.style.display='none'; // hide native, nx trigger takes over
 
-  var fn=sel.dataset.nxOnchange||'';
+  var fn=sel.dataset.nxOnchange||sel.getAttribute('onchange')||'';
+  // Strip onchange attr to prevent double-firing
+  sel.removeAttribute('onchange');
 
   trigger.addEventListener('click',function(e){
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
