@@ -129,7 +129,7 @@ code{font-family:'JetBrains Mono',monospace;font-size:12px}
 
 /* ── SCREENS WITH TRANSITIONS ── */
 .screen{display:none!important;min-height:100vh;opacity:0;transform:translateY(8px);transition:opacity .35s var(--ease),transform .35s var(--ease)}
-.screen.active{display:block!important;opacity:1;transform:translateY(0);position:relative;z-index:2}
+.screen.active{display:block!important;opacity:1;transform:translateY(0)}
 
 /* ── TOPBAR — True Apple glass ── */
 .topbar{
@@ -8310,7 +8310,7 @@ function btQuickAssignAll(){
 
 
 <!-- ROLE SWITCHER - Admin only -->
-<div id="roleSwitcher" style="display:none;position:fixed;bottom:20px;right:20px;z-index:999;background:var(--bg-surface);border:1px solid var(--color-primary);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:220px">
+<div id="roleSwitcher" style="display:none;position:fixed;bottom:20px;right:20px;z-index:99999;background:var(--bg-surface);border:1px solid var(--color-primary);border-radius:var(--radius-lg);padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);min-width:220px">
   <div style="font-size:11px;font-weight:700;color:var(--color-primary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">⚙️ Training Manager — All Roles</div>
   <div style="display:flex;flex-direction:column;gap:6px">
     <button class="btn btn-secondary btn-sm" onclick="switchRole('coordinator')" style="justify-content:flex-start">📊 Batch Coordinator</button>
