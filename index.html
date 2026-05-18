@@ -1820,6 +1820,7 @@ async function loadData(){
     const tabsLoaded = results.filter(r=>r.status==='fulfilled').length;
     loadedOk.textContent='✅ '+A.cands.length+' candidates loaded · '+tabsLoaded+' tab(s) · '+batches.length+' batch(es): '+batches.map(b=>typeof b==='number'?'Batch '+b:b).join(', ');
     addNotif('Live data loaded',A.cands.length+' candidates from '+tabsLoaded+' tabs','orange');
+    loadBMTicketAlerts();
     setTimeout(initNxSelects, 100);
   }catch(e){
     loadMsg.className='alert alert-err';
@@ -3772,7 +3773,7 @@ async function initBsupDashboard(){
   await loadSavedCodes();
   await loadSavedGroups();
   cleanupDuplicateGroupDocs();
-  bmLoadTaskNotificationsForRole('batchsup'); // async, runs in background
+  loadBMTicketAlerts(); // check for open tickets from Batch Manager
 }
 
 // Load accepted trainees from Firestore (saved by coordinator on End of Batch)
@@ -7972,11 +7973,11 @@ function btQuickAssignAll(){
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
-            <select id="bm_filter_batch" style="display:none"><option value="all">All Batches</option></select>
+            <select id="bm_filter_batch"><option value="all">All Batches</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
-            <select id="bm_filter_status" style="display:none">
+            <select id="bm_filter_status">
               <option value="all">All Statuses</option>
               <option value="In Training">In Training</option>
               <option value="Distributed">Distributed</option>
@@ -7986,7 +7987,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Tier</label>
-            <select id="bm_filter_tier" style="display:none">
+            <select id="bm_filter_tier">
               <option value="all">All Tiers</option>
               <option value="Top">Top</option>
               <option value="Mid">Mid</option>
@@ -7995,7 +7996,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Supervisor</label>
-            <select id="bm_filter_sup" style="display:none"><option value="all">All Supervisors</option></select>
+            <select id="bm_filter_sup"><option value="all">All Supervisors</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated From</label>
@@ -8052,7 +8053,7 @@ function btQuickAssignAll(){
               <div style="display:grid;gap:14px">
                 <div>
                   <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Select Batch</label>
-                  <select id="bm_assign_batch" style="display:none"><option value="">— Select batch —</option></select>
+                  <select id="bm_assign_batch"><option value="">— Select batch —</option></select>
                 </div>
                 <div>
                   <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Trainees per Supervisor</label>
@@ -8109,15 +8110,15 @@ function btQuickAssignAll(){
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Day</label>
-            <select id="bm_att_day" style="display:none"><option value="">— Select day —</option></select>
+            <select id="bm_att_day"><option value="">— Select day —</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
-            <select id="bm_att_batch" style="display:none"><option value="all">All Batches</option></select>
+            <select id="bm_att_batch"><option value="all">All Batches</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
-            <select id="bm_att_status" style="display:none">
+            <select id="bm_att_status">
               <option value="all">All</option>
               <option value="M">M — Mandatory</option>
               <option value="UL">UL — UnderLoaded</option>
@@ -8152,12 +8153,12 @@ function btQuickAssignAll(){
 
         <!-- Task filter -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-          <select id="bm_task_filter_status" style="display:none">
+          <select id="bm_task_filter_status">
             <option value="all">All Tasks</option>
             <option value="open">Open</option>
             <option value="closed">Closed</option>
           </select>
-          <select id="bm_task_filter_role" style="display:none">
+          <select id="bm_task_filter_role">
             <option value="all">All Assignees</option>
             <option value="coordinator">Batch Coordinator</option>
             <option value="batchsup">Batch Supervisor</option>
@@ -8179,7 +8180,11 @@ function btQuickAssignAll(){
     <div style="display:grid;gap:14px">
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Status</label>
-        <select id="bm_edit_status" style="display:none">
+        <input type="hidden" id="bm_edit_leaving_date" value=""/>
+        <div id="bm_edit_phase_row" style="display:none">
+          <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Leaving Phase</label>
+        </div>
+        <select id="bm_edit_status">
           <option value="In Training">In Training</option>
           <option value="Distributed">Distributed</option>
           <option value="On Hold">On Hold</option>
@@ -8188,7 +8193,7 @@ function btQuickAssignAll(){
       </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Phase</label>
-        <select id="bm_edit_phase" style="display:none">
+        <select id="bm_edit_phase">
           <option value="">— None —</option>
           <option value="Week 1">Week 1</option>
           <option value="Week 2">Week 2</option>
@@ -8227,7 +8232,11 @@ function btQuickAssignAll(){
       </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Batch</label>
-        <select id="bm_task_batch" style="display:none"><option value="all">All Batches</option></select>
+        <select id="bm_task_batch"><option value="all">All Batches</option></select>
+        <div style="margin-top:12px">
+          <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Due Date</label>
+          <input type="date" id="bm_task_due" style="width:100%;box-sizing:border-box"/>
+        </div>
       </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Due Date</label>
