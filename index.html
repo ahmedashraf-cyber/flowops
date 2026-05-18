@@ -637,6 +637,10 @@ tbody tr:hover{
 .nx-date-footer .nx-date-today{ color:var(--p2); }
 .nx-date-footer .nx-date-today:hover{ background:rgba(232,89,12,0.1); }
 
+.bm-tab{ display:none; }
+.bm-tab:first-of-type{ display:block; }
+#bmScreen .main-content{ padding:28px 32px; }
+
 /* FIX 5: Premium custom selects ──────────────────────── */
 select,
 .search-row select,
@@ -1012,6 +1016,7 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
             <option value="coordinator">Batch Coordinator</option>
             <option value="trainer">Batch Trainer</option>
             <option value="batchsup">Batch Supervisor</option>
+            <option value="batchmanager">Batch Manager</option>
             <option value="trainsup">Training Supervisor</option>
             <option value="manager">Training Manager</option>
             <option value="trainee">Trainee</option>
@@ -1605,9 +1610,14 @@ function initFirebaseAuth(){
         // Training Manager gets super access to ALL dashboards
         const isManager = role === 'manager';
         const isBsup = role === 'batchsup';
+        const isBatchManager = role === 'batchmanager';
         const isCoord = role === 'coordinator' || role === 'trainer' || role === 'trainsup' || role === 'trainee';
 
-        if(isBsup || (isManager && A.requestedRole === 'batchsup')){
+        if(isBatchManager || (isManager && A.requestedRole === 'batchmanager')){
+          document.getElementById('bmUserPill').textContent = name + ' · Batch Manager';
+          showScreen('bmScreen');
+          setTimeout(()=>{ initBMDashboard(); }, 300);
+        } else if(isBsup || (isManager && A.requestedRole === 'batchsup')){
           document.getElementById('bsupPill').textContent = name + ' · Batch Supervisor';
           // logo already hardcoded
           showScreen('bsupScreen');
@@ -1616,7 +1626,7 @@ function initFirebaseAuth(){
           // Training Manager default: show coordinator dashboard + role switcher
           document.getElementById('userPill').textContent = name + ' · Training Manager';
           showScreen('coordScreen');
-          setTimeout(()=>{ loadData(); }, 300);
+          setTimeout(()=>{ loadData(); bmLoadTaskNotificationsForRole('coordinator'); }, 300);
         } else {
           document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
           showScreen('coordScreen');
@@ -2479,6 +2489,1257 @@ document.addEventListener('click',function(e){
 // Initialize after DOM ready — called after page loads
 setTimeout(nxDateInit, 200);
 
+
+// ══════════════════════════════════════════════════════════════
+// BATCH MANAGER — State & Constants
+// ══════════════════════════════════════════════════════════════
+const BM = {
+  trainees: [],        // all accepted trainees from group_assignments
+  tsData:   {},        // training_status keyed by trainingCode
+  attData:  {},        // attendance records keyed by dayKey
+  tasks:    [],        // task tickets
+  assignPreview: null, // pending assignment
+  supAssignments: {}   // { supCode: [trainingCodes] } for current batch
+};
+
+const BM_SUPERVISORS = [
+  'A-1589','A-920','A-082','A-275','A-551','A-317',
+  'A-985','A-248','A-246','A-043','A-1024','A-933',
+  'A-774','A-070','A-047'
+];
+
+const BM_TS_COLORS = {
+  'In Training':  {bg:'rgba(232,89,12,0.12)', border:'rgba(232,89,12,0.35)', text:'var(--p2)'},
+  'Distributed':  {bg:'rgba(48,209,88,0.12)',  border:'rgba(48,209,88,0.35)',  text:'#30D158'},
+  'On Hold':      {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.35)', text:'#FFD60A'},
+  'Dropped':      {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.35)',  text:'#FF453A'}
+};
+
+// ══════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════
+async function initBMDashboard(){
+  injectLogos();
+  bmShowTab('batches');
+  bmRenderSupList();
+  await bmLoadAllData();
+  bmPopulateFilters();
+  bmRenderBatchTable();
+  bmLoadTasks();
+  setTimeout(nxDateInit, 100);
+  setTimeout(function(){
+    ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup',
+     'bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
+     'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
+     'bm_edit_status','bm_edit_phase'].forEach(function(id){
+      var sel = document.getElementById(id);
+      if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+  }, 150);
+}
+
+async function bmLoadAllData(){
+  if(!fbDb) return;
+  try {
+    // Load trainees from group_assignments
+    const gaSnap = await fbDb.collection('group_assignments').get();
+    const seen = new Set();
+    BM.trainees = [];
+    gaSnap.forEach(doc => {
+      if(doc.id === 'current') return;
+      const d = doc.data();
+      (d.groups||[]).forEach(g => {
+        (g.trainees||[]).forEach(t => {
+          if(t.trainingCode && !seen.has(String(t.trainingCode))){
+            seen.add(String(t.trainingCode));
+            BM.trainees.push({
+              trainingCode: t.trainingCode,
+              name: t.name || '',
+              pts: t.pts || 0,
+              tier: t.tier || '',
+              batchName: t.batchName || g.batchLabel || '',
+              supervisor: g.trainer || 'Unassigned',
+              groupIndex: g.groupIndex
+            });
+          }
+        });
+      });
+    });
+  } catch(e){ console.warn('BM trainees load:', e); }
+
+  try {
+    // Load training status
+    const tsSnap = await fbDb.collection('training_status').get();
+    BM.tsData = {};
+    tsSnap.forEach(doc => { BM.tsData[doc.id] = doc.data(); });
+  } catch(e){ console.warn('BM ts load:', e); }
+
+  // Load sup assignments from Firestore
+  try {
+    const saDoc = await fbDb.collection('bm_sup_assignments').doc('all').get();
+    if(saDoc.exists) BM.supAssignments = saDoc.data().assignments || {};
+  } catch(e){}
+}
+
+function bmShowTab(tab){
+  document.querySelectorAll('.bm-tab').forEach(t => t.style.display='none');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const el = document.getElementById('bm_tab_'+tab);
+  const nav = document.getElementById('bm_nav_'+tab);
+  if(el) el.style.display='block';
+  if(nav) nav.classList.add('active');
+  if(tab === 'attendance') bmInitAttTab();
+  if(tab === 'tasks') bmRenderTasks();
+  if(tab === 'assign') bmRenderSupList();
+  setTimeout(nxDateInit, 80);
+}
+
+// ══════════════════════════════════════════════════════════════
+// BATCHES PAGE
+// ══════════════════════════════════════════════════════════════
+function bmPopulateFilters(){
+  const batches = [...new Set(BM.trainees.map(t=>t.batchName).filter(Boolean))].sort();
+  const sups = [...new Set(BM.trainees.map(t=>t.supervisor).filter(s=>s&&s!=='Unassigned'))].sort();
+
+  ['bm_filter_batch','bm_att_batch','bm_assign_batch','bm_task_batch'].forEach(id => {
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const isAssign = id === 'bm_assign_batch';
+    sel.innerHTML = (isAssign ? '<option value="">— Select batch —</option>' : '<option value="all">All Batches</option>') +
+      batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+  });
+
+  const supSel = document.getElementById('bm_filter_sup');
+  if(supSel){
+    supSel.innerHTML = '<option value="all">All Supervisors</option>' +
+      sups.map(s => '<option value="'+s+'">'+s+'</option>').join('');
+  }
+
+  // Attendance day options
+  const daySel = document.getElementById('bm_att_day');
+  if(daySel){
+    let opts = '<option value="">— Select day —</option><option value="orientation">Orientation</option>';
+    for(let i=1;i<=30;i++) opts += '<option value="day_'+i+'">Day '+i+'</option>';
+    daySel.innerHTML = opts;
+  }
+}
+
+function bmGetFilteredTrainees(){
+  const batch  = (document.getElementById('bm_filter_batch')||{}).value || 'all';
+  const status = (document.getElementById('bm_filter_status')||{}).value || 'all';
+  const tier   = (document.getElementById('bm_filter_tier')||{}).value || 'all';
+  const sup    = (document.getElementById('bm_filter_sup')||{}).value || 'all';
+  const from   = (document.getElementById('bm_filter_from')||{}).value || '';
+  const to     = (document.getElementById('bm_filter_to')||{}).value || '';
+
+  return BM.trainees.filter(t => {
+    if(batch !== 'all' && t.batchName !== batch) return false;
+    if(tier  !== 'all' && t.tier !== tier) return false;
+    if(sup   !== 'all' && t.supervisor !== sup) return false;
+    const ts = BM.tsData[String(t.trainingCode)] || {};
+    if(status !== 'all' && (ts.status||'In Training') !== status) return false;
+    if(from || to){
+      const upd = ts.updatedAt ? ts.updatedAt.slice(0,10) : '';
+      if(from && upd && upd < from) return false;
+      if(to   && upd && upd > to)   return false;
+    }
+    return true;
+  });
+}
+
+function bmApplyBatchFilters(){ bmRenderBatchTable(); }
+function bmClearBatchFilters(){
+  ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el){ el.value = el.options[0]&&el.options[0].value==='all'?'all':''; }
+    const wrap = el && el.closest('.nx-select-wrap');
+    if(wrap){ const lbl=wrap.querySelector('.nx-label'); if(lbl&&el) lbl.textContent=el.options[0].text; }
+  });
+  ['bm_filter_from','bm_filter_to'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value='';
+    const wrap2 = el && el.closest('.nx-date-wrap');
+    if(wrap2){ const lbl=wrap2.querySelector('.nx-date-label'); if(lbl) lbl.textContent='Select date'; }
+  });
+  bmRenderBatchTable();
+}
+
+function bmRenderBatchTable(){
+  const filtered = bmGetFilteredTrainees();
+  const tbody = document.getElementById('bm_batch_tbody');
+  const empty = document.getElementById('bm_batch_empty');
+  if(!tbody) return;
+
+  // Stats
+  const stats = document.getElementById('bm_batch_stats');
+  if(stats){
+    const statuses = ['In Training','Distributed','On Hold','Dropped'];
+    stats.innerHTML = [
+      {label:'Total',value:filtered.length,col:'var(--p2)'},
+      ...statuses.map(s => ({
+        label:s,
+        value:filtered.filter(t=>(BM.tsData[String(t.trainingCode)]||{}).status===s||(s==='In Training'&&!(BM.tsData[String(t.trainingCode)]||{}).status)).length,
+        col:BM_TS_COLORS[s]?BM_TS_COLORS[s].text:'var(--t-2)'
+      }))
+    ].map(st => '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px"><div style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">'+st.label+'</div><div style="font-size:24px;font-weight:800;color:'+st.col+'">'+st.value+'</div></div>').join('');
+  }
+
+  if(!filtered.length){
+    if(tbody) tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--t-3)">No trainees found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(t => {
+    const ts = BM.tsData[String(t.trainingCode)] || {};
+    const status = ts.status || 'In Training';
+    const col = BM_TS_COLORS[status] || BM_TS_COLORS['In Training'];
+    const pts = t.pts ? parseFloat(t.pts).toFixed(1)+'%' : '—';
+    const ptsColor = !t.pts ? 'var(--t-3)' : t.pts>=85?'#30D158':t.pts>=70?'var(--p2)':'#FF453A';
+    const updated = ts.updatedAt ? ts.updatedAt.slice(0,10) : '—';
+    const tierBg = {Top:'rgba(48,209,88,0.12)',Mid:'rgba(232,89,12,0.12)',Low:'rgba(255,69,58,0.12)'}[t.tier]||'var(--bg-3)';
+    const tierColor = {Top:'#30D158',Mid:'var(--p2)',Low:'#FF453A'}[t.tier]||'var(--t-3)';
+    return '<tr style="border-bottom:1px solid var(--b-1);transition:background .1s" onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">'+
+      '<td style="padding:10px 16px;font-family:JetBrains Mono,monospace;font-size:12px;color:var(--p2);font-weight:700">#'+t.trainingCode+'</td>'+
+      '<td style="padding:10px 16px;font-size:13px;font-weight:600;color:var(--t-1)">'+t.name+'</td>'+
+      '<td style="padding:10px 16px;font-size:12px;color:var(--t-2)">'+t.batchName+'</td>'+
+      '<td style="padding:10px 16px;font-size:12px;font-family:JetBrains Mono,monospace;color:var(--t-2)">'+t.supervisor+'</td>'+
+      '<td style="padding:10px 16px"><span style="background:'+tierBg+';color:'+tierColor+';padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">'+t.tier+'</span></td>'+
+      '<td style="padding:10px 16px;font-size:13px;font-weight:700;color:'+ptsColor+'">'+pts+'</td>'+
+      '<td style="padding:10px 16px"><span style="background:'+col.bg+';color:'+col.text+';border:1px solid '+col.border+';padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700">'+status+'</span></td>'+
+      '<td style="padding:10px 16px;font-size:12px;color:var(--t-2)">'+(ts.phase||'—')+'</td>'+
+      '<td style="padding:10px 16px;font-size:11px;color:var(--t-3)">'+updated+'</td>'+
+      '<td style="padding:10px 16px"><button onclick="bmOpenEditStatus('+t.trainingCode+')" style="padding:4px 12px;border-radius:8px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:11px;cursor:pointer;font-weight:600">✏️ Edit</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+function bmOpenEditStatus(code){
+  document.getElementById('bm_edit_code').value = code;
+  const ts = BM.tsData[String(code)] || {};
+  const statusSel = document.getElementById('bm_edit_status');
+  const phaseSel  = document.getElementById('bm_edit_phase');
+  if(statusSel){ statusSel.value = ts.status||'In Training'; const lbl=statusSel.closest('.nx-select-wrap')&&statusSel.closest('.nx-select-wrap').querySelector('.nx-label'); if(lbl) lbl.textContent=statusSel.options[statusSel.selectedIndex].text; }
+  if(phaseSel){ phaseSel.value = ts.phase||''; const lbl=phaseSel.closest('.nx-select-wrap')&&phaseSel.closest('.nx-select-wrap').querySelector('.nx-label'); if(lbl) lbl.textContent=phaseSel.options[phaseSel.selectedIndex].text; }
+  const noteEl = document.getElementById('bm_edit_note');
+  if(noteEl) noteEl.value = ts.note||'';
+  const modal = document.getElementById('bm_edit_modal');
+  if(modal){ modal.style.display='flex'; setTimeout(function(){ ['bm_edit_status','bm_edit_phase'].forEach(function(id){ var s=document.getElementById(id); if(s&&!s.dataset.nxWrapped) nxWrapSelect(s); }); },50); }
+}
+
+async function bmSaveEditStatus(){
+  const code   = document.getElementById('bm_edit_code').value;
+  const status = document.getElementById('bm_edit_status').value;
+  const phase  = document.getElementById('bm_edit_phase').value;
+  const note   = document.getElementById('bm_edit_note').value;
+  const now    = new Date().toISOString();
+  const record = { status, phase, note, updatedAt:now, trainingCode:parseInt(code), updatedBy: A.user?A.user.email:'' };
+  BM.tsData[code] = record;
+  if(fbDb && A.user){
+    try { await fbDb.collection('training_status').doc(String(code)).set(record); } catch(e){}
+  }
+  document.getElementById('bm_edit_modal').style.display='none';
+  bmRenderBatchTable();
+}
+
+// ══════════════════════════════════════════════════════════════
+// ASSIGN SUPERVISORS
+// ══════════════════════════════════════════════════════════════
+function bmRenderSupList(){
+  const container = document.getElementById('bm_sup_list');
+  if(!container) return;
+  const counts = {};
+  Object.values(BM.supAssignments).forEach(arr => {
+    if(Array.isArray(arr)) arr.forEach(a => { counts[a.supCode] = (counts[a.supCode]||0)+1; });
+  });
+  container.innerHTML = BM_SUPERVISORS.map(code => {
+    const n = counts[code]||0;
+    const color = n===0?'var(--t-3)':n>=30&&n<=40?'#30D158':'#FFD60A';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;background:var(--bg-3)">'+
+      '<span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--t-1)">'+code+'</span>'+
+      '<span style="font-size:12px;font-weight:700;color:'+color+'">'+n+' trainees</span>'+
+    '</div>';
+  }).join('');
+  document.getElementById('bm_sup_summary').textContent = BM_SUPERVISORS.length+' supervisors · Target 30–40 each';
+}
+
+function bmPreviewAssignment(){
+  const batchSel = document.getElementById('bm_assign_batch');
+  const batch = batchSel ? batchSel.value : '';
+  if(!batch){ alert('Please select a batch first.'); return; }
+  const targetCount = parseInt(document.getElementById('bm_assign_count').value)||35;
+
+  const pool = BM.trainees.filter(t => t.batchName === batch);
+  if(!pool.length){ alert('No trainees found for '+batch); return; }
+
+  // Fairness algorithm:
+  // 1. Sort trainees into tier buckets (Top/Mid/Low) 
+  // 2. Within each bucket sort by pts descending (score balance)
+  // 3. Round-robin distribute across supervisors interleaving tiers
+  const tierOrder = ['Top','Mid','Low',''];
+  const buckets = {};
+  tierOrder.forEach(t => { buckets[t]=[]; });
+  pool.forEach(t => {
+    const tier = tierOrder.includes(t.tier)?t.tier:'';
+    buckets[tier].push(t);
+  });
+  // Sort each bucket by pts desc
+  tierOrder.forEach(t => buckets[t].sort((a,b)=>(parseFloat(b.pts)||0)-(parseFloat(a.pts)||0)));
+
+  // Interleave tiers: pick one from each tier in round-robin
+  const interleaved = [];
+  let maxLen = Math.max(...tierOrder.map(t=>buckets[t].length));
+  for(let i=0;i<maxLen;i++) tierOrder.forEach(t=>{ if(buckets[t][i]) interleaved.push(buckets[t][i]); });
+
+  // Distribute round-robin across supervisors
+  const supGroups = BM_SUPERVISORS.map(code=>({code, trainees:[]}));
+  interleaved.forEach((t,i) => supGroups[i%supGroups.length].trainees.push(t));
+
+  // Trim to targetCount per supervisor
+  supGroups.forEach(sg => { if(sg.trainees.length>targetCount) sg.trainees = sg.trainees.slice(0,targetCount); });
+
+  BM.assignPreview = { batch, supGroups };
+
+  // Render preview
+  const previewEl = document.getElementById('bm_assign_preview');
+  const bodyEl = document.getElementById('bm_assign_preview_body');
+  if(!previewEl||!bodyEl) return;
+
+  const totalAssigned = supGroups.reduce((s,g)=>s+g.trainees.length,0);
+  bodyEl.innerHTML = '<div style="font-size:12px;color:var(--t-3);margin-bottom:12px">'+pool.length+' trainees · '+totalAssigned+' assigned across '+BM_SUPERVISORS.length+' supervisors</div>'+
+    supGroups.map(sg => {
+      const topN = sg.trainees.filter(t=>t.tier==='Top').length;
+      const midN = sg.trainees.filter(t=>t.tier==='Mid').length;
+      const lowN = sg.trainees.filter(t=>t.tier==='Low').length;
+      const avgPts = sg.trainees.length ? (sg.trainees.reduce((s,t)=>s+(parseFloat(t.pts)||0),0)/sg.trainees.length).toFixed(1) : '0';
+      const countColor = sg.trainees.length>=30&&sg.trainees.length<=40?'#30D158':'#FFD60A';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;background:var(--bg-3);margin-bottom:6px">'+
+        '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:var(--t-1)">'+sg.code+'</span>'+
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<span style="font-size:11px;color:#30D158">T:'+topN+'</span>'+
+          '<span style="font-size:11px;color:var(--p2)">M:'+midN+'</span>'+
+          '<span style="font-size:11px;color:#FF453A">L:'+lowN+'</span>'+
+          '<span style="font-size:11px;color:var(--t-3)">avg '+avgPts+'%</span>'+
+          '<span style="font-size:12px;font-weight:800;color:'+countColor+'">'+sg.trainees.length+'</span>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+
+  previewEl.style.display = 'block';
+  document.getElementById('bm_assign_confirm_btn').style.display = 'block';
+  document.getElementById('bm_assign_msg').textContent = 'Review the distribution above, then confirm to save.';
+}
+
+async function bmConfirmAssignment(){
+  if(!BM.assignPreview){ alert('Run Preview first.'); return; }
+  const btn = document.getElementById('bm_assign_confirm_btn');
+  btn.textContent='Saving...'; btn.disabled=true;
+
+  const { batch, supGroups } = BM.assignPreview;
+  const now = new Date().toISOString();
+
+  // Save to Firestore bm_sup_assignments
+  // Also update group_assignments: for each sup's trainees, create a group_assignment doc
+  try {
+    const assignPayload = {};
+    for(const sg of supGroups){
+      assignPayload[sg.code] = sg.trainees.map(t=>({
+        trainingCode: t.trainingCode, name: t.name, pts: t.pts, tier: t.tier, batchName: t.batchName
+      }));
+    }
+    await fbDb.collection('bm_sup_assignments').doc('all').set({ assignments:assignPayload, batch, updatedAt:now, updatedBy:A.user?A.user.email:'' }, {merge:true});
+
+    // Write each supervisor's group to group_assignments collection
+    // so it shows in the BSup accepted trainees page automatically
+    for(const sg of supGroups){
+      if(!sg.trainees.length) continue;
+      const batchKey = 'batch_'+batch.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();
+      const existingDoc = await fbDb.collection('group_assignments').doc(batchKey).get();
+      const existing = existingDoc.exists ? (existingDoc.data().groups||[]) : [];
+      // Find or create group for this supervisor
+      const supIdx = BM_SUPERVISORS.indexOf(sg.code);
+      const groupPayload = {
+        groupIndex: supIdx+1,
+        trainer: sg.code,
+        batchLabel: batch,
+        trainees: sg.trainees.map(t=>({trainingCode:t.trainingCode,name:t.name,pts:t.pts,tier:t.tier,batchName:t.batchName}))
+      };
+      // Merge with existing groups
+      const otherGroups = existing.filter(g=>g.trainer!==sg.code);
+      const mergedGroups = [...otherGroups, groupPayload];
+      await fbDb.collection('group_assignments').doc(batchKey).set({
+        groups: mergedGroups, batchLabel:batch, savedBy:A.user?A.user.email:'batchmanager', savedAt:now
+      });
+      await fbDb.collection('group_assignments').doc('current').set({
+        groups: mergedGroups, batchLabel:batch, savedBy:A.user?A.user.email:'batchmanager', savedAt:now, activeBatchKey:batchKey
+      });
+    }
+
+    BM.supAssignments = assignPayload;
+    bmRenderSupList();
+    document.getElementById('bm_assign_msg').textContent = '✅ Assignment saved! Batch supervisors can now see their trainees.';
+    btn.textContent='✅ Saved!'; btn.disabled=false;
+    BM.assignPreview = null;
+    setTimeout(()=>{ document.getElementById('bm_assign_confirm_btn').style.display='none'; btn.textContent='✅ Confirm & Save'; },3000);
+  } catch(e){
+    document.getElementById('bm_assign_msg').textContent = '❌ Error: '+e.message;
+    btn.textContent='✅ Confirm & Save'; btn.disabled=false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// ATTENDANCE VIEW (read-only)
+// ══════════════════════════════════════════════════════════════
+function bmInitAttTab(){
+  bmPopulateFilters();
+  setTimeout(function(){
+    ['bm_att_day','bm_att_batch','bm_att_status'].forEach(function(id){
+      var s=document.getElementById(id); if(s&&!s.dataset.nxWrapped) nxWrapSelect(s);
+    });
+    nxDateInit();
+  },100);
+}
+
+async function bmLoadAttendance(){
+  const daySel   = document.getElementById('bm_att_day');
+  const dayKey   = daySel ? daySel.value : '';
+  if(!dayKey){ alert('Please select a day.'); return; }
+  const batchF   = (document.getElementById('bm_att_batch')||{}).value || 'all';
+  const statusF  = (document.getElementById('bm_att_status')||{}).value || 'all';
+  const fromF    = (document.getElementById('bm_att_from')||{}).value || '';
+  const toF      = (document.getElementById('bm_att_to')||{}).value || '';
+  const content  = document.getElementById('bm_att_content');
+  if(content) content.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3)">Loading...</div>';
+
+  try {
+    const doc = await fbDb.collection('attendance').doc(dayKey).get();
+    const records = doc.exists ? (doc.data()||{}) : {};
+    const dateStr = doc.exists && doc.data().date ? doc.data().date : '';
+
+    // Filter trainees
+    let filtered = BM.trainees;
+    if(batchF!=='all') filtered = filtered.filter(t=>t.batchName===batchF);
+
+    // Apply date range to the doc's date field if available
+    if(dateStr && (fromF||toF)){
+      const d = dateStr.slice(0,10);
+      if(fromF && d < fromF){ if(content) content.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3)">No data for selected date range.</div>'; return; }
+      if(toF   && d > toF)  { if(content) content.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3)">No data for selected date range.</div>'; return; }
+    }
+
+    const ATT_C = {M:{bg:'rgba(48,209,88,0.12)',border:'rgba(48,209,88,0.4)',text:'#30D158'},UL:{bg:'rgba(255,69,58,0.12)',border:'rgba(255,69,58,0.4)',text:'#FF453A'},WV:{bg:'rgba(10,132,255,0.12)',border:'rgba(10,132,255,0.4)',text:'#0A84FF'},H:{bg:'rgba(255,255,255,0.06)',border:'rgba(255,255,255,0.15)',text:'rgba(255,255,255,0.4)'}};
+
+    const rows = filtered.map(t => {
+      const status = records[String(t.trainingCode)] || 'M';
+      if(statusF!=='all' && status!==statusF) return '';
+      const c = ATT_C[status]||ATT_C.M;
+      return '<tr style="border-bottom:1px solid var(--b-1)">'+
+        '<td style="padding:9px 14px;font-family:JetBrains Mono,monospace;font-size:12px;color:var(--p2);font-weight:700">#'+t.trainingCode+'</td>'+
+        '<td style="padding:9px 14px;font-size:13px;font-weight:600;color:var(--t-1)">'+t.name+'</td>'+
+        '<td style="padding:9px 14px;font-size:12px;color:var(--t-2)">'+t.batchName+'</td>'+
+        '<td style="padding:9px 14px;font-size:12px;color:var(--t-2)">'+t.supervisor+'</td>'+
+        '<td style="padding:9px 14px"><span style="background:'+c.bg+';color:'+c.text+';border:1px solid '+c.border+';padding:3px 12px;border-radius:8px;font-size:12px;font-weight:800">'+status+'</span></td>'+
+      '</tr>';
+    }).filter(Boolean).join('');
+
+    const all = filtered.filter(t=>{const s=records[String(t.trainingCode)]||'M'; return statusF==='all'||s===statusF;});
+    const counts = {M:0,UL:0,WV:0,H:0};
+    all.forEach(t=>{ const s=records[String(t.trainingCode)]||'M'; counts[s]=(counts[s]||0)+1; });
+
+    const statsEl = document.getElementById('bm_att_stats');
+    if(statsEl) statsEl.innerHTML = [
+      {label:'Total',value:all.length,col:'var(--p2)'},
+      {label:'Mandatory',value:counts.M,col:'#30D158'},
+      {label:'UnderLoaded',value:counts.UL,col:'#FF453A'},
+      {label:'Waiver',value:counts.WV,col:'#0A84FF'},
+      {label:'Hold',value:counts.H,col:'rgba(255,255,255,0.4)'}
+    ].map(s=>'<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:12px 14px"><div style="font-size:10px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px">'+s.label+'</div><div style="font-size:22px;font-weight:800;color:'+s.col+'">'+s.value+'</div></div>').join('');
+
+    if(content) content.innerHTML = rows ? '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:14px;overflow:hidden"><table style="width:100%;border-collapse:collapse"><thead><tr style="border-bottom:1px solid var(--b-1)"><th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase">Code</th><th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase">Name</th><th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase">Batch</th><th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase">Supervisor</th><th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase">Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      : '<div style="text-align:center;padding:40px;color:var(--t-3)">No records match filters</div>';
+  } catch(e){
+    if(content) content.innerHTML='<div style="text-align:center;padding:40px;color:#FF453A">Error loading attendance: '+e.message+'</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// TASKS
+// ══════════════════════════════════════════════════════════════
+async function bmLoadTasks(){
+  if(!fbDb) return;
+  try {
+    const snap = await fbDb.collection('bm_tasks').orderBy('createdAt','desc').get();
+    BM.tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e){ BM.tasks=[]; }
+  bmUpdateTaskAlarm();
+}
+
+function bmUpdateTaskAlarm(){
+  const open = BM.tasks.filter(t=>t.status!=='closed');
+  const badge = document.getElementById('bm_tasks_badge');
+  const alarm = document.getElementById('bm_task_alarm');
+  const alarmText = document.getElementById('bm_alarm_text');
+  const alarmSub = document.getElementById('bm_alarm_sub');
+  if(badge){ if(open.length){ badge.style.display='inline'; badge.textContent=open.length; } else badge.style.display='none'; }
+  if(alarm && open.length>0){
+    alarm.style.display='flex';
+    if(alarmText) alarmText.textContent = open.length+' open task'+(open.length>1?'s':'');
+    const overdue = open.filter(t=>t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10));
+    if(alarmSub) alarmSub.textContent = overdue.length ? overdue.length+' overdue' : 'Pending delivery';
+  } else if(alarm) alarm.style.display='none';
+
+  // Also push task alarms to other roles via Firestore notifications
+  // (coordinator and bsup read from batch_notifications with type='task')
+}
+
+function bmRenderTasks(){
+  const statusF = (document.getElementById('bm_task_filter_status')||{}).value||'all';
+  const roleF   = (document.getElementById('bm_task_filter_role')||{}).value||'all';
+  const filtered = BM.tasks.filter(t=>{
+    if(statusF!=='all' && t.status!==statusF) return false;
+    if(roleF!=='all' && !(t.assignees||[]).includes(roleF)) return false;
+    return true;
+  });
+  const container = document.getElementById('bm_tasks_list');
+  if(!container) return;
+  if(!filtered.length){ container.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No tasks yet. Create one above.</div>'; return; }
+
+  const today = new Date().toISOString().slice(0,10);
+  container.innerHTML = filtered.map(task => {
+    const isClosed = task.status==='closed';
+    const isOverdue = !isClosed && task.dueDate && task.dueDate < today;
+    const roleLabels = (task.assignees||[]).map(r=>r==='coordinator'?'📊 Coord':r==='batchsup'?'👔 BSup':r).join(' · ');
+    const borderCol = isClosed?'var(--b-1)':isOverdue?'rgba(255,69,58,0.4)':'rgba(232,89,12,0.3)';
+    return '<div style="background:var(--bg-2);border:1.5px solid '+borderCol+';border-radius:16px;padding:18px 20px">'+
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
+        '<div style="flex:1">'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+            '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--t-3)">#'+task.id.slice(-6).toUpperCase()+'</span>'+
+            (isClosed?'<span style="background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Closed</span>':
+             isOverdue?'<span style="background:rgba(255,69,58,0.12);color:#FF453A;border:1px solid rgba(255,69,58,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Overdue</span>':
+             '<span style="background:rgba(232,89,12,0.12);color:var(--p2);border:1px solid rgba(232,89,12,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Open</span>')+
+          '</div>'+
+          '<div style="font-size:15px;font-weight:700;color:var(--t-1);margin-bottom:4px">'+task.name+'</div>'+
+          (task.description?'<div style="font-size:12px;color:var(--t-3);margin-bottom:8px">'+task.description+'</div>':'')+
+          '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--t-3)">'+
+            '<span>👤 '+roleLabels+'</span>'+
+            (task.batch&&task.batch!=='all'?'<span>📦 '+task.batch+'</span>':'')+
+            (task.dueDate?'<span style="color:'+(isOverdue?'#FF453A':'var(--t-3)')+'">📅 Due '+task.dueDate+'</span>':'')+
+            '<span>🕒 '+task.createdAt.slice(0,10)+'</span>'+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px">'+
+          (!isClosed?'<button onclick="bmCloseTask(''+task.id+'')" style="padding:6px 14px;border-radius:10px;background:rgba(48,209,88,0.1);color:#30D158;border:1px solid rgba(48,209,88,0.3);font-size:12px;font-weight:700;cursor:pointer">✓ Close</button>':'')+
+          '<button onclick="bmDeleteTask(''+task.id+'')" style="padding:6px 12px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1px solid rgba(255,69,58,0.3);font-size:12px;cursor:pointer">🗑</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function bmOpenNewTask(){
+  document.getElementById('bm_task_name').value='';
+  document.getElementById('bm_task_desc').value='';
+  document.getElementById('bm_task_due').value='';
+  document.querySelectorAll('#bm_task_assignees button').forEach(b=>{
+    b.style.background='transparent'; b.style.borderColor='var(--b-1)'; b.style.color='var(--t-2)';
+  });
+  const modal = document.getElementById('bm_task_modal');
+  if(modal){ modal.style.display='flex'; setTimeout(function(){ nxWrapSelect(document.getElementById('bm_task_batch')); nxDateInit(); },50); }
+}
+
+function bmToggleAssignee(btn, role){
+  const isOn = btn.dataset.on==='1';
+  btn.dataset.on = isOn?'0':'1';
+  btn.style.background = isOn?'transparent':'rgba(232,89,12,0.12)';
+  btn.style.borderColor = isOn?'var(--b-1)':'rgba(232,89,12,0.4)';
+  btn.style.color = isOn?'var(--t-2)':'var(--p2)';
+}
+
+async function bmCreateTask(){
+  const name = document.getElementById('bm_task_name').value.trim();
+  if(!name){ alert('Task name is required.'); return; }
+  const assignees = Array.from(document.querySelectorAll('#bm_task_assignees button[data-on="1"]')).map(b=>b.dataset.role);
+  if(!assignees.length){ alert('Select at least one assignee.'); return; }
+  const batch = document.getElementById('bm_task_batch').value||'all';
+  const dueDate = document.getElementById('bm_task_due').value||'';
+  const description = document.getElementById('bm_task_desc').value.trim();
+  const now = new Date().toISOString();
+  const task = { name, assignees, batch, dueDate, description, status:'open', createdAt:now, createdBy:A.user?A.user.email:'', closedAt:'' };
+
+  try {
+    const ref = await fbDb.collection('bm_tasks').add(task);
+    task.id = ref.id;
+    BM.tasks.unshift(task);
+
+    // Push notification to each assignee role
+    for(const role of assignees){
+      await fbDb.collection('batch_notifications').add({
+        type: 'task',
+        taskId: ref.id,
+        taskName: name,
+        dueDate,
+        batch,
+        forRole: role,
+        status: 'open',
+        createdAt: now,
+        createdBy: A.user?A.user.email:'',
+        seen: false
+      });
+    }
+
+    document.getElementById('bm_task_modal').style.display='none';
+    bmRenderTasks();
+    bmUpdateTaskAlarm();
+  } catch(e){ alert('Error creating task: '+e.message); }
+}
+
+async function bmCloseTask(id){
+  if(!confirm('Close this task? Assignees will stop seeing the alarm.')) return;
+  try {
+    await fbDb.collection('bm_tasks').doc(id).update({ status:'closed', closedAt:new Date().toISOString() });
+    // Update notification
+    const notifSnap = await fbDb.collection('batch_notifications').where('taskId','==',id).get();
+    for(const d of notifSnap.docs){ await d.ref.update({status:'closed'}); }
+    const t = BM.tasks.find(t=>t.id===id);
+    if(t) t.status='closed';
+    bmRenderTasks();
+    bmUpdateTaskAlarm();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+async function bmDeleteTask(id){
+  if(!confirm('Delete this task permanently?')) return;
+  try {
+    await fbDb.collection('bm_tasks').doc(id).delete();
+    BM.tasks = BM.tasks.filter(t=>t.id!==id);
+    bmRenderTasks();
+    bmUpdateTaskAlarm();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+// ── Task Notification Reader (for Coord + BSup roles) ──
+async function bmLoadTaskNotificationsForRole(role){
+  if(!fbDb) return;
+  try{
+    const snap = await fbDb.collection('batch_notifications')
+      .where('type','==','task')
+      .where('forRole','==',role)
+      .where('status','==','open')
+      .get();
+    if(snap.empty) return;
+    const tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+    const today = new Date().toISOString().slice(0,10);
+    tasks.forEach(t=>{
+      const isOverdue = t.dueDate && t.dueDate < today;
+      // Add to role notification panel
+      if(role==='batchsup' && typeof addBsupNotif==='function'){
+        addBsupNotif(
+          '📋 Task: '+t.taskName,
+          (t.batch&&t.batch!=='all'?t.batch+' · ':'')+
+          (t.dueDate?'Due '+t.dueDate:'')+
+          (isOverdue?' · OVERDUE':''),
+          isOverdue?'red':'orange'
+        );
+      }
+      if(role==='coordinator'){
+        if(typeof addNotif==='function'){
+          addNotif('📋 Task: '+t.taskName,(t.dueDate?'Due '+t.dueDate:'')+(isOverdue?' · OVERDUE':''),'orange');
+        }
+      }
+    });
+    // Show sticky alarm banner on their screen
+    const alarmId = role==='batchsup'?'bsupTaskAlarm':'coordTaskAlarm';
+    const alarmEl = document.getElementById(alarmId);
+    if(alarmEl && tasks.length>0){
+      alarmEl.style.display='flex';
+      const txt = alarmEl.querySelector('.task-alarm-text');
+      if(txt) txt.textContent = tasks.length+' open task'+(tasks.length>1?'s':'')+' from Batch Manager';
+    }
+  }catch(e){ console.warn('bmLoadTaskNotificationsForRole:', e); }
+}
+
+// ============================================================
+// BATCH MANAGER — Full Implementation
+// ============================================================
+const BM = {
+  trainees: [],        // all accepted trainees from Firestore
+  tsStatuses: {},      // training_status records
+  attendance: {},      // attendance records
+  assignments: {},     // { batchName: { supCode: [trainees] } }
+  tickets: [],         // task tickets
+  filtered: [],        // currently filtered trainees
+  activeTab: 'batches'
+};
+
+const BM_SUPS = [
+  'A-1589','A-920','A-082','A-275','A-551','A-317',
+  'A-985','A-248','A-246','A-043','A-1024','A-933',
+  'A-774','A-070','A-047'
+];
+
+const BM_TS_STATUSES = ['In Training','Distributed','Leaving - Fired','Leaving - Resigned',
+  'Leaving - Stopped','Leaving - Suspended','Completed','On Hold'];
+
+// ── Init ─────────────────────────────────────────────────────
+async function initBMDashboard(){
+  await bmLoadData();
+  bmShowTab('batches');
+  bmInitFilters();
+  bmRenderAlarm();
+  // Init nx selects for BM
+  setTimeout(()=>{
+    document.querySelectorAll('#bmScreen select[style*="display:none"]').forEach(sel=>{
+      if(!sel.closest('.nx-select-wrap') && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+    document.querySelectorAll('#bmScreen select:not([style*="display:none"])').forEach(sel=>{
+      if(!sel.closest('.nx-select-wrap') && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+    setTimeout(nxDateInit, 50);
+  }, 200);
+}
+
+async function bmLoadData(){
+  if(!fbDb) return;
+  try {
+    // Load accepted trainees from Firestore (saved by coordinator)
+    const atSnap = await fbDb.collection('accepted_trainees').get();
+    BM.trainees = [];
+    atSnap.forEach(doc => {
+      const d = doc.data();
+      if(d.trainees) BM.trainees.push(...d.trainees);
+    });
+    // Deduplicate by trainingCode
+    const seen = new Set();
+    BM.trainees = BM.trainees.filter(t => {
+      const k = t.trainingCode || t.name;
+      if(seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+  } catch(e){ console.warn('BM trainees load:', e); }
+
+  try {
+    // Load training status
+    const tsSnap = await fbDb.collection('training_status').get();
+    BM.tsStatuses = {};
+    tsSnap.forEach(doc => { BM.tsStatuses[doc.id] = doc.data(); });
+  } catch(e){ console.warn('BM ts load:', e); }
+
+  try {
+    // Load BM assignments (which sup got which trainees)
+    const aSnap = await fbDb.collection('bm_assignments').get();
+    BM.assignments = {};
+    aSnap.forEach(doc => { BM.assignments[doc.id] = doc.data(); });
+  } catch(e){ console.warn('BM assign load:', e); }
+
+  try {
+    // Load tickets
+    const tSnap = await fbDb.collection('bm_tickets').get();
+    BM.tickets = [];
+    tSnap.forEach(doc => BM.tickets.push({id: doc.id, ...doc.data()}));
+    BM.tickets.sort((a,b) => (b.createdAt||'').localeCompare(a.createdAt||''));
+  } catch(e){ console.warn('BM tickets load:', e); }
+}
+
+// ── Tab routing ───────────────────────────────────────────────
+function bmShowTab(tab){
+  BM.activeTab = tab;
+  document.querySelectorAll('.bm-tab').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('[id^="bm_nav_"]').forEach(n => n.classList.remove('active'));
+  const tabEl = document.getElementById('bm_tab_'+tab);
+  if(tabEl) tabEl.style.display = 'block';
+  const navEl = document.getElementById('bm_nav_'+tab);
+  if(navEl) navEl.classList.add('active');
+
+  if(tab === 'batches') bmRenderBatches();
+  if(tab === 'assign')  bmRenderAssign();
+  if(tab === 'attendance') bmRenderAttendanceFilters();
+  if(tab === 'tasks')   bmRenderTasks();
+
+  setTimeout(()=>{
+    document.querySelectorAll('#bm_tab_'+tab+' select').forEach(sel=>{
+      if(!sel.closest('.nx-select-wrap') && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+    nxDateInit();
+  }, 80);
+}
+
+// ── Filters init ──────────────────────────────────────────────
+function bmInitFilters(){
+  // Batch filter options
+  const batches = [...new Set(BM.trainees.map(t => t.batchName).filter(Boolean))].sort();
+  ['bm_filter_batch','bm_assign_batch','bm_att_batch','bm_task_batch'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const isTask = id === 'bm_task_batch';
+    el.innerHTML = (isTask ? '<option value="all">All Batches</option>' : '<option value="all">All Batches</option>') +
+      batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+  });
+  // Sup filter
+  const supEl = document.getElementById('bm_filter_sup');
+  if(supEl) supEl.innerHTML = '<option value="all">All Supervisors</option>' +
+    BM_SUPS.map(s => '<option value="'+s+'">'+s+'</option>').join('');
+}
+
+// ── Page 1: Batches ───────────────────────────────────────────
+function bmApplyFilters(){
+  const search = (document.getElementById('bm_search')||{}).value||'';
+  const batch  = (document.getElementById('bm_filter_batch')&&document.getElementById('bm_filter_batch').value)||'all';
+  const status = (document.getElementById('bm_filter_status')&&document.getElementById('bm_filter_status').value)||'all';
+  const tier   = (document.getElementById('bm_filter_tier')&&document.getElementById('bm_filter_tier').value)||'all';
+  const sup    = (document.getElementById('bm_filter_sup')&&document.getElementById('bm_filter_sup').value)||'all';
+  const from   = (document.getElementById('bm_filter_from')||{}).value||'';
+  const to     = (document.getElementById('bm_filter_to')||{}).value||'';
+
+  BM.filtered = BM.trainees.filter(t => {
+    if(search && !(t.name||'').toLowerCase().includes(search.toLowerCase()) &&
+       String(t.trainingCode||'').indexOf(search)<0) return false;
+    if(batch !== 'all' && t.batchName !== batch) return false;
+    const ts = (BM.tsStatuses[t.trainingCode]||{}).status||'In Training';
+    if(status !== 'all' && ts !== status) return false;
+    if(tier !== 'all' && t.tier !== tier) return false;
+    // Sup filter — check assignments
+    if(sup !== 'all'){
+      const assigned = bmGetTraineeSup(t.trainingCode);
+      if(assigned !== sup) return false;
+    }
+    // Time range filter on acceptedAt
+    if(from && t.acceptedAt && t.acceptedAt < from) return false;
+    if(to   && t.acceptedAt && t.acceptedAt > to)   return false;
+    return true;
+  });
+  bmRenderBatches();
+}
+
+function bmGetTraineeSup(code){
+  for(const batchKey of Object.keys(BM.assignments)){
+    const bData = BM.assignments[batchKey];
+    for(const sup of Object.keys(bData.assignments||{})){
+      const list = bData.assignments[sup]||[];
+      if(list.some(t => t.trainingCode === code)) return sup;
+    }
+  }
+  return null;
+}
+
+function bmRenderBatches(){
+  if(!BM.filtered.length) BM.filtered = [...BM.trainees];
+  // Stats
+  const total = BM.filtered.length;
+  const byStatus = {};
+  BM.filtered.forEach(t => {
+    const s = (BM.tsStatuses[t.trainingCode]||{}).status||'In Training';
+    byStatus[s] = (byStatus[s]||0)+1;
+  });
+  const statsEl = document.getElementById('bm_batch_stats');
+  if(statsEl) statsEl.innerHTML = [
+    {l:'Total',v:total,c:'var(--p2)'},
+    {l:'In Training',v:byStatus['In Training']||0,c:'#30D158'},
+    {l:'Distributed',v:byStatus['Distributed']||0,c:'#0A84FF'},
+    {l:'Leaving',v:Object.keys(byStatus).filter(k=>k.startsWith('Leaving')).reduce((a,k)=>a+(byStatus[k]||0),0),c:'#FF453A'},
+    {l:'Completed',v:byStatus['Completed']||0,c:'#FFD60A'}
+  ].map(s=>`<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px">
+    <div style="font-size:11px;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${s.l}</div>
+    <div style="font-size:26px;font-weight:800;color:${s.c}">${s.v}</div>
+  </div>`).join('');
+
+  // Table
+  const tbody = document.getElementById('bm_batch_tbody');
+  const empty = document.getElementById('bm_batch_empty');
+  if(!tbody) return;
+  if(!BM.filtered.length){ tbody.innerHTML=''; if(empty)empty.style.display='block'; return; }
+  if(empty) empty.style.display='none';
+  const TIER_COL = {Top:'#30D158',Mid:'#FFD60A',Low:'#FF453A'};
+  const TS_COL = {'In Training':'rgba(48,209,88,0.15)','Distributed':'rgba(10,132,255,0.15)','Completed':'rgba(255,214,10,0.15)'};
+  tbody.innerHTML = BM.filtered.map(t => {
+    const ts = BM.tsStatuses[t.trainingCode]||{};
+    const status = ts.status||'In Training';
+    const sup = bmGetTraineeSup(t.trainingCode)||'—';
+    const tc = TIER_COL[t.tier]||'var(--t-3)';
+    const sc = TS_COL[status]||'rgba(255,255,255,0.06)';
+    return `<tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--p2);font-weight:700">${t.trainingCode||'—'}</td>
+      <td style="font-weight:600">${t.name||'—'}</td>
+      <td style="font-size:12px;color:var(--t-3)">${t.batchName||'—'}</td>
+      <td><span style="background:rgba(${t.tier==='Top'?'48,209,88':'255,214,10'},0.12);color:${tc};padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">${t.tier||'—'}</span></td>
+      <td style="font-size:12px">${t.pts!=null?t.pts+'%':'—'}</td>
+      <td><span style="background:${sc};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600">${status}</span></td>
+      <td style="font-size:12px;color:var(--t-3)">${sup}</td>
+      <td><button onclick="bmOpenEditStatus(${t.trainingCode})" style="padding:3px 10px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;cursor:pointer">Edit</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function bmOpenEditStatus(code){
+  const ts = BM.tsStatuses[code]||{};
+  document.getElementById('bm_edit_code').value = code;
+  const statusEl = document.getElementById('bm_edit_status');
+  if(statusEl) statusEl.value = ts.status||'In Training';
+  const phaseEl = document.getElementById('bm_edit_phase');
+  if(phaseEl) phaseEl.value = ts.leavingPhase||'';
+  const noteEl = document.getElementById('bm_edit_note');
+  if(noteEl) noteEl.value = ts.notes||'';
+  const dateEl = document.getElementById('bm_edit_leaving_date');
+  if(dateEl) dateEl.value = ts.leavingDate||'';
+  const modal = document.getElementById('bm_edit_modal');
+  if(modal){ modal.style.display='flex'; setTimeout(nxDateInit,50); }
+}
+
+function bmEditStatusChange(){
+  const val = document.getElementById('bm_edit_status').value;
+  const phRow = document.getElementById('bm_edit_phase_row');
+  if(phRow) phRow.style.display = val&&val.startsWith('Leaving')?'block':'none';
+}
+
+async function bmSaveEditStatus(){
+  const code = document.getElementById('bm_edit_code').value;
+  const status = document.getElementById('bm_edit_status').value;
+  const phase  = document.getElementById('bm_edit_phase')&&document.getElementById('bm_edit_phase').value||'';
+  const note   = document.getElementById('bm_edit_note').value;
+  const ldDate = document.getElementById('bm_edit_leaving_date')&&document.getElementById('bm_edit_leaving_date').value||'';
+  const record = { status, notes:note||null, leavingPhase:phase||null, leavingDate:ldDate||null, updatedAt:new Date().toISOString(), updatedBy:A.user.email };
+  BM.tsStatuses[code] = record;
+  if(fbDb) await fbDb.collection('training_status').doc(String(code)).set({...record, trainingCode:parseInt(code)});
+  document.getElementById('bm_edit_modal').style.display='none';
+  bmApplyFilters();
+}
+
+// ── Page 2: Assign trainees to supervisors ────────────────────
+function bmRenderAssign(){
+  const batchEl = document.getElementById('bm_assign_batch');
+  if(batchEl && !batchEl.dataset.nxWrapped){
+    setTimeout(()=>{ nxWrapSelect(batchEl, bmAssignBatchChange); }, 50);
+  }
+}
+
+function bmAssignBatchChange(val){
+  if(!val || val === 'all'){ document.getElementById('bm_assign_confirm_btn').style.display='none'; return; }
+  bmGeneratePreview(val);
+}
+
+function bmGeneratePreview(batchName){
+  const trainees = BM.trainees.filter(t => t.batchName === batchName);
+  const count = parseInt(document.getElementById('bm_assign_count').value)||35;
+  if(!trainees.length){ document.getElementById('bm_assign_msg').textContent='No trainees found for this batch.'; return; }
+  document.getElementById('bm_assign_msg').textContent='';
+
+  // FAIRNESS ALGORITHM:
+  // 1. Sort by tier (Top → Mid → Low) then by score desc → gives consistent ordering
+  // 2. Chunk into groups of `count`, assign round-robin to sups
+  // 3. Each chunk is interleaved (1 Top, 1 Mid, 1 Low) per sup — balanced tiers
+  const sorted = [...trainees].sort((a,b) => {
+    const tierO = {Top:0,Mid:1,Low:2};
+    const td = (tierO[a.tier]??1) - (tierO[b.tier]??1);
+    if(td !== 0) return td;
+    return (b.pts||0) - (a.pts||0);
+  });
+
+  // Interleave: pick from front/middle/end so each sup gets a spread of tiers+scores
+  const interleaved = [];
+  const top = sorted.filter(t => t.tier==='Top');
+  const mid = sorted.filter(t => t.tier==='Mid');
+  const low = sorted.filter(t => t.tier==='Low');
+  const maxLen = Math.max(top.length, mid.length, low.length);
+  for(let i=0;i<maxLen;i++){
+    if(i<top.length) interleaved.push(top[i]);
+    if(i<mid.length) interleaved.push(mid[i]);
+    if(i<low.length) interleaved.push(low[i]);
+  }
+
+  // Distribute to sups in round-robin
+  const needed = Math.ceil(interleaved.length / count);
+  const supsToUse = BM_SUPS.slice(0, needed);
+  const dist = {};
+  supsToUse.forEach(s => dist[s]=[]);
+  interleaved.forEach((t,i) => {
+    const sup = supsToUse[i % supsToUse.length];
+    if(dist[sup].length < count) dist[sup].push(t);
+  });
+
+  // Render preview
+  const preview = document.getElementById('bm_assign_preview');
+  const body = document.getElementById('bm_assign_preview_body');
+  const supList = document.getElementById('bm_sup_list');
+  const summary = document.getElementById('bm_sup_summary');
+  if(!body||!preview) return;
+  preview.style.display = 'block';
+  document.getElementById('bm_assign_confirm_btn').style.display = 'block';
+
+  body.innerHTML = Object.entries(dist).map(([sup, ts]) => {
+    const tiers = ts.reduce((a,t)=>{a[t.tier||'?']=(a[t.tier||'?']||0)+1;return a},{});
+    const avgScore = ts.length ? Math.round(ts.reduce((a,t)=>a+(t.pts||0),0)/ts.length) : 0;
+    return `<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--p2)">${sup}</div>
+        <div style="font-size:11px;color:var(--t-3);margin-top:3px">
+          ${Object.entries(tiers).map(([k,v])=>`<span style="margin-right:8px">${k}: <b style="color:var(--t-1)">${v}</b></span>`).join('')}
+          · Avg: <b style="color:var(--t-1)">${avgScore}%</b>
+        </div>
+      </div>
+      <span style="background:rgba(232,89,12,0.15);color:var(--p2);padding:4px 14px;border-radius:20px;font-size:13px;font-weight:800">${ts.length} trainees</span>
+    </div>`;
+  }).join('');
+
+  // Store for confirm
+  BM._pendingAssign = { batchName, dist };
+
+  if(summary) summary.textContent = `${interleaved.length} trainees → ${supsToUse.length} supervisors · ~${count} each · Fairness: tier-balanced + score-balanced`;
+}
+
+async function bmConfirmAssignment(){
+  if(!BM._pendingAssign) return;
+  const { batchName, dist } = BM._pendingAssign;
+  const btn = document.getElementById('bm_assign_confirm_btn');
+  btn.textContent = 'Saving...'; btn.disabled = true;
+  const now = new Date().toISOString();
+  const payload = { batchName, assignments: dist, savedBy: A.user.email, savedAt: now };
+  if(fbDb){
+    const key = 'batch_'+batchName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();
+    await fbDb.collection('bm_assignments').doc(key).set(payload);
+    // Push trainees to each sup's accepted_trainees subcollection
+    for(const [sup, trainees] of Object.entries(dist)){
+      await fbDb.collection('accepted_trainees').doc('sup_'+sup.replace(/-/g,'_')).set({
+        supervisorCode: sup, batchName, trainees, savedAt: now
+      }, {merge: true});
+    }
+  }
+  BM.assignments['batch_'+batchName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()] = payload;
+  btn.textContent = '✅ Saved!'; btn.disabled = false;
+  setTimeout(()=>{ btn.textContent='✅ Confirm & Save'; }, 2000);
+  document.getElementById('bm_assign_msg').textContent = '✅ Assigned and pushed to each supervisor\'s Accepted Trainees page.';
+  document.getElementById('bm_assign_msg').style.color = '#30D158';
+}
+
+// ── Page 3: Attendance (read-only) ────────────────────────────
+async function bmRenderAttendanceFilters(){
+  if(!fbDb) return;
+  // Populate day options from attendance collection
+  try {
+    const snap = await fbDb.collection('attendance').get();
+    const days = [];
+    snap.forEach(doc => { if(!doc.id.startsWith('group_')) days.push(doc.id); });
+    days.sort();
+    const dayEl = document.getElementById('bm_att_day');
+    if(dayEl) dayEl.innerHTML = '<option value="">— Select day —</option>' + days.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
+    setTimeout(()=>{ nxWrapSelect(dayEl, ()=>{}); },50);
+  } catch(e){}
+}
+
+async function bmLoadAttendance(){
+  const day    = (document.getElementById('bm_att_day')||{}).value||'';
+  const batch  = (document.getElementById('bm_att_batch')||{}).value||'all';
+  const status = (document.getElementById('bm_att_status')||{}).value||'all';
+  const from   = (document.getElementById('bm_att_from')||{}).value||'';
+  const to     = (document.getElementById('bm_att_to')||{}).value||'';
+  const content = document.getElementById('bm_att_content');
+  if(!day){ if(content) content.textContent='Select a day to view attendance'; return; }
+  if(!fbDb) return;
+  if(content) content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3)">Loading…</div>';
+  try {
+    const doc = await fbDb.collection('attendance').doc(day).get();
+    if(!doc.exists){ content.textContent='No data for this day.'; return; }
+    const data = doc.data();
+    // Gather all records
+    let records = [];
+    BM.trainees.forEach(t => {
+      const s = ((data.records||{})[t.trainingCode])||'M';
+      if(batch !== 'all' && t.batchName !== batch) return;
+      if(status !== 'all' && s !== status) return;
+      if(from && day < from) return;
+      if(to   && day > to)   return;
+      records.push({ t, status: s });
+    });
+    // Stats
+    const counts = { M:0, UL:0, WV:0, H:0 };
+    records.forEach(r => { counts[r.status] = (counts[r.status]||0)+1; });
+    const ATT_COL = {M:'#30D158',UL:'#FF453A',WV:'#0A84FF',H:'rgba(255,255,255,0.4)'};
+    content.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+        ${Object.entries(counts).map(([k,v])=>`<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:12px 16px;text-align:center">
+          <div style="font-size:11px;color:var(--t-3);margin-bottom:4px">${k==='M'?'Mandatory':k==='UL'?'UnderLoaded':k==='WV'?'Waiver':'Hold'}</div>
+          <div style="font-size:24px;font-weight:800;color:${ATT_COL[k]}">${v}</div>
+        </div>`).join('')}
+      </div>
+      <table class="table" style="width:100%">
+        <thead><tr><th>Code</th><th>Name</th><th>Batch</th><th>Status</th></tr></thead>
+        <tbody>${records.map(r=>`<tr>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--p2);font-weight:700">${r.t.trainingCode}</td>
+          <td style="font-weight:600">${r.t.name}</td>
+          <td style="font-size:12px;color:var(--t-3)">${r.t.batchName||'—'}</td>
+          <td><span style="padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700;background:rgba(${r.status==='M'?'48,209,88':r.status==='UL'?'255,69,58':r.status==='WV'?'10,132,255':'255,255,255'},0.12);color:${ATT_COL[r.status]}">${r.status}</span></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+  } catch(e){ content.textContent='Error loading attendance: '+e.message; }
+}
+
+// ── Page 4: Tasks / Tickets ───────────────────────────────────
+function bmRenderTasks(){
+  const filterStatus = (document.getElementById('bm_task_filter_status')||{}).value||'all';
+  const filterRole   = (document.getElementById('bm_task_filter_role')||{}).value||'all';
+  const list = document.getElementById('bm_tasks_list');
+  if(!list) return;
+  const filtered = BM.tickets.filter(tk => {
+    if(filterStatus !== 'all' && tk.status !== filterStatus) return false;
+    if(filterRole !== 'all' && !tk.assignees.includes(filterRole)) return false;
+    return true;
+  });
+  const openCount = BM.tickets.filter(tk=>tk.status==='open').length;
+  const badge = document.getElementById('bm_tasks_badge');
+  if(badge){ badge.textContent=openCount; badge.style.display=openCount?'inline':'none'; }
+  if(!filtered.length){
+    list.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No tickets yet — create one above</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(tk => {
+    const isOpen = tk.status === 'open';
+    const due = tk.dueDate ? new Date(tk.dueDate).toLocaleDateString('en-EG',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+    const overdue = tk.dueDate && tk.dueDate < new Date().toISOString().slice(0,10) && isOpen;
+    return `<div style="background:var(--bg-2);border:1.5px solid ${isOpen?'rgba(232,89,12,0.3)':'var(--b-1)'};border-radius:14px;padding:16px 20px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t-3)">#${tk.id.slice(-6).toUpperCase()}</span>
+            <span style="background:${isOpen?'rgba(232,89,12,0.15)':'rgba(48,209,88,0.12)'};color:${isOpen?'var(--p2)':'#30D158'};padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">${isOpen?'Open':'Closed'}</span>
+            ${overdue?'<span style="background:rgba(255,69,58,0.15);color:#FF453A;padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">Overdue</span>':''}
+          </div>
+          <div style="font-size:15px;font-weight:700;color:var(--t-1);margin-bottom:6px">${tk.name}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--t-3)">
+            <span>👥 ${(tk.assignees||[]).join(', ')}</span>
+            <span>📦 ${tk.batch||'All Batches'}</span>
+            <span>📅 Due: ${due}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${isOpen?`<button onclick="bmCloseTicket('${tk.id}')" style="padding:6px 16px;border-radius:10px;background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);font-size:12px;font-weight:700;cursor:pointer">Close</button>`:''}
+          <button onclick="bmDeleteTicket('${tk.id}')" style="padding:6px 10px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1px solid rgba(255,69,58,0.3);font-size:12px;cursor:pointer">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function bmOpenTaskModal(){
+  const modal = document.getElementById('bm_task_modal');
+  if(modal){ modal.style.display='flex'; setTimeout(()=>{ nxDateInit(); bmInitTaskAssignees(); },80); }
+}
+
+function bmInitTaskAssignees(){
+  const wrap = document.getElementById('bm_task_assignees');
+  if(!wrap) return;
+  const roles = [{id:'coordinator',label:'Batch Coordinator'},{id:'batchsup',label:'Batch Supervisor'}];
+  const sups = BM_SUPS.map(s=>({id:'batchsup:'+s, label:'Sup '+s}));
+  wrap.innerHTML = [...roles,...sups].map(r=>`<button type="button"
+    onclick="this.dataset.sel=this.dataset.sel==='1'?'0':'1';this.style.background=this.dataset.sel==='1'?'rgba(232,89,12,0.18)':'var(--bg-3)';this.style.borderColor=this.dataset.sel==='1'?'var(--p2)':'var(--b-1)';this.style.color=this.dataset.sel==='1'?'var(--p2)':'var(--t-2)'"
+    data-sel="0" data-id="${r.id}"
+    style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">
+    ${r.label}
+  </button>`).join('');
+}
+
+async function bmCreateTicket(){
+  const name = (document.getElementById('bm_task_name')||{}).value||'';
+  if(!name.trim()){ alert('Enter a task name.'); return; }
+  const assigneeBtns = document.querySelectorAll('#bm_task_assignees button[data-sel="1"]');
+  const assignees = Array.from(assigneeBtns).map(b=>b.dataset.id);
+  if(!assignees.length){ alert('Select at least one assignee.'); return; }
+  const batch = (document.getElementById('bm_task_batch')||{}).value||'all';
+  const due   = (document.getElementById('bm_task_due')||{}).value||'';
+  const id = 'tk_'+Date.now();
+  const ticket = { id, name: name.trim(), assignees, batch, dueDate: due, status:'open',
+    createdAt: new Date().toISOString(), createdBy: A.user.email };
+  BM.tickets.unshift(ticket);
+  if(fbDb) await fbDb.collection('bm_tickets').doc(id).set(ticket);
+  // Push to notifications for assignees
+  bmPushTicketNotifs(ticket);
+  document.getElementById('bm_task_modal').style.display='none';
+  document.getElementById('bm_task_name').value='';
+  bmRenderTasks();
+  bmRenderAlarm();
+}
+
+async function bmCloseTicket(id){
+  const tk = BM.tickets.find(t=>t.id===id);
+  if(!tk) return;
+  tk.status='closed';
+  if(fbDb) await fbDb.collection('bm_tickets').doc(id).set({status:'closed',closedAt:new Date().toISOString()},{merge:true});
+  bmRenderTasks();
+  bmRenderAlarm();
+}
+
+async function bmDeleteTicket(id){
+  if(!confirm('Delete this ticket?')) return;
+  BM.tickets = BM.tickets.filter(t=>t.id!==id);
+  if(fbDb) await fbDb.collection('bm_tickets').doc(id).delete();
+  bmRenderTasks();
+  bmRenderAlarm();
+}
+
+async function bmPushTicketNotifs(ticket){
+  if(!fbDb) return;
+  // Write to bm_ticket_alerts — BSup and Coord poll this on their dashboards
+  const alertDoc = { ticketId: ticket.id, name: ticket.name, assignees: ticket.assignees,
+    batch: ticket.batch, dueDate: ticket.dueDate, status:'open', createdAt: ticket.createdAt };
+  await fbDb.collection('bm_ticket_alerts').doc(ticket.id).set(alertDoc);
+}
+
+// ── Alarm bar ─────────────────────────────────────────────────
+function bmRenderAlarm(){
+  const openTickets = BM.tickets.filter(t=>t.status==='open');
+  const alarm = document.getElementById('bm_task_alarm');
+  const text  = document.getElementById('bm_alarm_text');
+  const sub   = document.getElementById('bm_alarm_sub');
+  if(!alarm) return;
+  if(openTickets.length){
+    alarm.style.display='flex';
+    if(text) text.textContent = openTickets.length+' open ticket'+(openTickets.length>1?'s':'');
+    if(sub){
+      const overdue = openTickets.filter(t=>t.dueDate&&t.dueDate<new Date().toISOString().slice(0,10));
+      sub.textContent = overdue.length ? overdue.length+' overdue' : 'All on track';
+    }
+  } else {
+    alarm.style.display='none';
+  }
+}
+
+// ── Receive ticket alerts in BSup/Coord gates ──────────────────
+async function loadBMTicketAlerts(){
+  if(!fbDb || !A.user) return;
+  try {
+    const snap = await fbDb.collection('bm_ticket_alerts').where('status','==','open').get();
+    const myRole = A.user.role;
+    const alerts = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      const assigned = (d.assignees||[]).some(a => a === myRole || a.startsWith(myRole+':') || a === myRole);
+      if(assigned) alerts.push(d);
+    });
+    bmShowTicketAlertBanner(alerts);
+    // Push to notifications panel
+    alerts.forEach(a => {
+      if(typeof addBsupNotif === 'function'){
+        addBsupNotif('📋 Task from Manager', a.name + (a.dueDate?' · Due '+a.dueDate:''), 'orange');
+      }
+    });
+  } catch(e){}
+}
+
+function bmShowTicketAlertBanner(alerts){
+  if(!alerts.length) return;
+  const bannerId = 'bm_alert_banner';
+  let banner = document.getElementById(bannerId);
+  if(!banner){
+    banner = document.createElement('div');
+    banner.id = bannerId;
+    banner.style.cssText = 'position:sticky;top:0;z-index:8888;background:rgba(232,89,12,0.95);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:600;backdrop-filter:blur(8px)';
+    const content = document.querySelector('.content');
+    if(content) content.prepend(banner);
+  }
+  banner.innerHTML = `<span>📋 You have ${alerts.length} open task${alerts.length>1?'s':''} from Batch Manager: "${alerts[0].name}"${alerts.length>1?' +'+( alerts.length-1)+' more':''}</span>
+    <button onclick="this.parentElement.style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:12px">Dismiss</button>`;
+}
+// ============================================================
+// END BATCH MANAGER
+// ============================================================
+
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
 
@@ -2510,7 +3771,8 @@ async function initBsupDashboard(){
   listenForBatchNotifications();
   await loadSavedCodes();
   await loadSavedGroups();
-  cleanupDuplicateGroupDocs(); // async, runs in background
+  cleanupDuplicateGroupDocs();
+  bmLoadTaskNotificationsForRole('batchsup'); // async, runs in background
 }
 
 // Load accepted trainees from Firestore (saved by coordinator on End of Batch)
@@ -3150,6 +4412,13 @@ function switchRole(role){
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
       setTimeout(()=>{ btReset(); initTrainerDashboard(); }, 100);
+    } else if(role === 'batchmanager'){
+      injectLogos();
+      document.getElementById('bmUserPill').textContent = A.user.name + ' · Batch Manager';
+      showScreen('bmScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ initBMDashboard(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -6650,6 +7919,331 @@ function btQuickAssignAll(){
     </div><!-- end container -->
   </div><!-- end bt_dashboard -->
 </div>
+<!-- ═══════════════════════════════ BATCH MANAGER SCREEN ═══════════════════════════════ -->
+<div id="bmScreen" class="screen">
+  <div class="app-shell">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo" id="bmLogo"></div>
+      <div style="font-size:10px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.1em;padding:0 18px 8px">Batch Manager</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active" id="bm_nav_batches"   onclick="bmShowTab('batches')"   href="#">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg> Batches
+        </a>
+        <a class="nav-item" id="bm_nav_assign"     onclick="bmShowTab('assign')"     href="#">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg> Assign Supervisors
+        </a>
+        <a class="nav-item" id="bm_nav_attendance" onclick="bmShowTab('attendance')" href="#">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg> Attendance
+        </a>
+        <a class="nav-item" id="bm_nav_tasks"      onclick="bmShowTab('tasks')"      href="#">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg> Tasks
+          <span id="bm_tasks_badge" style="display:none;background:var(--p2);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto"></span>
+        </a>
+      </nav>
+      <div style="margin-top:auto;padding:16px 12px;border-top:1px solid var(--b-1)">
+        <div id="bmUserPill" style="font-size:12px;font-weight:600;color:var(--t-2);padding:6px 8px"></div>
+        <button onclick="doSignOut()" class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px;justify-content:flex-start">Sign out</button>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content">
+
+      <!-- ── TASK ALARM BANNER ── -->
+      <div id="bm_task_alarm" style="display:none;background:rgba(232,89,12,0.12);border:1.5px solid rgba(232,89,12,0.4);border-radius:14px;padding:12px 18px;margin-bottom:20px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:18px">🔔</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:var(--p2)" id="bm_alarm_text">You have open tickets</div>
+          <div style="font-size:11px;color:var(--t-3)" id="bm_alarm_sub"></div>
+        </div>
+        <button onclick="bmShowTab('tasks')" style="padding:6px 14px;border-radius:10px;background:var(--p2);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">View Tasks</button>
+      </div>
+
+      <!-- ══ BATCHES TAB ══ -->
+      <div id="bm_tab_batches" class="bm-tab">
+        <div class="page-hdr" style="margin-bottom:20px">
+          <h2>Batches</h2>
+          <p>All accepted trainees across batches — training status view</p>
+        </div>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
+            <select id="bm_filter_batch" style="display:none"><option value="all">All Batches</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
+            <select id="bm_filter_status" style="display:none">
+              <option value="all">All Statuses</option>
+              <option value="In Training">In Training</option>
+              <option value="Distributed">Distributed</option>
+              <option value="On Hold">On Hold</option>
+              <option value="Dropped">Dropped</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Tier</label>
+            <select id="bm_filter_tier" style="display:none">
+              <option value="all">All Tiers</option>
+              <option value="Top">Top</option>
+              <option value="Mid">Mid</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Supervisor</label>
+            <select id="bm_filter_sup" style="display:none"><option value="all">All Supervisors</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated From</label>
+            <input type="date" id="bm_filter_from" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">To</label>
+            <input type="date" id="bm_filter_to" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
+          </div>
+          <button onclick="bmApplyBatchFilters()" style="padding:8px 18px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-end">Filter</button>
+          <button onclick="bmClearBatchFilters()" style="padding:8px 14px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:12px;font-weight:600;cursor:pointer;align-self:flex-end">Clear</button>
+        </div>
+
+        <!-- Stats row -->
+        <div id="bm_batch_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px"></div>
+
+        <!-- Table -->
+        <div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:16px;overflow:hidden">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="border-bottom:1px solid var(--b-1)">
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Code</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Name</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Supervisor</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Tier</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Points%</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Phase</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Edit</th>
+                </tr>
+              </thead>
+              <tbody id="bm_batch_tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="bm_batch_empty" style="display:none;text-align:center;padding:60px;color:var(--t-3)">No trainees found</div>
+      </div>
+
+      <!-- ══ ASSIGN SUPERVISORS TAB ══ -->
+      <div id="bm_tab_assign" class="bm-tab" style="display:none">
+        <div class="page-hdr" style="margin-bottom:20px">
+          <h2>Assign Supervisors</h2>
+          <p>Distribute trainees fairly across batch supervisors — 30 to 40 per supervisor</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px">
+          <!-- Left: config panel -->
+          <div>
+            <div class="card" style="padding:24px;margin-bottom:16px">
+              <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">Assignment Setup</h3>
+              <div style="display:grid;gap:14px">
+                <div>
+                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Select Batch</label>
+                  <select id="bm_assign_batch" style="display:none"><option value="">— Select batch —</option></select>
+                </div>
+                <div>
+                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Trainees per Supervisor</label>
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <input type="range" id="bm_assign_count" min="30" max="40" value="35" style="flex:1;accent-color:var(--p2)" oninput="document.getElementById('bm_assign_count_val').textContent=this.value"/>
+                    <span id="bm_assign_count_val" style="font-size:18px;font-weight:800;color:var(--p2);min-width:28px">35</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t-3);margin-top:2px"><span>30</span><span>40</span></div>
+                </div>
+                <div>
+                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:8px">Fairness Rules</label>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <div style="padding:6px 12px;border-radius:20px;background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.3);font-size:12px;color:var(--p2);font-weight:600">⚖️ Tier balance</div>
+                    <div style="padding:6px 12px;border-radius:20px;background:rgba(10,132,255,0.1);border:1px solid rgba(10,132,255,0.3);font-size:12px;color:#0A84FF;font-weight:600">📊 Score balance</div>
+                    <div style="padding:6px 12px;border-radius:20px;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);font-size:12px;color:#30D158;font-weight:600">🔀 Random shuffle</div>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:20px">
+                <button onclick="bmPreviewAssignment()" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-1);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">👁 Preview</button>
+                <button onclick="bmConfirmAssignment()" id="bm_assign_confirm_btn" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;display:none">✅ Confirm &amp; Save</button>
+              </div>
+              <div id="bm_assign_msg" style="margin-top:12px;font-size:12px;color:var(--t-3)"></div>
+            </div>
+
+            <!-- Preview table -->
+            <div id="bm_assign_preview" style="display:none">
+              <div class="card" style="padding:20px">
+                <h3 style="margin:0 0 14px;font-size:15px;font-weight:700">Assignment Preview</h3>
+                <div id="bm_assign_preview_body"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: supervisor list -->
+          <div class="card" style="padding:20px;height:fit-content">
+            <h3 style="margin:0 0 14px;font-size:15px;font-weight:700">Batch Supervisors</h3>
+            <div id="bm_sup_list" style="display:flex;flex-direction:column;gap:6px">
+              <!-- populated by JS -->
+            </div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--b-1);font-size:12px;color:var(--t-3)" id="bm_sup_summary"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ATTENDANCE TAB ══ -->
+      <div id="bm_tab_attendance" class="bm-tab" style="display:none">
+        <div class="page-hdr" style="margin-bottom:20px">
+          <h2>Attendance</h2>
+          <p>Read-only view of all batch attendance data</p>
+        </div>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Day</label>
+            <select id="bm_att_day" style="display:none"><option value="">— Select day —</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
+            <select id="bm_att_batch" style="display:none"><option value="all">All Batches</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
+            <select id="bm_att_status" style="display:none">
+              <option value="all">All</option>
+              <option value="M">M — Mandatory</option>
+              <option value="UL">UL — UnderLoaded</option>
+              <option value="WV">WV — Waiver</option>
+              <option value="H">H — Hold</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Date From</label>
+            <input type="date" id="bm_att_from" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;outline:none"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">To</label>
+            <input type="date" id="bm_att_to" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;outline:none"/>
+          </div>
+          <button onclick="bmLoadAttendance()" style="padding:8px 18px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-end">Load</button>
+        </div>
+
+        <div id="bm_att_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px"></div>
+        <div id="bm_att_content" style="text-align:center;padding:60px;color:var(--t-3)">Select a day to view attendance</div>
+      </div>
+
+      <!-- ══ TASKS TAB ══ -->
+      <div id="bm_tab_tasks" class="bm-tab" style="display:none">
+        <div class="page-hdr" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <h2 style="margin:0">Tasks</h2>
+            <p style="margin:4px 0 0">Create and assign tickets to Batch Coordinators and Supervisors</p>
+          </div>
+          <button onclick="bmOpenNewTask()" style="padding:10px 20px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">+ New Task</button>
+        </div>
+
+        <!-- Task filter -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+          <select id="bm_task_filter_status" style="display:none">
+            <option value="all">All Tasks</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+          </select>
+          <select id="bm_task_filter_role" style="display:none">
+            <option value="all">All Assignees</option>
+            <option value="coordinator">Batch Coordinator</option>
+            <option value="batchsup">Batch Supervisor</option>
+          </select>
+        </div>
+
+        <div id="bm_tasks_list" style="display:grid;gap:12px"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- BM EDIT STATUS MODAL -->
+<div id="bm_edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:none;align-items:center;justify-content:center">
+  <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:420px;max-width:95vw;border:1px solid var(--b-1)">
+    <h3 style="margin:0 0 20px;font-size:16px">Edit Training Status</h3>
+    <input type="hidden" id="bm_edit_code"/>
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Status</label>
+        <select id="bm_edit_status" style="display:none">
+          <option value="In Training">In Training</option>
+          <option value="Distributed">Distributed</option>
+          <option value="On Hold">On Hold</option>
+          <option value="Dropped">Dropped</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Phase</label>
+        <select id="bm_edit_phase" style="display:none">
+          <option value="">— None —</option>
+          <option value="Week 1">Week 1</option>
+          <option value="Week 2">Week 2</option>
+          <option value="Week 3">Week 3</option>
+          <option value="Week 4">Week 4</option>
+          <option value="Final">Final</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Note</label>
+        <input type="text" id="bm_edit_note" style="width:100%;padding:8px 12px;border:1px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;box-sizing:border-box" placeholder="Optional note"/>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('bm_edit_modal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">Cancel</button>
+      <button onclick="bmSaveEditStatus()" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- BM NEW TASK MODAL -->
+<div id="bm_task_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:480px;max-width:95vw;border:1px solid var(--b-1)">
+    <h3 style="margin:0 0 20px;font-size:16px">New Task</h3>
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Task Name</label>
+        <input type="text" id="bm_task_name" style="width:100%;padding:8px 12px;border:1px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;box-sizing:border-box" placeholder="e.g. Submit attendance report"/>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Assign To (select multiple)</label>
+        <div id="bm_task_assignees" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" onclick="bmToggleAssignee(this,'coordinator')" data-role="coordinator" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">📊 Batch Coordinator</button>
+          <button type="button" onclick="bmToggleAssignee(this,'batchsup')" data-role="batchsup" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">👔 Batch Supervisor</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Batch</label>
+        <select id="bm_task_batch" style="display:none"><option value="all">All Batches</option></select>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Due Date</label>
+        <input type="date" id="bm_task_due" style="width:100%;padding:8px 12px;border:1px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;box-sizing:border-box"/>
+      </div>
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Description (optional)</label>
+        <textarea id="bm_task_desc" rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;box-sizing:border-box;resize:vertical;font-family:DM Sans,sans-serif" placeholder="Add more details..."></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('bm_task_modal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">Cancel</button>
+      <button onclick="bmCreateTask()" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Create Task</button>
+    </div>
+  </div>
+</div>
 </body>
 </html
 
@@ -6661,6 +8255,7 @@ function btQuickAssignAll(){
   <div style="display:flex;flex-direction:column;gap:6px">
     <button class="btn btn-secondary btn-sm" onclick="switchRole('coordinator')" style="justify-content:flex-start">📊 Batch Coordinator</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('batchsup')" style="justify-content:flex-start">👔 Batch Supervisor</button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('batchmanager')" style="justify-content:flex-start">📋 Batch Manager</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainer')" style="justify-content:flex-start">🏋 Batch Trainer</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Current</span></button>
