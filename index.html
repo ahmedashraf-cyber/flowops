@@ -1011,7 +1011,7 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
         <div class="field"><label class="input-label">Phone Number</label><input class="input" type="tel" id="suPhone" placeholder="+201XXXXXXXXX"/></div>
         <div class="field">
           <label class="input-label">Your Role</label>
-          <select class="input" id="suRole">
+          <select class="input" id="suRole" onchange="toggleSupCodeField(this.value)">
             <option value="">— Select your role —</option>
             <option value="coordinator">Batch Coordinator</option>
             <option value="trainer">Batch Trainer</option>
@@ -1021,6 +1021,11 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
             <option value="manager">Training Manager</option>
             <option value="trainee">Trainee</option>
           </select>
+        </div>
+        <div class="field" id="suSupCodeField" style="display:none">
+          <label class="input-label">Your Supervisor Code <span style="color:var(--p2)">*</span></label>
+          <input class="input" type="text" id="suSupCode" placeholder="e.g. A-721" style="text-transform:uppercase"/>
+          <div style="font-size:11px;color:var(--t-3);margin-top:4px">Your A-XXX code assigned by Batch Manager</div>
         </div>
         <div class="field"><label class="input-label">Password (min 8 characters)</label><input class="input" type="password" id="suPass" placeholder="••••••••"/></div>
         <div class="field"><label class="input-label">Confirm Password</label><input class="input" type="password" id="suPassC" placeholder="••••••••"/></div>
@@ -1484,6 +1489,11 @@ try {
 // ============================================================
 // FIREBASE AUTH — works from ANY device, ANY browser
 // ============================================================
+function toggleSupCodeField(role){
+  const f = document.getElementById('suSupCodeField');
+  if(f) f.style.display = role === 'batchsup' ? 'block' : 'none';
+}
+
 async function doSignup(){
   const first = document.getElementById('suFirst').value.trim();
   const last  = document.getElementById('suLast').value.trim();
@@ -1504,11 +1514,15 @@ async function doSignup(){
     const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
     await cred.user.updateProfile({displayName: first+' '+last});
     // Save full profile to Firestore — accessible from any device
-    await fbDb.collection('users').doc(cred.user.uid).set({
+    const profileData = {
       firstName:first, lastName:last, email, phone, role,
       displayName:first+' '+last,
       createdAt:new Date().toISOString()
-    });
+    };
+    // BSup: supervisorCode stored in profile for BM assignment lookup
+    const suCode = document.getElementById('suSupCode');
+    if(suCode && suCode.value.trim()) profileData.supervisorCode = suCode.value.trim().toUpperCase();
+    await fbDb.collection('users').doc(cred.user.uid).set(profileData);
     // onAuthStateChanged will handle the redirect
   } catch(e) {
     let msg = e.message;
@@ -1603,7 +1617,8 @@ function initFirebaseAuth(){
           email: user.email,
           name,
           role,
-          phone: profile.phone||''
+          phone: profile.phone||'',
+          supervisorCode: profile.supervisorCode||''
         };
 
         // Route to correct dashboard based on role
@@ -3182,19 +3197,47 @@ async function initBMDashboard(){
 async function bmLoadData(){
   if(!fbDb) return;
   try {
-    // Load accepted trainees from Firestore (saved by coordinator)
-    const atSnap = await fbDb.collection('accepted_trainees').get();
+    // Load accepted trainees from coordinator's batch_notifications (source of truth)
+    const atSnap = await fbDb.collection('batch_notifications')
+      .where('type','==','end_of_batch')
+      .get();
     BM.trainees = [];
     atSnap.forEach(doc => {
       const d = doc.data();
-      if(d.trainees) BM.trainees.push(...d.trainees);
+      if(d.acceptedCandidates && Array.isArray(d.acceptedCandidates)){
+        d.acceptedCandidates.forEach(t => {
+          BM.trainees.push({
+            name:         t.name || t.nameEn || '',
+            nameAr:       t.nameAr || '',
+            pts:          t.pts,
+            tier:         t.tier || '',
+            batchName:    d.batchName || '',
+            status:       t.status || 'Accepted',
+            trainingCode: t.trainingCode || null,
+            supervisor:   null  // filled in from bm_assignments
+          });
+        });
+      }
     });
-    // Deduplicate by trainingCode
+    // Deduplicate by name+batch
     const seen = new Set();
     BM.trainees = BM.trainees.filter(t => {
-      const k = t.trainingCode || t.name;
+      const k = (t.name||'') + '|' + (t.batchName||'');
       if(seen.has(k)) return false;
       seen.add(k); return true;
+    });
+    // Overlay supervisor assignments if they exist
+    const aSnap2 = await fbDb.collection('accepted_trainees').get();
+    aSnap2.forEach(doc => {
+      const d = doc.data();
+      if(d.supervisorCode && d.trainees){
+        d.trainees.forEach(t => {
+          const match = BM.trainees.find(bt =>
+            (bt.name||'') === (t.name||t.nameEn||'') && bt.batchName === d.batchName
+          );
+          if(match) match.supervisor = d.supervisorCode;
+        });
+      }
     });
   } catch(e){ console.warn('BM trainees load:', e); }
 
@@ -3758,33 +3801,60 @@ async function initBsupDashboard(){
   loadBMTicketAlerts(); // check for open tickets from Batch Manager
 }
 
-// Load accepted trainees from Firestore (saved by coordinator on End of Batch)
+// Load accepted trainees from Firestore
+// Priority: BM-assigned trainees (from bm_assignments) → fallback: direct from batch_notifications
 async function loadBsupTrainees(){
   if(!fbDb) return;
   try {
-    const snap = await fbDb.collection('batch_notifications')
-      .where('type','==','end_of_batch')
-      .get();
-
+    const supCode = A.user && A.user.supervisorCode;
     let allTrainees = [];
-    snap.forEach(doc => {
-      const data = doc.data();
-      if(data.acceptedCandidates && Array.isArray(data.acceptedCandidates)){
-        data.acceptedCandidates.forEach(t => {
-          allTrainees.push({
-            ...t,
-            batchName: data.batchName,
-            notifId:   doc.id,
-            trainingCode: null
-          });
-        });
-      }
-    });
 
-    // Remove duplicates by name+batch
+    if(supCode){
+      // Primary path: BM has assigned trainees to this supervisor by code
+      const bmSnap = await fbDb.collection('accepted_trainees').get();
+      bmSnap.forEach(doc => {
+        const d = doc.data();
+        if(d.supervisorCode === supCode && d.trainees){
+          d.trainees.forEach(t => {
+            allTrainees.push({
+              name:          t.name || t.nameEn || '',
+              nameAr:        t.nameAr || '',
+              pts:           t.pts,
+              tier:          t.tier,
+              batchName:     t.batchName || d.batchName || '',
+              status:        t.status || 'Accepted',
+              trainingCode:  t.trainingCode || null
+            });
+          });
+        }
+      });
+    }
+
+    if(!allTrainees.length){
+      // Fallback: read directly from coordinator's batch_notifications
+      // (used when BM hasn't assigned yet, or supervisor has no code set)
+      const snap = await fbDb.collection('batch_notifications')
+        .where('type','==','end_of_batch')
+        .get();
+      snap.forEach(doc => {
+        const data = doc.data();
+        if(data.acceptedCandidates && Array.isArray(data.acceptedCandidates)){
+          data.acceptedCandidates.forEach(t => {
+            allTrainees.push({
+              ...t,
+              batchName: data.batchName,
+              notifId:   doc.id,
+              trainingCode: null
+            });
+          });
+        }
+      });
+    }
+
+    // Deduplicate by name+batch
     const seen = new Set();
     BSUP.trainees = allTrainees.filter(t => {
-      const key = t.name + '|' + t.batchName;
+      const key = (t.name||'') + '|' + (t.batchName||'');
       if(seen.has(key)) return false;
       seen.add(key); return true;
     });
@@ -3794,7 +3864,8 @@ async function loadBsupTrainees(){
     populateBsupBatchFilter();
     populateBsupGroupBatch();
     if(BSUP.trainees.length > 0){
-      addBsupNotif('Data loaded', BSUP.trainees.length + ' accepted trainees loaded across all batches', 'orange');
+      const src = supCode ? 'assigned by Batch Manager' : 'from coordinator';
+      addBsupNotif('Data loaded', BSUP.trainees.length + ' trainees loaded (' + src + ')', 'orange');
     }
   } catch(e){
     console.error('loadBsupTrainees failed:', e);
