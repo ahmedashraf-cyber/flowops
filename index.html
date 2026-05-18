@@ -2679,7 +2679,7 @@ function bmRenderBatchTable(){
     const updated = ts.updatedAt ? ts.updatedAt.slice(0,10) : '—';
     const tierBg = {Top:'rgba(48,209,88,0.12)',Mid:'rgba(232,89,12,0.12)',Low:'rgba(255,69,58,0.12)'}[t.tier]||'var(--bg-3)';
     const tierColor = {Top:'#30D158',Mid:'var(--p2)',Low:'#FF453A'}[t.tier]||'var(--t-3)';
-    return '<tr style="border-bottom:1px solid var(--b-1);transition:background .1s" onmouseenter="this.style.background='var(--bg-3)'" onmouseleave="this.style.background=''">'+
+    return '<tr style="border-bottom:1px solid var(--b-1);transition:background .1s" onmouseenter="this.style.background=\'var(--bg-3)\'" onmouseleave="this.style.background=\'\'">'+
       '<td style="padding:10px 16px;font-family:JetBrains Mono,monospace;font-size:12px;color:var(--p2);font-weight:700">#'+t.trainingCode+'</td>'+
       '<td style="padding:10px 16px;font-size:13px;font-weight:600;color:var(--t-1)">'+t.name+'</td>'+
       '<td style="padding:10px 16px;font-size:12px;color:var(--t-2)">'+t.batchName+'</td>'+
