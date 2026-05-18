@@ -1649,7 +1649,7 @@ function initFirebaseAuth(){
         }
 
         // Show role switcher for Training Manager
-        if(isManager){
+        if(isManager || isBatchManager){
           const sw = document.getElementById('roleSwitcher');
           if(sw) sw.style.display = 'block';
         }
