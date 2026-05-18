@@ -128,8 +128,8 @@ h3{font-size:16px;font-weight:600;line-height:1.35;letter-spacing:-0.3px}
 code{font-family:'JetBrains Mono',monospace;font-size:12px}
 
 /* ── SCREENS WITH TRANSITIONS ── */
-.screen{display:none!important;min-height:100vh;opacity:0;transform:translateY(8px);transition:opacity .35s var(--ease),transform .35s var(--ease)}
-.screen.active{display:block!important;opacity:1;transform:translateY(0)}
+.screen{display:none!important;min-height:100vh;opacity:0;transition:opacity .35s var(--ease)}
+.screen.active{display:block!important;opacity:1}
 
 /* ── TOPBAR — True Apple glass ── */
 .topbar{
@@ -4433,9 +4433,8 @@ function switchRole(role){
   // Cinematic transition: fade out current screen
   const current = document.querySelector('.screen.active');
   if(current){
-    current.style.transition = 'opacity .25s cubic-bezier(0.4,0,0.2,1), transform .25s cubic-bezier(0.4,0,0.2,1)';
+    current.style.transition = 'opacity .25s cubic-bezier(0.4,0,0.2,1)';
     current.style.opacity = '0';
-    current.style.transform = 'scale(0.98) translateY(-4px)';
   }
 
   setTimeout(() => {
@@ -4483,10 +4482,9 @@ function switchRole(role){
     const next = document.querySelector('.screen.active');
     if(next){
       next.style.opacity = '0';
-      next.style.transform = 'scale(1.01) translateY(6px)';
       next.style.transition = 'none';
       requestAnimationFrame(()=>{
-        next.style.transition = 'opacity .35s cubic-bezier(0,0,0.2,1), transform .35s cubic-bezier(0,0,0.2,1)';
+        next.style.transition = 'opacity .35s cubic-bezier(0,0,0.2,1)';
         next.style.opacity = '1';
         next.style.transform = 'scale(1) translateY(0)';
       });
