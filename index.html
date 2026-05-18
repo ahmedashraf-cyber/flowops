@@ -2494,27 +2494,7 @@ setTimeout(nxDateInit, 200);
 // ══════════════════════════════════════════════════════════════
 // BATCH MANAGER — State & Constants
 // ══════════════════════════════════════════════════════════════
-const BM = {
-  trainees: [],        // all accepted trainees from group_assignments
-  tsData:   {},        // training_status keyed by trainingCode
-  attData:  {},        // attendance records keyed by dayKey
-  tasks:    [],        // task tickets
-  assignPreview: null, // pending assignment
-  supAssignments: {}   // { supCode: [trainingCodes] } for current batch
-};
-
-const BM_SUPERVISORS = [
-  'A-1589','A-920','A-082','A-275','A-551','A-317',
-  'A-985','A-248','A-246','A-043','A-1024','A-933',
-  'A-774','A-070','A-047'
-];
-
-const BM_TS_COLORS = {
-  'In Training':  {bg:'rgba(232,89,12,0.12)', border:'rgba(232,89,12,0.35)', text:'var(--p2)'},
-  'Distributed':  {bg:'rgba(48,209,88,0.12)',  border:'rgba(48,209,88,0.35)',  text:'#30D158'},
-  'On Hold':      {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.35)', text:'#FFD60A'},
-  'Dropped':      {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.35)',  text:'#FF453A'}
-};
+// BM state and constants defined below
 
 // ══════════════════════════════════════════════════════════════
 // INIT
@@ -2752,7 +2732,7 @@ function bmRenderSupList(){
   Object.values(BM.supAssignments).forEach(arr => {
     if(Array.isArray(arr)) arr.forEach(a => { counts[a.supCode] = (counts[a.supCode]||0)+1; });
   });
-  container.innerHTML = BM_SUPERVISORS.map(code => {
+  container.innerHTML = BM_SUPS.map(code => {
     const n = counts[code]||0;
     const color = n===0?'var(--t-3)':n>=30&&n<=40?'#30D158':'#FFD60A';
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;background:var(--bg-3)">'+
@@ -2760,7 +2740,7 @@ function bmRenderSupList(){
       '<span style="font-size:12px;font-weight:700;color:'+color+'">'+n+' trainees</span>'+
     '</div>';
   }).join('');
-  document.getElementById('bm_sup_summary').textContent = BM_SUPERVISORS.length+' supervisors · Target 30–40 each';
+  document.getElementById('bm_sup_summary').textContent = BM_SUPS.length+' supervisors · Target 30–40 each';
 }
 
 function bmPreviewAssignment(){
@@ -2792,7 +2772,7 @@ function bmPreviewAssignment(){
   for(let i=0;i<maxLen;i++) tierOrder.forEach(t=>{ if(buckets[t][i]) interleaved.push(buckets[t][i]); });
 
   // Distribute round-robin across supervisors
-  const supGroups = BM_SUPERVISORS.map(code=>({code, trainees:[]}));
+  const supGroups = BM_SUPS.map(code=>({code, trainees:[]}));
   interleaved.forEach((t,i) => supGroups[i%supGroups.length].trainees.push(t));
 
   // Trim to targetCount per supervisor
@@ -2806,7 +2786,7 @@ function bmPreviewAssignment(){
   if(!previewEl||!bodyEl) return;
 
   const totalAssigned = supGroups.reduce((s,g)=>s+g.trainees.length,0);
-  bodyEl.innerHTML = '<div style="font-size:12px;color:var(--t-3);margin-bottom:12px">'+pool.length+' trainees · '+totalAssigned+' assigned across '+BM_SUPERVISORS.length+' supervisors</div>'+
+  bodyEl.innerHTML = '<div style="font-size:12px;color:var(--t-3);margin-bottom:12px">'+pool.length+' trainees · '+totalAssigned+' assigned across '+BM_SUPS.length+' supervisors</div>'+
     supGroups.map(sg => {
       const topN = sg.trainees.filter(t=>t.tier==='Top').length;
       const midN = sg.trainees.filter(t=>t.tier==='Mid').length;
@@ -2857,7 +2837,7 @@ async function bmConfirmAssignment(){
       const existingDoc = await fbDb.collection('group_assignments').doc(batchKey).get();
       const existing = existingDoc.exists ? (existingDoc.data().groups||[]) : [];
       // Find or create group for this supervisor
-      const supIdx = BM_SUPERVISORS.indexOf(sg.code);
+      const supIdx = BM_SUPS.indexOf(sg.code);
       const groupPayload = {
         groupIndex: supIdx+1,
         trainer: sg.code,
