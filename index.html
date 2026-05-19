@@ -1083,6 +1083,10 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
 
 <!-- ===== COORDINATOR DASHBOARD ===== -->
 <div id="coordScreen" class="screen">
+  <div id="coordTaskAlarm" style="display:none;position:sticky;top:52px;z-index:888;background:rgba(232,89,12,0.95);color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:600;backdrop-filter:blur(8px)">
+    <span>📋 <span class="task-alarm-text">You have open tasks from Batch Manager</span></span>
+    <button onclick="document.getElementById('coordTaskAlarm').style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:3px 10px;cursor:pointer;font-size:12px">Dismiss</button>
+  </div>
   <div class="app-shell">
     <!-- TOPBAR -->
     <div class="topbar">
@@ -3308,7 +3312,7 @@ function bmToggleAssignee(btn, role){
 async function bmCreateTask(){
   const name = document.getElementById('bm_task_name').value.trim();
   if(!name){ alert('Task name is required.'); return; }
-  const assignees = Array.from(document.querySelectorAll('#bm_task_assignees button[data-on="1"]')).map(b=>b.dataset.role);
+  const assignees = Array.from(document.querySelectorAll('#bm_task_assignees button')).filter(b=>b.dataset.on==='1').map(b=>b.dataset.role);
   if(!assignees.length){ alert('Select at least one assignee.'); return; }
   const batch = document.getElementById('bm_task_batch').value||'all';
   const dueDate = document.getElementById('bm_task_due').value||'';
@@ -3404,6 +3408,8 @@ async function bmLoadTaskNotificationsForRole(role){
       alarmEl.style.display='flex';
       const txt = alarmEl.querySelector('.task-alarm-text');
       if(txt) txt.textContent = tasks.length+' open task'+(tasks.length>1?'s':'')+' from Batch Manager';
+    } else if(alarmEl){
+      alarmEl.style.display='none';
     }
   }catch(e){ console.warn('bmLoadTaskNotificationsForRole:', e); }
 }
@@ -3906,14 +3912,23 @@ function bmOpenTaskModal(){
 function bmInitTaskAssignees(){
   const wrap = document.getElementById('bm_task_assignees');
   if(!wrap) return;
-  const roles = [{id:'coordinator',label:'Batch Coordinator'},{id:'batchsup',label:'Batch Supervisor'}];
-  const sups = BM_SUPS.map(s=>({id:'batchsup:'+s, label:'Sup '+s}));
-  wrap.innerHTML = [...roles,...sups].map(r=>`<button type="button"
-    onclick="this.dataset.sel=this.dataset.sel==='1'?'0':'1';this.style.background=this.dataset.sel==='1'?'rgba(232,89,12,0.18)':'var(--bg-3)';this.style.borderColor=this.dataset.sel==='1'?'var(--p2)':'var(--b-1)';this.style.color=this.dataset.sel==='1'?'var(--p2)':'var(--t-2)'"
-    data-sel="0" data-id="${r.id}"
-    style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">
-    ${r.label}
-  </button>`).join('');
+  const roles = [{role:'coordinator',label:'Batch Coordinator'},{role:'batchsup',label:'All Batch Supervisors'}];
+  wrap.innerHTML = roles.map(r => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.role = r.role;
+    btn.dataset.on = '0';
+    btn.textContent = r.label;
+    btn.style.cssText = 'padding:5px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s';
+    btn.addEventListener('click', function(){
+      const on = this.dataset.on === '1';
+      this.dataset.on = on ? '0' : '1';
+      this.style.background = on ? 'var(--bg-3)' : 'rgba(232,89,12,0.18)';
+      this.style.borderColor = on ? 'var(--b-1)' : 'var(--p2)';
+      this.style.color = on ? 'var(--t-2)' : 'var(--p2)';
+    });
+    return btn.outerHTML;
+  }).join('');
 }
 
 async function bmCreateTicket(){
@@ -7416,6 +7431,10 @@ function btQuickAssignAll(){
 
 <!-- ===== BATCH SUPERVISOR DASHBOARD ===== -->
 <div id="bsupScreen" class="screen">
+  <div id="bsupTaskAlarm" style="display:none;position:sticky;top:52px;z-index:888;background:rgba(232,89,12,0.95);color:#fff;padding:10px 20px;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:600;backdrop-filter:blur(8px)">
+    <span>📋 <span class="task-alarm-text">You have open tasks from Batch Manager</span></span>
+    <button onclick="document.getElementById('bsupTaskAlarm').style.display='none'" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:3px 10px;cursor:pointer;font-size:12px">Dismiss</button>
+  </div>
   <div class="app-shell">
     <div class="topbar">
       <div class="topbar-brand"><div id="bsup_logo" style="display:flex;align-items:center;gap:11px"><svg width="40" height="40" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;display:block"><defs><linearGradient id="lg4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFAA6A"/><stop offset="55%" stop-color="#E8590C"/><stop offset="100%" stop-color="#C04000"/></linearGradient><linearGradient id="lf4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="rgba(255,154,92,0.5)"/><stop offset="100%" stop-color="rgba(192,64,0,0.12)"/></linearGradient><filter id="fg4" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="url(#lf4)" stroke-width="1.8" stroke-linejoin="round"/><rect x="18" y="26" width="44" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/><line x1="40" y1="26" x2="40" y2="54" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/><path d="M31,40 A9,9 0 0 1 49,40" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="40" cy="40" r="4.5" fill="url(#lg4)" filter="url(#fg4)"/><circle cx="40" cy="40" r="1.8" fill="#080808"/></svg><div style="display:flex;flex-direction:column;line-height:1;gap:3px"><span style="font-family:Inter,-apple-system,sans-serif;font-size:15px;font-weight:700;letter-spacing:3.5px;color:var(--t-1)">FIELD</span><span style="font-family:Inter,-apple-system,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span></div></div></div>
