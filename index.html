@@ -3276,7 +3276,10 @@ function bmShowTab(tab){
   const navEl = document.getElementById('bm_nav_'+tab);
   if(navEl) navEl.classList.add('active');
 
-  if(tab === 'batches') bmRenderBatches();
+  if(tab === 'batches'){
+    BM._filtersActive = false;
+    bmRenderBatches();
+  }
   if(tab === 'assign')  bmRenderAssign();
   if(tab === 'attendance') bmRenderAttendanceFilters();
   if(tab === 'tasks')   bmRenderTasks();
@@ -3307,12 +3310,19 @@ function bmInitFilters(){
 }
 
 // ── Page 1: Batches ───────────────────────────────────────────
+function bmGetFilterValue(id){
+  // Reads value from either a plain select or an nx-wrapped one
+  const el = document.getElementById(id);
+  if(!el) return 'all';
+  return el.value || 'all';
+}
+
 function bmApplyFilters(){
   const search = (document.getElementById('bm_search')||{}).value||'';
-  const batch  = (document.getElementById('bm_filter_batch')&&document.getElementById('bm_filter_batch').value)||'all';
-  const status = (document.getElementById('bm_filter_status')&&document.getElementById('bm_filter_status').value)||'all';
-  const tier   = (document.getElementById('bm_filter_tier')&&document.getElementById('bm_filter_tier').value)||'all';
-  const sup    = (document.getElementById('bm_filter_sup')&&document.getElementById('bm_filter_sup').value)||'all';
+  const batch  = bmGetFilterValue('bm_filter_batch');
+  const status = bmGetFilterValue('bm_filter_status');
+  const tier   = bmGetFilterValue('bm_filter_tier');
+  const sup    = bmGetFilterValue('bm_filter_sup');
   const from   = (document.getElementById('bm_filter_from')||{}).value||'';
   const to     = (document.getElementById('bm_filter_to')||{}).value||'';
 
@@ -3320,19 +3330,31 @@ function bmApplyFilters(){
     if(search && !(t.name||'').toLowerCase().includes(search.toLowerCase()) &&
        String(t.trainingCode||'').indexOf(search)<0) return false;
     if(batch !== 'all' && t.batchName !== batch) return false;
-    const ts = (BM.tsStatuses[t.trainingCode]||{}).status||'In Training';
+    const ts = (BM.tsStatuses[String(t.trainingCode)]||{}).status||'In Training';
     if(status !== 'all' && ts !== status) return false;
-    if(tier !== 'all' && t.tier !== tier) return false;
-    // Sup filter — check assignments
-    if(sup !== 'all'){
-      const assigned = bmGetTraineeSup(t.trainingCode);
-      if(assigned !== sup) return false;
-    }
-    // Time range filter on acceptedAt
+    if(tier !== 'all' && (t.tier||'').trim() !== tier) return false;
+    if(sup !== 'all' && (t.supervisor||'') !== sup) return false;
     if(from && t.acceptedAt && t.acceptedAt < from) return false;
     if(to   && t.acceptedAt && t.acceptedAt > to)   return false;
     return true;
   });
+  BM._filtersActive = true;
+  bmRenderBatches();
+}
+
+// Aliases for the HTML buttons
+function bmApplyBatchFilters(){ bmApplyFilters(); }
+function bmClearBatchFilters(){
+  ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el){ el.value = 'all'; el.dispatchEvent(new Event('change')); }
+  });
+  ['bm_filter_from','bm_filter_to','bm_search'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  BM.filtered = [...BM.trainees];
+  BM._filtersActive = false;
   bmRenderBatches();
 }
 
@@ -3348,7 +3370,8 @@ function bmGetTraineeSup(code){
 }
 
 function bmRenderBatches(){
-  if(!BM.filtered.length) BM.filtered = [...BM.trainees];
+  // If no explicit filter applied yet, show all trainees
+  if(!BM._filtersActive && !BM.filtered.length) BM.filtered = [...BM.trainees];
   // Stats
   const total = BM.filtered.length;
   const byStatus = {};
