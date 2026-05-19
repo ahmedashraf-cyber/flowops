@@ -2961,6 +2961,11 @@ function bmSyncSlider(source, val){
   if(source !== 'max'    && valEl)  valEl.value  = n;
 }
 
+function bmTogglePreviewRow(el){
+  var next = el.nextElementSibling;
+  if(next) next.style.display = next.style.display === 'none' ? 'block' : 'none';
+}
+
 function bmPreviewAssignment(){
   const batchSel = document.getElementById('bm_assign_batch');
   const batch = batchSel ? batchSel.value : '';
@@ -3045,7 +3050,7 @@ function bmPreviewAssignment(){
         '</tr>'
       ).join('');
       return '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:14px;overflow:hidden;margin-bottom:10px">'+
-        '<div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--bg-3)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">'+
+        '<div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--bg-3)" onclick="bmTogglePreviewRow(this)">'+
           '<div style="display:flex;align-items:center;gap:10px">'+
             '<span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:800;color:var(--t-1)">'+sg.code+'</span>'+
             '<span style="font-size:11px;color:#30D158">Top:'+topN+'</span>'+
