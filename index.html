@@ -2646,6 +2646,11 @@ function bmPopulateFilters(){
     if(wrap){ const lbl=wrap.querySelector('.nx-label'); const o=sel.options[sel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
   });
 
+  // Also populate edit task batch select
+  const editBatchSel = document.getElementById('bm_edit_task_batch');
+  if(editBatchSel){
+    editBatchSel.innerHTML = '<option value="all">All Batches</option>' + batches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  }
   const supSel = document.getElementById('bm_filter_sup');
   if(supSel){
     const prev = supSel.value;
@@ -3261,36 +3266,59 @@ function bmRenderTasks(){
   if(!filtered.length){ container.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No tasks yet. Create one above.</div>'; return; }
 
   const today = new Date().toISOString().slice(0,10);
-  container.innerHTML = filtered.map(task => {
+    // Build cards using DOM — no onclick string injection
+  container.innerHTML = '';
+  filtered.forEach(task => {
     const isClosed = task.status==='closed';
     const isOverdue = !isClosed && task.dueDate && task.dueDate < today;
-    const roleLabels = (task.assignees||[]).map(r=>r==='coordinator'?'📊 Coord':r==='batchsup'?'👔 BSup':r).join(' · ');
+    const roleLabels = (task.assignees||[]).map(r=>r==='coordinator'?'📊 Coord':r==='batchsup'?'👔 All BSups':r).join(' · ');
     const borderCol = isClosed?'var(--b-1)':isOverdue?'rgba(255,69,58,0.4)':'rgba(232,89,12,0.3)';
-    return '<div style="background:var(--bg-2);border:1.5px solid '+borderCol+';border-radius:16px;padding:18px 20px">'+
+    const statusBadge = isClosed
+      ? '<span style="background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Closed</span>'
+      : isOverdue
+      ? '<span style="background:rgba(255,69,58,0.12);color:#FF453A;border:1px solid rgba(255,69,58,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Overdue</span>'
+      : '<span style="background:rgba(232,89,12,0.12);color:var(--p2);border:1px solid rgba(232,89,12,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Open</span>';
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--bg-2);border:1.5px solid '+borderCol+';border-radius:16px;padding:18px 20px';
+    card.innerHTML =
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">'+
-        '<div style="flex:1">'+
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
             '<span style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--t-3)">#'+task.id.slice(-6).toUpperCase()+'</span>'+
-            (isClosed?'<span style="background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Closed</span>':
-             isOverdue?'<span style="background:rgba(255,69,58,0.12);color:#FF453A;border:1px solid rgba(255,69,58,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Overdue</span>':
-             '<span style="background:rgba(232,89,12,0.12);color:var(--p2);border:1px solid rgba(232,89,12,0.3);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">Open</span>')+
-          '</div>'+
+            statusBadge+'</div>'+
           '<div style="font-size:15px;font-weight:700;color:var(--t-1);margin-bottom:4px">'+task.name+'</div>'+
           (task.description?'<div style="font-size:12px;color:var(--t-3);margin-bottom:8px">'+task.description+'</div>':'')+
-          '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--t-3)">'+
-            '<span>👤 '+roleLabels+'</span>'+
-            (task.batch&&task.batch!=='all'?'<span>📦 '+task.batch+'</span>':'')+
-            (task.dueDate?'<span style="color:'+(isOverdue?'#FF453A':'var(--t-3)')+'">📅 Due '+task.dueDate+'</span>':'')+
-            '<span>🕒 '+task.createdAt.slice(0,10)+'</span>'+
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'+
+            '<span style="padding:3px 10px;border-radius:20px;background:var(--bg-3);font-size:11px;color:var(--t-2)">👤 '+roleLabels+'</span>'+
+            (task.batch&&task.batch!=='all'?'<span style="padding:3px 10px;border-radius:20px;background:var(--bg-3);font-size:11px;color:var(--t-2)">📦 '+task.batch+'</span>':'')+
+            (task.dueDate?'<span style="padding:3px 10px;border-radius:20px;background:'+(isOverdue?'rgba(255,69,58,0.1)':'var(--bg-3)')+';font-size:11px;color:'+(isOverdue?'#FF453A':'var(--t-2)')+'">📅 '+task.dueDate+'</span>':'')+
+            '<span style="padding:3px 10px;border-radius:20px;background:var(--bg-3);font-size:11px;color:var(--t-3)">🕒 '+task.createdAt.slice(0,10)+'</span>'+
           '</div>'+
         '</div>'+
-        '<div style="display:flex;gap:8px">'+
-          (!isClosed?'<button onclick="bmCloseTask(\''+task.id+'\')" style="padding:6px 14px;border-radius:10px;background:rgba(48,209,88,0.1);color:#30D158;border:1px solid rgba(48,209,88,0.3);font-size:12px;font-weight:700;cursor:pointer">✓ Close</button>':'')+
-          '<button onclick="bmDeleteTask(\''+task.id+'\')" style="padding:6px 12px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1px solid rgba(255,69,58,0.3);font-size:12px;cursor:pointer">🗑</button>'+
-        '</div>'+
-      '</div>'+
-    '</div>';
-  }).join('');
+        '<div class="task_action_btns" style="display:flex;gap:8px;flex-shrink:0;align-items:flex-start"></div>'+
+      '</div>';
+
+    const btns = card.querySelector('.task_action_btns');
+    if(!isClosed){
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️ Edit';
+      editBtn.style.cssText = 'padding:6px 12px;border-radius:10px;background:rgba(10,132,255,0.1);color:#0A84FF;border:1px solid rgba(10,132,255,0.3);font-size:12px;font-weight:600;cursor:pointer';
+      editBtn.addEventListener('click', function(){ bmOpenEditTask(task.id); });
+      btns.appendChild(editBtn);
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = '✓ Close';
+      closeBtn.style.cssText = 'padding:6px 12px;border-radius:10px;background:rgba(48,209,88,0.1);color:#30D158;border:1px solid rgba(48,209,88,0.3);font-size:12px;font-weight:700;cursor:pointer';
+      closeBtn.addEventListener('click', function(){ bmCloseTask(task.id); });
+      btns.appendChild(closeBtn);
+    }
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '🗑';
+    delBtn.style.cssText = 'padding:6px 10px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1px solid rgba(255,69,58,0.3);font-size:12px;cursor:pointer';
+    delBtn.addEventListener('click', function(){ bmDeleteTask(task.id); });
+    btns.appendChild(delBtn);
+    container.appendChild(card);
+  });
 }
 
 function bmOpenNewTask(){
@@ -3350,17 +3378,70 @@ async function bmCreateTask(){
   } catch(e){ alert('Error creating task: '+e.message); }
 }
 
+function bmOpenEditTask(id){
+  const task = BM.tasks.find(t=>t.id===id);
+  if(!task) return;
+  const modal = document.getElementById('bm_edit_task_modal');
+  if(!modal) return;
+  document.getElementById('bm_edit_task_id').value = id;
+  document.getElementById('bm_edit_task_name').value = task.name||'';
+  document.getElementById('bm_edit_task_desc').value = task.description||'';
+  document.getElementById('bm_edit_task_due').value = task.dueDate||'';
+  // Set assignee buttons
+  document.querySelectorAll('#bm_edit_task_assignees button').forEach(b=>{
+    const on = (task.assignees||[]).includes(b.dataset.role);
+    b.dataset.on = on?'1':'0';
+    b.style.background = on?'rgba(232,89,12,0.12)':'transparent';
+    b.style.borderColor = on?'rgba(232,89,12,0.4)':'var(--b-1)';
+    b.style.color = on?'var(--p2)':'var(--t-2)';
+  });
+  // Set batch
+  const batchSel = document.getElementById('bm_edit_task_batch');
+  if(batchSel){ batchSel.value = task.batch||'all'; const w=batchSel.closest('.nx-select-wrap'); if(w){const l=w.querySelector('.nx-label');const o=batchSel.options[batchSel.selectedIndex];if(l&&o)l.textContent=o.text;} }
+  modal.style.display='flex';
+  setTimeout(nxDateInit,50);
+}
+
+async function bmSaveEditTask(){
+  const id = document.getElementById('bm_edit_task_id').value;
+  const task = BM.tasks.find(t=>t.id===id);
+  if(!task) return;
+  const oldAssignees = [...(task.assignees||[])];
+  const name = document.getElementById('bm_edit_task_name').value.trim();
+  const description = document.getElementById('bm_edit_task_desc').value.trim();
+  const dueDate = document.getElementById('bm_edit_task_due').value||'';
+  const newAssignees = Array.from(document.querySelectorAll('#bm_edit_task_assignees button')).filter(b=>b.dataset.on==='1').map(b=>b.dataset.role);
+  const batch = document.getElementById('bm_edit_task_batch').value||'all';
+  if(!name){ alert('Name required'); return; }
+  if(!newAssignees.length){ alert('Select at least one assignee'); return; }
+  const updates = { name, description, dueDate, assignees:newAssignees, batch };
+  try {
+    await fbDb.collection('bm_tasks').doc(id).update(updates);
+    Object.assign(task, updates);
+    // Remove old notifications and create new ones
+    const oldSnap = await fbDb.collection('batch_notifications').where('taskId','==',id).get();
+    for(const d of oldSnap.docs) await d.ref.delete();
+    const now = new Date().toISOString();
+    for(const role of newAssignees){
+      await fbDb.collection('batch_notifications').add({
+        type:'task', taskId:id, taskName:name, dueDate, batch, forRole:role,
+        status:'open', createdAt:now, createdBy:A.user?A.user.email:'', seen:false
+      });
+    }
+    document.getElementById('bm_edit_task_modal').style.display='none';
+    bmRenderTasks(); bmUpdateTaskAlarm();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
 async function bmCloseTask(id){
   if(!confirm('Close this task? Assignees will stop seeing the alarm.')) return;
   try {
     await fbDb.collection('bm_tasks').doc(id).update({ status:'closed', closedAt:new Date().toISOString() });
-    // Update notification
     const notifSnap = await fbDb.collection('batch_notifications').where('taskId','==',id).get();
     for(const d of notifSnap.docs){ await d.ref.update({status:'closed'}); }
     const t = BM.tasks.find(t=>t.id===id);
     if(t) t.status='closed';
-    bmRenderTasks();
-    bmUpdateTaskAlarm();
+    bmRenderTasks(); bmUpdateTaskAlarm();
   } catch(e){ alert('Error: '+e.message); }
 }
 
@@ -3368,9 +3449,11 @@ async function bmDeleteTask(id){
   if(!confirm('Delete this task permanently?')) return;
   try {
     await fbDb.collection('bm_tasks').doc(id).delete();
+    // Remove from batch_notifications so assignees stop seeing it
+    const notifSnap = await fbDb.collection('batch_notifications').where('taskId','==',id).get();
+    for(const d of notifSnap.docs) await d.ref.delete();
     BM.tasks = BM.tasks.filter(t=>t.id!==id);
-    bmRenderTasks();
-    bmUpdateTaskAlarm();
+    bmRenderTasks(); bmUpdateTaskAlarm();
   } catch(e){ alert('Error: '+e.message); }
 }
 
@@ -8610,6 +8693,46 @@ function btQuickAssignAll(){
 </div>
 
 <!-- BM NEW TASK MODAL -->
+<!-- Edit Task Modal -->
+<div id="bm_edit_task_modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg-1);border:1px solid var(--b-1);border-radius:20px;padding:28px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h3 style="margin:0;font-size:16px;font-weight:700">Edit Task</h3>
+      <button onclick="document.getElementById('bm_edit_task_modal').style.display='none'" style="background:none;border:none;color:var(--t-3);font-size:20px;cursor:pointer;padding:0">×</button>
+    </div>
+    <input type="hidden" id="bm_edit_task_id"/>
+    <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Task Name</label>
+        <input type="text" id="bm_edit_task_name" style="width:100%;padding:10px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;box-sizing:border-box"/>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Description</label>
+        <textarea id="bm_edit_task_desc" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none;resize:none;box-sizing:border-box"></textarea>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Assign To</label>
+        <div id="bm_edit_task_assignees" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" data-role="coordinator" data-on="0" onclick="bmToggleAssignee(this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer">📊 Batch Coordinator</button>
+          <button type="button" data-role="batchsup" data-on="0" onclick="bmToggleAssignee(this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer">👔 All Batch Supervisors</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Batch</label>
+        <select id="bm_edit_task_batch"><option value="all">All Batches</option></select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Due Date</label>
+        <input type="date" id="bm_edit_task_due" style="width:100%;box-sizing:border-box"/>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('bm_edit_task_modal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="bmSaveEditTask()" style="flex:2;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <div id="bm_task_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:480px;max-width:95vw;border:1px solid var(--b-1)">
     <h3 style="margin:0 0 20px;font-size:16px">New Task</h3>
