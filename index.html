@@ -2524,26 +2524,14 @@ async function initBMDashboard(){
   bmLoadTasks();
   setTimeout(nxDateInit, 100);
   setTimeout(function(){
-    // Filter selects — pass onChange that updates BM.filters directly
-    var filterMap = {
-      'bm_filter_batch':  'batch',
-      'bm_filter_status': 'status',
-      'bm_filter_tier':   'tier',
-      'bm_filter_sup':    'sup'
-    };
-    Object.keys(filterMap).forEach(function(id){
-      var sel = document.getElementById(id);
-      if(!sel) return;
-      var key = filterMap[id];
-      nxWrapSelect(sel, function(val){ BM.filters[key] = val; });
-    });
-    // Other selects without onChange tracking
+    // Wrap non-filter selects with nx (filter selects use native, have data-nx-skip)
     ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
      'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
      'bm_edit_status','bm_edit_phase'].forEach(function(id){
       var sel = document.getElementById(id);
       if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
     });
+    nxDateInit();
   }, 150);
 }
 
@@ -3244,46 +3232,6 @@ const BM_SUPS = [
 const BM_TS_STATUSES = ['In Training','Distributed','Leaving - Fired','Leaving - Resigned',
   'Leaving - Stopped','Leaving - Suspended','Completed','On Hold'];
 
-// ── Init (this definition runs — it overrides the one above) ──
-async function initBMDashboard(){
-  await bmLoadAllData();
-  bmShowTab('batches');
-  bmPopulateFilters();
-  bmRenderBatchTable();
-  bmLoadTasks();
-  bmRenderAlarm();
-  setTimeout(function(){
-    // Wire filter selects with onChangeFn that updates BM.filters
-    var filterMap = {
-      'bm_filter_batch':  'batch',
-      'bm_filter_status': 'status',
-      'bm_filter_tier':   'tier',
-      'bm_filter_sup':    'sup'
-    };
-    Object.keys(filterMap).forEach(function(id){
-      var sel = document.getElementById(id);
-      if(!sel) return;
-      var key = filterMap[id];
-      if(sel.dataset.nxWrapped) {
-        // Already wrapped — find wrapper and re-attach with correct onChangeFn
-        var wrap = sel.closest('.nx-select-wrap');
-        if(wrap) wrap._bmFilterKey = key;
-        // Override: listen for native change event as backup
-        sel.addEventListener('change', function(){ BM.filters[key] = sel.value; });
-      } else {
-        nxWrapSelect(sel, function(val){ BM.filters[key] = val; });
-      }
-    });
-    // Non-filter selects
-    ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
-     'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
-     'bm_edit_status','bm_edit_phase'].forEach(function(id){
-      var sel = document.getElementById(id);
-      if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
-    });
-    nxDateInit();
-  }, 200);
-}
 
 async function bmLoadData(){
   if(!fbDb) return;
