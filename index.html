@@ -2517,10 +2517,10 @@ setTimeout(nxDateInit, 200);
 async function initBMDashboard(){
   injectLogos();
   bmShowTab('batches');
-  bmRenderSupList();
   await bmLoadAllData();
   bmPopulateFilters();
   bmRenderBatchTable();
+  bmRenderSupList();
   bmLoadTasks();
   setTimeout(nxDateInit, 100);
   setTimeout(function(){
@@ -2573,6 +2573,7 @@ async function bmLoadAllData(){
       });
     });
   } catch(e){ console.warn('BM trainees load:', e); }
+  console.log('[BM] Trainees loaded:', BM.trainees.length);
 
   // ── Overlay supervisor from bm_assignments (keyed by supervisorCode) ──
   try {
@@ -2798,7 +2799,7 @@ function bmRenderSupList(){
   const container = document.getElementById('bm_sup_list');
   if(!container) return;
   const counts = {};
-  Object.values(BM.supAssignments).forEach(arr => {
+  Object.values(BM.supAssignments||{}).forEach(arr => {
     if(Array.isArray(arr)) arr.forEach(a => { counts[a.supCode] = (counts[a.supCode]||0)+1; });
   });
   container.innerHTML = BM_SUPS.map(code => {
@@ -3217,6 +3218,7 @@ const BM = {
   tsData: {},
   attendance: {},
   assignments: {},
+  supAssignments: {},
   tickets: [],
   filtered: [],
   activeTab: 'batches',
