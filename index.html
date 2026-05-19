@@ -3227,21 +3227,44 @@ const BM_SUPS = [
 const BM_TS_STATUSES = ['In Training','Distributed','Leaving - Fired','Leaving - Resigned',
   'Leaving - Stopped','Leaving - Suspended','Completed','On Hold'];
 
-// ── Init ─────────────────────────────────────────────────────
+// ── Init (this definition runs — it overrides the one above) ──
 async function initBMDashboard(){
-  await bmLoadData();
+  await bmLoadAllData();
   bmShowTab('batches');
-  bmInitFilters();
+  bmPopulateFilters();
+  bmRenderBatchTable();
+  bmLoadTasks();
   bmRenderAlarm();
-  // Init nx selects for BM
-  setTimeout(()=>{
-    document.querySelectorAll('#bmScreen select[style*="display:none"]').forEach(sel=>{
-      if(!sel.closest('.nx-select-wrap') && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+  setTimeout(function(){
+    // Wire filter selects with onChangeFn that updates BM.filters
+    var filterMap = {
+      'bm_filter_batch':  'batch',
+      'bm_filter_status': 'status',
+      'bm_filter_tier':   'tier',
+      'bm_filter_sup':    'sup'
+    };
+    Object.keys(filterMap).forEach(function(id){
+      var sel = document.getElementById(id);
+      if(!sel) return;
+      var key = filterMap[id];
+      if(sel.dataset.nxWrapped) {
+        // Already wrapped — find wrapper and re-attach with correct onChangeFn
+        var wrap = sel.closest('.nx-select-wrap');
+        if(wrap) wrap._bmFilterKey = key;
+        // Override: listen for native change event as backup
+        sel.addEventListener('change', function(){ BM.filters[key] = sel.value; });
+      } else {
+        nxWrapSelect(sel, function(val){ BM.filters[key] = val; });
+      }
     });
-    document.querySelectorAll('#bmScreen select:not([style*="display:none"])').forEach(sel=>{
-      if(!sel.closest('.nx-select-wrap') && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    // Non-filter selects
+    ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
+     'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
+     'bm_edit_status','bm_edit_phase'].forEach(function(id){
+      var sel = document.getElementById(id);
+      if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
     });
-    setTimeout(nxDateInit, 50);
+    nxDateInit();
   }, 200);
 }
 
@@ -6395,12 +6418,16 @@ function nxWrapSelect(sel, onChangeFn){
       opt.addEventListener('mousedown',function(ev){
         ev.preventDefault(); ev.stopPropagation();
         sel.selectedIndex = parseInt(opt.dataset.i);
-        sel.value = sel.options[parseInt(opt.dataset.i)].value; // force value update
-        wrap.dataset.nxValue = sel.value; // cache in wrapper for reliable reads
+        sel.value = sel.options[parseInt(opt.dataset.i)].value;
+        wrap.dataset.nxValue = sel.value;
         syncLabel();
         closeAllDropdowns();
         if(onChangeFn) onChangeFn(sel.value);
-        else sel.dispatchEvent(new Event('change',{bubbles:true}));
+        else {
+          // Check if this is a BM filter select
+          if(wrap._bmFilterKey) BM.filters[wrap._bmFilterKey] = sel.value;
+          sel.dispatchEvent(new Event('change',{bubbles:true}));
+        }
       });
       opt.addEventListener('mouseenter',function(){opt.style.background='rgba(255,255,255,0.06)';opt.style.color='rgba(255,255,255,0.9)';});
       opt.addEventListener('mouseleave',function(){opt.style.background='';opt.style.color=opt.classList.contains('selected')?'#FF8040':'rgba(255,255,255,0.55)';});
