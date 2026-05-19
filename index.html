@@ -2630,11 +2630,20 @@ function bmPopulateFilters(){
   }
 }
 
+function nxSelectValue(id){
+  const el = document.getElementById(id);
+  if(!el) return 'all';
+  // Try nxValue cached in wrapper first (most reliable after nx selection)
+  const wrap = el.closest('.nx-select-wrap');
+  if(wrap && wrap.dataset.nxValue !== undefined) return wrap.dataset.nxValue || el.value || 'all';
+  return el.value || 'all';
+}
+
 function bmGetFilteredTrainees(){
-  const batch  = (document.getElementById('bm_filter_batch')||{}).value || 'all';
-  const status = (document.getElementById('bm_filter_status')||{}).value || 'all';
-  const tier   = (document.getElementById('bm_filter_tier')||{}).value || 'all';
-  const sup    = (document.getElementById('bm_filter_sup')||{}).value || 'all';
+  const batch  = nxSelectValue('bm_filter_batch');
+  const status = nxSelectValue('bm_filter_status');
+  const tier   = nxSelectValue('bm_filter_tier');
+  const sup    = nxSelectValue('bm_filter_sup');
   const from   = (document.getElementById('bm_filter_from')||{}).value || '';
   const to     = (document.getElementById('bm_filter_to')||{}).value || '';
 
@@ -2657,9 +2666,15 @@ function bmApplyBatchFilters(){ bmRenderBatchTable(); }
 function bmClearBatchFilters(){
   ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup'].forEach(id => {
     const el = document.getElementById(id);
-    if(el){ el.value = el.options[0]&&el.options[0].value==='all'?'all':''; }
-    const wrap = el && el.closest('.nx-select-wrap');
-    if(wrap){ const lbl=wrap.querySelector('.nx-label'); if(lbl&&el) lbl.textContent=el.options[0].text; }
+    if(!el) return;
+    el.selectedIndex = 0;
+    el.value = el.options[0] ? el.options[0].value : 'all';
+    const wrap = el.closest('.nx-select-wrap');
+    if(wrap){ 
+      wrap.dataset.nxValue = 'all';
+      const lbl = wrap.querySelector('.nx-label'); 
+      if(lbl) lbl.textContent = el.options[0] ? el.options[0].text : 'All'; 
+    }
   });
   ['bm_filter_from','bm_filter_to'].forEach(id => {
     const el = document.getElementById(id);
@@ -6367,6 +6382,8 @@ function nxWrapSelect(sel, onChangeFn){
       opt.addEventListener('mousedown',function(ev){
         ev.preventDefault(); ev.stopPropagation();
         sel.selectedIndex = parseInt(opt.dataset.i);
+        sel.value = sel.options[parseInt(opt.dataset.i)].value; // force value update
+        wrap.dataset.nxValue = sel.value; // cache in wrapper for reliable reads
         syncLabel();
         closeAllDropdowns();
         if(onChangeFn) onChangeFn(sel.value);
@@ -6431,6 +6448,8 @@ function initNxSelects(){
           ev.preventDefault();
           ev.stopPropagation();
           sel.selectedIndex=parseInt(opt.dataset.i);
+          sel.value = sel.options[parseInt(opt.dataset.i)].value;
+          wrap.dataset.nxValue = sel.value;
           syncLabel();
           closeAllDropdowns();
           if(fn&&typeof window[fn]==='function')window[fn]();
