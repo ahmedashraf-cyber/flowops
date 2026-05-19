@@ -2522,9 +2522,16 @@ async function initBMDashboard(){
   bmRenderBatchTable();
   bmRenderSupList();
   bmLoadTasks();
-  setTimeout(nxDateInit, 100);
   setTimeout(function(){
-    // Wrap non-filter selects with nx (filter selects use native, have data-nx-skip)
+    // Wrap filter selects with nx AFTER population — pass onChangeFn to update BM.filters
+    var filterMap = {'bm_filter_batch':'batch','bm_filter_status':'status','bm_filter_tier':'tier','bm_filter_sup':'sup'};
+    Object.keys(filterMap).forEach(function(id){
+      var sel = document.getElementById(id);
+      if(!sel || sel.dataset.nxWrapped) return;
+      var key = filterMap[id];
+      nxWrapSelect(sel, function(val){ BM.filters[key] = val; });
+    });
+    // Non-filter selects
     ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
      'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
      'bm_edit_status','bm_edit_phase'].forEach(function(id){
@@ -2622,11 +2629,14 @@ function bmPopulateFilters(){
   ['bm_filter_batch','bm_att_batch','bm_assign_batch','bm_task_batch'].forEach(id => {
     const sel = document.getElementById(id);
     if(!sel) return;
-    const prev = sel.value; // preserve current selection
+    const prev = sel.value;
     const isAssign = id === 'bm_assign_batch';
     sel.innerHTML = (isAssign ? '<option value="">— Select batch —</option>' : '<option value="all">All Batches</option>') +
       batches.map(b => '<option value="'+b+'"'+(b===prev?' selected':'')+'>'+b+'</option>').join('');
-    if(prev && prev !== 'all') sel.value = prev; // restore
+    if(prev && prev !== 'all') sel.value = prev;
+    // Re-sync nx label if already wrapped
+    const wrap = sel.closest('.nx-select-wrap');
+    if(wrap){ const lbl=wrap.querySelector('.nx-label'); const o=sel.options[sel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
   });
 
   const supSel = document.getElementById('bm_filter_sup');
@@ -6322,8 +6332,6 @@ function maExportExcel(){
 var _nxOpenWrap = null;
 
 function nxWrapSelect(sel, onChangeFn){
-  // Skip filter selects that use native styling, or already wrapped
-  if(sel.dataset.nxSkip === '1') return;
   if(sel.closest('.nx-select-wrap') || sel.dataset.nxWrapped) return;
   sel.dataset.nxWrapped = '1';
   sel.style.display = 'none';
@@ -8066,11 +8074,11 @@ function btQuickAssignAll(){
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
-            <select id="bm_filter_batch" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1"><option value="all">All Batches</option></select>
+            <select id="bm_filter_batch"><option value="all">All Batches</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
-            <select id="bm_filter_status" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1">
+            <select id="bm_filter_status">
               <option value="all">All Statuses</option>
               <option value="In Training">In Training</option>
               <option value="Distributed">Distributed</option>
@@ -8080,7 +8088,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Tier</label>
-            <select id="bm_filter_tier" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1">
+            <select id="bm_filter_tier">
               <option value="all">All Tiers</option>
               <option value="Top">Top</option>
               <option value="Mid">Mid</option>
@@ -8089,7 +8097,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Supervisor</label>
-            <select id="bm_filter_sup" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1"><option value="all">All Supervisors</option></select>
+            <select id="bm_filter_sup"><option value="all">All Supervisors</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated From</label>
