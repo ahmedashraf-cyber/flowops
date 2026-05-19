@@ -3810,48 +3810,28 @@ async function loadBsupTrainees(){
     let allTrainees = [];
 
     if(supCode){
-      // Primary path: BM has assigned trainees to this supervisor by code
+      // Only source: trainees assigned by Batch Manager
       const bmSnap = await fbDb.collection('accepted_trainees').get();
       bmSnap.forEach(doc => {
         const d = doc.data();
         if(d.supervisorCode === supCode && d.trainees){
           d.trainees.forEach(t => {
             allTrainees.push({
-              name:          t.name || t.nameEn || '',
-              nameAr:        t.nameAr || '',
-              pts:           t.pts,
-              tier:          t.tier,
-              batchName:     t.batchName || d.batchName || '',
-              status:        t.status || 'Accepted',
-              trainingCode:  t.trainingCode || null
+              name:         t.name || t.nameEn || '',
+              nameAr:       t.nameAr || '',
+              pts:          t.pts,
+              tier:         t.tier,
+              batchName:    t.batchName || d.batchName || '',
+              status:       t.status || 'Accepted',
+              trainingCode: t.trainingCode || null
             });
           });
         }
       });
     }
 
-    if(!allTrainees.length){
-      // Fallback: read directly from coordinator's batch_notifications
-      // (used when BM hasn't assigned yet, or supervisor has no code set)
-      const snap = await fbDb.collection('batch_notifications')
-        .where('type','==','end_of_batch')
-        .get();
-      snap.forEach(doc => {
-        const data = doc.data();
-        if(data.acceptedCandidates && Array.isArray(data.acceptedCandidates)){
-          data.acceptedCandidates.forEach(t => {
-            allTrainees.push({
-              ...t,
-              batchName: data.batchName,
-              notifId:   doc.id,
-              trainingCode: null
-            });
-          });
-        }
-      });
-    }
-
-    // Deduplicate by name+batch
+    // No fallback — data only comes from BM assignment
+    // If BM hasn't assigned yet, BSup sees empty state
     const seen = new Set();
     BSUP.trainees = allTrainees.filter(t => {
       const key = (t.name||'') + '|' + (t.batchName||'');
@@ -3863,9 +3843,13 @@ async function loadBsupTrainees(){
     renderBsupTable();
     populateBsupBatchFilter();
     populateBsupGroupBatch();
-    if(BSUP.trainees.length > 0){
-      const src = supCode ? 'assigned by Batch Manager' : 'from coordinator';
-      addBsupNotif('Data loaded', BSUP.trainees.length + ' trainees loaded (' + src + ')', 'orange');
+
+    if(!supCode){
+      addBsupNotif('Waiting for assignment', 'Your supervisor code is not set. Contact your Batch Manager.', 'orange');
+    } else if(allTrainees.length > 0){
+      addBsupNotif('Data loaded', allTrainees.length + ' trainees assigned by Batch Manager', 'orange');
+    } else {
+      addBsupNotif('No trainees yet', 'Batch Manager has not assigned trainees to your code yet.', 'orange');
     }
   } catch(e){
     console.error('loadBsupTrainees failed:', e);
