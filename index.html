@@ -3867,29 +3867,6 @@ function bmGeneratePreview(batchName){
   if(summary) summary.textContent = `${interleaved.length} trainees → ${supsToUse.length} supervisors · ~${count} each · Fairness: tier-balanced + score-balanced`;
 }
 
-async function bmConfirmAssignment(){
-  if(!BM._pendingAssign) return;
-  const { batchName, dist } = BM._pendingAssign;
-  const btn = document.getElementById('bm_assign_confirm_btn');
-  btn.textContent = 'Saving...'; btn.disabled = true;
-  const now = new Date().toISOString();
-  const payload = { batchName, assignments: dist, savedBy: A.user.email, savedAt: now };
-  if(fbDb){
-    const key = 'batch_'+batchName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();
-    await fbDb.collection('bm_assignments').doc(key).set(payload);
-    // Push trainees to each sup's accepted_trainees subcollection
-    for(const [sup, trainees] of Object.entries(dist)){
-      await fbDb.collection('accepted_trainees').doc('sup_'+sup.replace(/-/g,'_')).set({
-        supervisorCode: sup, batchName, trainees, savedAt: now
-      }, {merge: true});
-    }
-  }
-  BM.assignments['batch_'+batchName.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase()] = payload;
-  btn.textContent = '✅ Saved!'; btn.disabled = false;
-  setTimeout(()=>{ btn.textContent='✅ Confirm & Save'; }, 2000);
-  document.getElementById('bm_assign_msg').textContent = '✅ Assigned and pushed to each supervisor\'s Accepted Trainees page.';
-  document.getElementById('bm_assign_msg').style.color = '#30D158';
-}
 
 // ── Page 3: Attendance (read-only) ────────────────────────────
 async function bmRenderAttendanceFilters(){
