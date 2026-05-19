@@ -2615,7 +2615,7 @@ function bmShowTab(tab){
   if(nav) nav.classList.add('active');
   if(tab === 'attendance') bmInitAttTab();
   if(tab === 'tasks') bmRenderTasks();
-  if(tab === 'assign') bmRenderSupList();
+  if(tab === 'assign'){ bmRenderSupList(); bmRenderSupSelector(); }
   setTimeout(nxDateInit, 80);
 }
 
@@ -2811,6 +2811,9 @@ async function bmSaveEditStatus(){
 // ══════════════════════════════════════════════════════════════
 // ASSIGN SUPERVISORS
 // ══════════════════════════════════════════════════════════════
+// Track selected supervisors for assignment
+BM.selectedSups = new Set();
+
 function bmRenderSupList(){
   const container = document.getElementById('bm_sup_list');
   if(!container) return;
@@ -2829,11 +2832,79 @@ function bmRenderSupList(){
   document.getElementById('bm_sup_summary').textContent = BM_SUPS.length+' supervisors · Target 30–40 each';
 }
 
+function bmRenderSupSelector(){
+  const container = document.getElementById('bm_sup_selector');
+  if(!container) return;
+  container.innerHTML = BM_SUPS.map(code => {
+    const isSel = BM.selectedSups.has(code);
+    return '<button onclick="bmToggleSup(''+code+'')" id="bmsup_'+code.replace('-','_')+'" style="'+
+      'padding:8px 10px;border-radius:10px;border:1.5px solid '+(isSel?'var(--p2)':'var(--b-1)')+';'+
+      'background:'+(isSel?'rgba(232,89,12,0.12)':'var(--bg-3)')+';'+
+      'color:'+(isSel?'var(--p2)':'var(--t-2)')+';'+
+      'font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s">'+
+      code+'</button>';
+  }).join('');
+  bmUpdateSupCount();
+}
+
+function bmToggleSup(code){
+  if(BM.selectedSups.has(code)) BM.selectedSups.delete(code);
+  else BM.selectedSups.add(code);
+  const btn = document.getElementById('bmsup_'+code.replace('-','_'));
+  if(btn){
+    const isSel = BM.selectedSups.has(code);
+    btn.style.border = '1.5px solid '+(isSel?'var(--p2)':'var(--b-1)');
+    btn.style.background = isSel?'rgba(232,89,12,0.12)':'var(--bg-3)';
+    btn.style.color = isSel?'var(--p2)':'var(--t-2)';
+  }
+  bmUpdateSupCount();
+}
+
+function bmSelectAllSups(select){
+  if(select) BM_SUPS.forEach(c => BM.selectedSups.add(c));
+  else BM.selectedSups.clear();
+  bmRenderSupSelector();
+}
+
+function bmUpdateSupCount(){
+  const n = BM.selectedSups.size;
+  const el = document.getElementById('bm_sup_selected_count');
+  if(el) el.textContent = n+' supervisor'+(n!==1?'s':'')+' selected'+(n>0?' — ready to assign':'');
+}
+
+function bmOnBatchSelect(batch){
+  if(!batch){ document.getElementById('bm_batch_recommendation').style.display='none'; return; }
+  const trainees = BM.trainees.filter(t => t.batchName === batch);
+  const total = trainees.length;
+  if(!total){ document.getElementById('bm_batch_recommendation').style.display='none'; return; }
+  const minSups = Math.ceil(total/40);
+  const maxSups = Math.ceil(total/30);
+  const idealSups = Math.round(total/35);
+  const recEl = document.getElementById('bm_batch_recommendation');
+  recEl.style.display = 'block';
+  recEl.innerHTML =
+    '<b style="color:var(--p2)">💡 Recommendation for '+batch+'</b><br>'+
+    total+' trainees · Need <b>'+minSups+'–'+maxSups+' supervisors</b> (ideal: <b>'+idealSups+'</b>)<br>'+
+    '<span style="color:var(--t-3)">Tap supervisors below or click Select All, then Preview</span>';
+  // Auto-update slider range
+  const slider = document.getElementById('bm_assign_count');
+  const valEl = document.getElementById('bm_assign_count_val');
+  if(slider){ slider.value = 35; if(valEl) valEl.value = 35; }
+}
+
+function bmSyncSlider(source, val){
+  const n = Math.max(1, Math.min(100, parseInt(val)||1));
+  const slider = document.getElementById('bm_assign_count');
+  const valEl  = document.getElementById('bm_assign_count_val');
+  if(source !== 'range'  && slider) slider.value = n;
+  if(source !== 'max'    && valEl)  valEl.value  = n;
+}
+
 function bmPreviewAssignment(){
   const batchSel = document.getElementById('bm_assign_batch');
   const batch = batchSel ? batchSel.value : '';
   if(!batch){ alert('Please select a batch first.'); return; }
-  const targetCount = parseInt(document.getElementById('bm_assign_count').value)||35;
+  const targetCount = parseInt((document.getElementById('bm_assign_count_val')||document.getElementById('bm_assign_count')||{}).value)||35;
 
   const pool = BM.trainees.filter(t => t.batchName === batch);
   if(!pool.length){ alert('No trainees found for '+batch); return; }
@@ -3540,7 +3611,11 @@ function bmGeneratePreview(batchName){
 
   // Distribute to sups in round-robin
   const needed = Math.ceil(interleaved.length / count);
-  const supsToUse = BM_SUPS.slice(0, needed);
+  // Use selected supervisors, or fall back to recommended count from BM_SUPS
+  const selSups = BM.selectedSups && BM.selectedSups.size > 0
+    ? [...BM.selectedSups]
+    : BM_SUPS.slice(0, needed);
+  const supsToUse = selSups;
   const dist = {};
   supsToUse.forEach(s => dist[s]=[]);
   interleaved.forEach((t,i) => {
@@ -8160,44 +8235,76 @@ function btQuickAssignAll(){
       <div id="bm_tab_assign" class="bm-tab" style="display:none">
         <div class="page-hdr" style="margin-bottom:20px">
           <h2>Assign Supervisors</h2>
-          <p>Distribute trainees fairly across batch supervisors — 30 to 40 per supervisor</p>
+          <p>Distribute trainees fairly across batch supervisors — tier &amp; score balanced</p>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 340px;gap:20px">
+        <div style="display:grid;grid-template-columns:1fr 320px;gap:20px">
           <!-- Left: config panel -->
-          <div>
-            <div class="card" style="padding:24px;margin-bottom:16px">
-              <h3 style="margin:0 0 16px;font-size:16px;font-weight:700">Assignment Setup</h3>
-              <div style="display:grid;gap:14px">
-                <div>
-                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Select Batch</label>
-                  <select id="bm_assign_batch"><option value="">— Select batch —</option></select>
-                </div>
-                <div>
-                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Trainees per Supervisor</label>
-                  <div style="display:flex;align-items:center;gap:12px">
-                    <input type="range" id="bm_assign_count" min="30" max="40" value="35" style="flex:1;accent-color:var(--p2)" oninput="document.getElementById('bm_assign_count_val').textContent=this.value"/>
-                    <span id="bm_assign_count_val" style="font-size:18px;font-weight:800;color:var(--p2);min-width:28px">35</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t-3);margin-top:2px"><span>30</span><span>40</span></div>
-                </div>
-                <div>
-                  <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:8px">Fairness Rules</label>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <div style="padding:6px 12px;border-radius:20px;background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.3);font-size:12px;color:var(--p2);font-weight:600">⚖️ Tier balance</div>
-                    <div style="padding:6px 12px;border-radius:20px;background:rgba(10,132,255,0.1);border:1px solid rgba(10,132,255,0.3);font-size:12px;color:#0A84FF;font-weight:600">📊 Score balance</div>
-                    <div style="padding:6px 12px;border-radius:20px;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);font-size:12px;color:#30D158;font-weight:600">🔀 Random shuffle</div>
-                  </div>
-                </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+
+            <!-- Step 1: Batch -->
+            <div class="card" style="padding:22px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">1</span>
+                <span style="font-size:14px;font-weight:700">Select Batch</span>
               </div>
-              <div style="display:flex;gap:10px;margin-top:20px">
-                <button onclick="bmPreviewAssignment()" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-1);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">👁 Preview</button>
-                <button onclick="bmConfirmAssignment()" id="bm_assign_confirm_btn" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;display:none">✅ Confirm &amp; Save</button>
-              </div>
-              <div id="bm_assign_msg" style="margin-top:12px;font-size:12px;color:var(--t-3)"></div>
+              <select id="bm_assign_batch" onchange="bmOnBatchSelect(this.value)"><option value="">— Select batch —</option></select>
+              <div id="bm_batch_recommendation" style="display:none;margin-top:12px;padding:12px 14px;background:rgba(232,89,12,0.08);border:1px solid rgba(232,89,12,0.25);border-radius:12px;font-size:12px;line-height:1.6;color:var(--t-2)"></div>
             </div>
 
-            <!-- Preview table -->
+            <!-- Step 2: Select Supervisors -->
+            <div class="card" style="padding:22px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">2</span>
+                  <span style="font-size:14px;font-weight:700">Select Supervisors</span>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button onclick="bmSelectAllSups(true)" style="padding:4px 12px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;font-weight:600;cursor:pointer">Select All</button>
+                  <button onclick="bmSelectAllSups(false)" style="padding:4px 12px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;font-weight:600;cursor:pointer">Clear</button>
+                </div>
+              </div>
+              <div id="bm_sup_selector" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">
+                <!-- populated by bmRenderSupSelector() -->
+              </div>
+              <div id="bm_sup_selected_count" style="margin-top:10px;font-size:12px;color:var(--t-3)">0 supervisors selected</div>
+            </div>
+
+            <!-- Step 3: Trainees per Supervisor -->
+            <div class="card" style="padding:22px">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">3</span>
+                <span style="font-size:14px;font-weight:700">Trainees per Supervisor</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px">
+                <input type="number" id="bm_count_min_disp" min="1" max="100" value="30"
+                  style="width:54px;padding:6px 8px;border:1.5px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:14px;font-weight:700;text-align:center;outline:none"
+                  oninput="bmSyncSlider('min',this.value)"/>
+                <input type="range" id="bm_assign_count" min="1" max="100" value="35"
+                  style="flex:1;accent-color:var(--p2)"
+                  oninput="bmSyncSlider('range',this.value)"/>
+                <input type="number" id="bm_assign_count_val" min="1" max="100" value="35"
+                  style="width:54px;padding:6px 8px;border:1.5px solid var(--p2);border-radius:10px;background:rgba(232,89,12,0.08);color:var(--p2);font-size:16px;font-weight:800;text-align:center;outline:none"
+                  oninput="bmSyncSlider('max',this.value)"/>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t-3);margin-top:4px;padding:0 66px">
+                <span>Min</span><span>Target</span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+                <div style="padding:5px 12px;border-radius:20px;background:rgba(232,89,12,0.1);border:1px solid rgba(232,89,12,0.3);font-size:11px;color:var(--p2);font-weight:600">⚖️ Tier balance</div>
+                <div style="padding:5px 12px;border-radius:20px;background:rgba(10,132,255,0.1);border:1px solid rgba(10,132,255,0.3);font-size:11px;color:#0A84FF;font-weight:600">📊 Score balance</div>
+                <div style="padding:5px 12px;border-radius:20px;background:rgba(48,209,88,0.1);border:1px solid rgba(48,209,88,0.3);font-size:11px;color:#30D158;font-weight:600">🔀 Random shuffle</div>
+              </div>
+            </div>
+
+            <!-- Step 4: Actions -->
+            <div style="display:flex;gap:10px">
+              <button onclick="bmPreviewAssignment()" style="flex:1;padding:12px;border-radius:12px;background:var(--bg-3);color:var(--t-1);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">👁 Preview</button>
+              <button onclick="bmConfirmAssignment()" id="bm_assign_confirm_btn" style="flex:2;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;display:none">✅ Confirm &amp; Save</button>
+            </div>
+            <div id="bm_assign_msg" style="font-size:12px;color:var(--t-3)"></div>
+
+            <!-- Preview -->
             <div id="bm_assign_preview" style="display:none">
               <div class="card" style="padding:20px">
                 <h3 style="margin:0 0 14px;font-size:15px;font-weight:700">Assignment Preview</h3>
@@ -8206,12 +8313,10 @@ function btQuickAssignAll(){
             </div>
           </div>
 
-          <!-- Right: supervisor list -->
-          <div class="card" style="padding:20px;height:fit-content">
+          <!-- Right: supervisor status -->
+          <div class="card" style="padding:20px;height:fit-content;position:sticky;top:80px">
             <h3 style="margin:0 0 14px;font-size:15px;font-weight:700">Batch Supervisors</h3>
-            <div id="bm_sup_list" style="display:flex;flex-direction:column;gap:6px">
-              <!-- populated by JS -->
-            </div>
+            <div id="bm_sup_list" style="display:flex;flex-direction:column;gap:6px"></div>
             <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--b-1);font-size:12px;color:var(--t-3)" id="bm_sup_summary"></div>
           </div>
         </div>
