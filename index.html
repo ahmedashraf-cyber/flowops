@@ -2812,21 +2812,85 @@ async function bmSaveEditStatus(){
 // ASSIGN SUPERVISORS
 // ══════════════════════════════════════════════════════════════
 function bmRenderSupList(){
-  const container = document.getElementById('bm_sup_list');
-  if(!container) return;
-  const counts = {};
-  Object.values(BM.supAssignments||{}).forEach(arr => {
-    if(Array.isArray(arr)) arr.forEach(a => { counts[a.supCode] = (counts[a.supCode]||0)+1; });
-  });
-  container.innerHTML = BM_SUPS.map(code => {
-    const n = counts[code]||0;
-    const color = n===0?'var(--t-3)':n>=30&&n<=40?'#30D158':'#FFD60A';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;background:var(--bg-3)">'+
-      '<span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--t-1)">'+code+'</span>'+
-      '<span style="font-size:12px;font-weight:700;color:'+color+'">'+n+' trainees</span>'+
+  // Render draggable cards in the right panel
+  const dragList = document.getElementById('bm_sup_drag_list');
+  if(!dragList) return;
+  dragList.innerHTML = BM_SUPS.map(code => {
+    const inZone = BM.selectedSups.has(code);
+    return '<div draggable="true" data-code="'+code+'" '+
+      'ondragstart="bmDragStart(event)" '+
+      'style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-radius:12px;'+
+      'background:'+(inZone?'rgba(48,209,88,0.08)':'var(--bg-3)')+';border:1.5px solid '+(inZone?'rgba(48,209,88,0.3)':'var(--b-1)')+';'+
+      'cursor:grab;transition:all .15s;user-select:none">'+
+      '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:'+(inZone?'#30D158':'var(--t-1)')+'">'+code+'</span>'+
+      (inZone?'<span style="font-size:10px;color:#30D158">✓ added</span>':'<span style="font-size:10px;color:var(--t-3)">drag →</span>')+
     '</div>';
   }).join('');
-  document.getElementById('bm_sup_summary').textContent = BM_SUPS.length+' supervisors · Target 30–40 each';
+  const sumEl = document.getElementById('bm_sup_summary');
+  if(sumEl) sumEl.textContent = BM_SUPS.length+' supervisors · Target 30–40 each';
+}
+
+// ── Drag & Drop ──
+function bmDragStart(e){
+  const code = e.currentTarget.dataset.code;
+  e.dataTransfer.setData('text/plain', code);
+  e.currentTarget.style.opacity = '0.5';
+  e.currentTarget.addEventListener('dragend', function(){ this.style.opacity='1'; }, {once:true});
+}
+
+function bmHandleDrop(e){
+  e.preventDefault();
+  const zone = document.getElementById('bm_drop_zone');
+  zone.style.borderColor = 'rgba(255,255,255,0.1)';
+  zone.style.background = 'transparent';
+  const code = e.dataTransfer.getData('text/plain');
+  if(!code || BM.selectedSups.has(code)) return;
+  BM.selectedSups.add(code);
+  bmAddDropPill(code);
+  bmUpdateSupCount();
+  bmRenderSupList(); // refresh drag list to show ✓
+}
+
+function bmAddDropPill(code){
+  const zone = document.getElementById('bm_drop_zone');
+  const hint = document.getElementById('bm_drop_hint');
+  if(hint) hint.style.display = 'none';
+  const pill = document.createElement('div');
+  pill.dataset.code = code;
+  pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:rgba(232,89,12,0.15);border:1.5px solid rgba(232,89,12,0.4);font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:var(--p2)';
+  const span = document.createElement('span');
+  span.textContent = code;
+  const btn = document.createElement('button');
+  btn.textContent = '×';
+  btn.style.cssText = 'background:none;border:none;color:rgba(232,89,12,0.6);cursor:pointer;font-size:14px;line-height:1;padding:0';
+  btn.addEventListener('click', function(){ bmRemoveDropPill(btn); });
+  pill.appendChild(span);
+  pill.appendChild(btn);
+  zone.appendChild(pill);
+}
+
+
+function bmRemoveDropPill(btn){
+  const code = btn.parentElement.dataset.code;
+  BM.selectedSups.delete(code);
+  btn.parentElement.remove();
+  const zone = document.getElementById('bm_drop_zone');
+  if(zone.children.length === 0 || (zone.children.length === 1 && zone.children[0].id === 'bm_drop_hint')){
+    const hint = document.getElementById('bm_drop_hint');
+    if(hint) hint.style.display = 'block';
+  }
+  bmUpdateSupCount();
+  bmRenderSupList();
+}
+
+function bmClearDropZone(){
+  BM.selectedSups.clear();
+  const zone = document.getElementById('bm_drop_zone');
+  if(zone){
+    zone.innerHTML = '<span id="bm_drop_hint" style="color:var(--t-3);font-size:12px;width:100%;text-align:center;padding:10px 0">Drop supervisors here</span>';
+  }
+  bmUpdateSupCount();
+  bmRenderSupList();
 }
 
 function bmRenderSupSelector(){
@@ -2925,8 +2989,12 @@ function bmPreviewAssignment(){
   let maxLen = Math.max(...tierOrder.map(t=>buckets[t].length));
   for(let i=0;i<maxLen;i++) tierOrder.forEach(t=>{ if(buckets[t][i]) interleaved.push(buckets[t][i]); });
 
-  // Distribute round-robin across supervisors
-  const supGroups = BM_SUPS.map(code=>({code, trainees:[]}));
+  // Only distribute to selected supervisors
+  const activeSups = [...BM.selectedSups];
+  if(!activeSups.length){ alert('Drop at least one supervisor into the zone first.'); return; }
+
+  // Distribute round-robin across SELECTED supervisors only
+  const supGroups = activeSups.map(code=>({code, trainees:[]}));
   interleaved.forEach((t,i) => supGroups[i%supGroups.length].trainees.push(t));
 
   // Trim to targetCount per supervisor
@@ -2934,27 +3002,69 @@ function bmPreviewAssignment(){
 
   BM.assignPreview = { batch, supGroups };
 
-  // Render preview
   const previewEl = document.getElementById('bm_assign_preview');
   const bodyEl = document.getElementById('bm_assign_preview_body');
   if(!previewEl||!bodyEl) return;
 
   const totalAssigned = supGroups.reduce((s,g)=>s+g.trainees.length,0);
-  bodyEl.innerHTML = '<div style="font-size:12px;color:var(--t-3);margin-bottom:12px">'+pool.length+' trainees · '+totalAssigned+' assigned across '+BM_SUPS.length+' supervisors</div>'+
+  const unassigned = pool.length - totalAssigned;
+
+  bodyEl.innerHTML =
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">'+
+      '<div style="background:var(--bg-3);border-radius:10px;padding:10px 16px;text-align:center">'+
+        '<div style="font-size:10px;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">Total</div>'+
+        '<div style="font-size:20px;font-weight:800;color:var(--p2)">'+pool.length+'</div>'+
+      '</div>'+
+      '<div style="background:var(--bg-3);border-radius:10px;padding:10px 16px;text-align:center">'+
+        '<div style="font-size:10px;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">Assigned</div>'+
+        '<div style="font-size:20px;font-weight:800;color:#30D158">'+totalAssigned+'</div>'+
+      '</div>'+
+      (unassigned>0?'<div style="background:var(--bg-3);border-radius:10px;padding:10px 16px;text-align:center">'+
+        '<div style="font-size:10px;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">Unassigned</div>'+
+        '<div style="font-size:20px;font-weight:800;color:#FF453A">'+unassigned+'</div>'+
+      '</div>':'')+
+      '<div style="background:var(--bg-3);border-radius:10px;padding:10px 16px;text-align:center">'+
+        '<div style="font-size:10px;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px">Supervisors</div>'+
+        '<div style="font-size:20px;font-weight:800;color:var(--t-1)">'+activeSups.length+'</div>'+
+      '</div>'+
+    '</div>'+
     supGroups.map(sg => {
-      const topN = sg.trainees.filter(t=>t.tier==='Top').length;
-      const midN = sg.trainees.filter(t=>t.tier==='Mid').length;
-      const lowN = sg.trainees.filter(t=>t.tier==='Low').length;
+      const topN = sg.trainees.filter(t=>bmCalcTier(t.pts)==='Top').length;
+      const midN = sg.trainees.filter(t=>bmCalcTier(t.pts)==='Mid').length;
+      const lowN = sg.trainees.filter(t=>bmCalcTier(t.pts)==='Low').length;
       const avgPts = sg.trainees.length ? (sg.trainees.reduce((s,t)=>s+(parseFloat(t.pts)||0),0)/sg.trainees.length).toFixed(1) : '0';
-      const countColor = sg.trainees.length>=30&&sg.trainees.length<=40?'#30D158':'#FFD60A';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;background:var(--bg-3);margin-bottom:6px">'+
-        '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:var(--t-1)">'+sg.code+'</span>'+
-        '<div style="display:flex;gap:8px;align-items:center">'+
-          '<span style="font-size:11px;color:#30D158">T:'+topN+'</span>'+
-          '<span style="font-size:11px;color:var(--p2)">M:'+midN+'</span>'+
-          '<span style="font-size:11px;color:#FF453A">L:'+lowN+'</span>'+
-          '<span style="font-size:11px;color:var(--t-3)">avg '+avgPts+'%</span>'+
-          '<span style="font-size:12px;font-weight:800;color:'+countColor+'">'+sg.trainees.length+'</span>'+
+      const countColor = sg.trainees.length>=30&&sg.trainees.length<=40?'#30D158':sg.trainees.length>0?'#FFD60A':'var(--t-3)';
+      const TIER_C = {Top:'#30D158', Mid:'var(--p2)', Low:'#FF453A'};
+      // Build trainee rows
+      const rows = sg.trainees.map(t =>
+        '<tr>'+
+        '<td style="padding:5px 8px;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--p2)">'+(t.trainingCode||'—')+'</td>'+
+        '<td style="padding:5px 8px;font-size:12px;font-weight:600">'+t.name+'</td>'+
+        '<td style="padding:5px 8px"><span style="background:rgba('+( bmCalcTier(t.pts)==='Top'?'48,209,88':bmCalcTier(t.pts)==='Mid'?'232,89,12':'255,69,58')+',0.12);color:'+TIER_C[bmCalcTier(t.pts)]+';padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">'+bmCalcTier(t.pts)+'</span></td>'+
+        '<td style="padding:5px 8px;font-size:11px;color:var(--t-2)">'+(t.pts?parseFloat(t.pts).toFixed(1)+'%':'—')+'</td>'+
+        '</tr>'
+      ).join('');
+      return '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:14px;overflow:hidden;margin-bottom:10px">'+
+        '<div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--bg-3)" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">'+
+          '<div style="display:flex;align-items:center;gap:10px">'+
+            '<span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:800;color:var(--t-1)">'+sg.code+'</span>'+
+            '<span style="font-size:11px;color:#30D158">Top:'+topN+'</span>'+
+            '<span style="font-size:11px;color:var(--p2)">Mid:'+midN+'</span>'+
+            '<span style="font-size:11px;color:#FF453A">Low:'+lowN+'</span>'+
+            '<span style="font-size:11px;color:var(--t-3)">avg '+avgPts+'%</span>'+
+          '</div>'+
+          '<span style="font-size:16px;font-weight:800;color:'+countColor+'">'+sg.trainees.length+' trainees ▾</span>'+
+        '</div>'+
+        '<div style="display:none">'+
+          '<table style="width:100%;border-collapse:collapse">'+
+            '<thead><tr style="background:rgba(255,255,255,0.03)">'+
+              '<th style="padding:6px 8px;font-size:10px;color:var(--t-3);font-weight:600;text-align:left">CODE</th>'+
+              '<th style="padding:6px 8px;font-size:10px;color:var(--t-3);font-weight:600;text-align:left">NAME</th>'+
+              '<th style="padding:6px 8px;font-size:10px;color:var(--t-3);font-weight:600;text-align:left">TIER</th>'+
+              '<th style="padding:6px 8px;font-size:10px;color:var(--t-3);font-weight:600;text-align:left">PTS%</th>'+
+            '</tr></thead>'+
+            '<tbody>'+rows+'</tbody>'+
+          '</table>'+
         '</div>'+
       '</div>';
     }).join('');
@@ -8250,22 +8360,27 @@ function btQuickAssignAll(){
               <div id="bm_batch_recommendation" style="display:none;margin-top:12px;padding:12px 14px;background:rgba(232,89,12,0.08);border:1px solid rgba(232,89,12,0.25);border-radius:12px;font-size:12px;line-height:1.6;color:var(--t-2)"></div>
             </div>
 
-            <!-- Step 2: Select Supervisors -->
+            <!-- Step 2: Drop Zone -->
             <div class="card" style="padding:22px">
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
                 <div style="display:flex;align-items:center;gap:10px">
                   <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">2</span>
                   <span style="font-size:14px;font-weight:700">Select Supervisors</span>
+                  <span style="font-size:11px;color:var(--t-3)">drag from the list →</span>
                 </div>
-                <div style="display:flex;gap:8px">
-                  <button onclick="bmSelectAllSups(true)" style="padding:4px 12px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;font-weight:600;cursor:pointer">Select All</button>
-                  <button onclick="bmSelectAllSups(false)" style="padding:4px 12px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;font-weight:600;cursor:pointer">Clear</button>
-                </div>
+                <button onclick="bmClearDropZone()" style="padding:4px 12px;border-radius:8px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:11px;font-weight:600;cursor:pointer">Clear</button>
               </div>
-              <div id="bm_sup_selector" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">
-                <!-- populated by bmRenderSupSelector() -->
+              <!-- Drop zone -->
+              <div id="bm_drop_zone"
+                ondragover="event.preventDefault();this.style.borderColor='var(--p2)';this.style.background='rgba(232,89,12,0.06)'"
+                ondragleave="this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='transparent'"
+                ondrop="bmHandleDrop(event)"
+                style="min-height:72px;border:2px dashed rgba(255,255,255,0.1);border-radius:14px;padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;transition:all .15s">
+                <span id="bm_drop_hint" style="color:var(--t-3);font-size:12px;width:100%;text-align:center;padding:10px 0">Drop supervisors here</span>
               </div>
               <div id="bm_sup_selected_count" style="margin-top:10px;font-size:12px;color:var(--t-3)">0 supervisors selected</div>
+              <!-- hidden for compat -->
+              <div id="bm_sup_selector" style="display:none"></div>
             </div>
 
             <!-- Step 3: Trainees per Supervisor -->
@@ -8311,11 +8426,14 @@ function btQuickAssignAll(){
             </div>
           </div>
 
-          <!-- Right: supervisor status -->
-          <div class="card" style="padding:20px;height:fit-content;position:sticky;top:80px">
-            <h3 style="margin:0 0 14px;font-size:15px;font-weight:700">Batch Supervisors</h3>
-            <div id="bm_sup_list" style="display:flex;flex-direction:column;gap:6px"></div>
-            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--b-1);font-size:12px;color:var(--t-3)" id="bm_sup_summary"></div>
+          <!-- Right: drag source -->
+          <div class="card" style="padding:20px;position:sticky;top:80px;max-height:80vh;overflow-y:auto">
+            <h3 style="margin:0 0 6px;font-size:15px;font-weight:700">Batch Supervisors</h3>
+            <p style="font-size:11px;color:var(--t-3);margin:0 0 14px">Drag onto the drop zone to select</p>
+            <div id="bm_sup_drag_list" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--b-1);font-size:12px;color:var(--t-3)" id="bm_sup_summary">15 supervisors · Target 30–40 each</div>
+            <!-- Keep original sup_list for bmRenderSupList compat -->
+            <div id="bm_sup_list" style="display:none"></div>
           </div>
         </div>
       </div>
