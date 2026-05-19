@@ -2664,12 +2664,20 @@ function nxSelectValue(id){
 
 function bmGetFilteredTrainees(){
   // Read directly from BM.filters — updated by nx onChangeFn, never stale
-  const batch  = BM.filters.batch  || 'all';
-  const status = BM.filters.status || 'all';
-  const tier   = BM.filters.tier   || 'all';
-  const sup    = BM.filters.sup    || 'all';
-  const from   = BM.filters.from   || (document.getElementById('bm_filter_from')||{}).value || '';
-  const to     = BM.filters.to     || (document.getElementById('bm_filter_to')||{}).value   || '';
+  // Read from BM.filters (set by onChangeFn) OR directly from select element
+  function bmFV(id, key){
+    if(BM.filters[key] && BM.filters[key] !== 'all') return BM.filters[key];
+    const el = document.getElementById(id);
+    const v = el ? el.value : '';
+    if(v && v !== 'all') BM.filters[key] = v; // sync back
+    return v || 'all';
+  }
+  const batch  = bmFV('bm_filter_batch',  'batch');
+  const status = bmFV('bm_filter_status', 'status');
+  const tier   = bmFV('bm_filter_tier',   'tier');
+  const sup    = bmFV('bm_filter_sup',    'sup');
+  const from   = BM.filters.from || (document.getElementById('bm_filter_from')||{}).value || '';
+  const to     = BM.filters.to   || (document.getElementById('bm_filter_to')||{}).value   || '';
 
   const result = BM.trainees.filter(t => {
     if(batch !== 'all' && (t.batchName||'') !== batch) return false;
@@ -2687,6 +2695,18 @@ function bmGetFilteredTrainees(){
   console.log('[BM Filter] batch='+batch+' tier='+tier+' sup='+sup+' status='+status+' → '+result.length+'/'+BM.trainees.length);
   return result;
 }
+
+const BM_TS_COLORS = {
+  'In Training':      {bg:'rgba(48,209,88,0.12)', border:'rgba(48,209,88,0.3)',   text:'#30D158'},
+  'Distributed':      {bg:'rgba(10,132,255,0.12)',border:'rgba(10,132,255,0.3)',  text:'#0A84FF'},
+  'On Hold':          {bg:'rgba(255,214,10,0.12)',border:'rgba(255,214,10,0.3)',  text:'#FFD60A'},
+  'Dropped':          {bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
+  'Leaving - Fired':  {bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
+  'Leaving - Resigned':{bg:'rgba(255,69,58,0.12)',border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Leaving - Stopped':{bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
+  'Leaving - Suspended':{bg:'rgba(255,69,58,0.12)',border:'rgba(255,69,58,0.3)', text:'#FF453A'},
+  'Completed':        {bg:'rgba(191,90,242,0.12)',border:'rgba(191,90,242,0.3)',  text:'#BF5AF2'}
+};
 
 function bmApplyBatchFilters(){ bmRenderBatchTable(); }
 function bmClearBatchFilters(){
