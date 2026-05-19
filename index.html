@@ -3960,50 +3960,6 @@ async function bmLoadAttendance(){
 }
 
 // ── Page 4: Tasks / Tickets ───────────────────────────────────
-function bmRenderTasks(){
-  const filterStatus = (document.getElementById('bm_task_filter_status')||{}).value||'all';
-  const filterRole   = (document.getElementById('bm_task_filter_role')||{}).value||'all';
-  const list = document.getElementById('bm_tasks_list');
-  if(!list) return;
-  const filtered = BM.tickets.filter(tk => {
-    if(filterStatus !== 'all' && tk.status !== filterStatus) return false;
-    if(filterRole !== 'all' && !tk.assignees.includes(filterRole)) return false;
-    return true;
-  });
-  const openCount = BM.tickets.filter(tk=>tk.status==='open').length;
-  const badge = document.getElementById('bm_tasks_badge');
-  if(badge){ badge.textContent=openCount; badge.style.display=openCount?'inline':'none'; }
-  if(!filtered.length){
-    list.innerHTML='<div style="text-align:center;padding:60px;color:var(--t-3)">No tickets yet — create one above</div>';
-    return;
-  }
-  list.innerHTML = filtered.map(tk => {
-    const isOpen = tk.status === 'open';
-    const due = tk.dueDate ? new Date(tk.dueDate).toLocaleDateString('en-EG',{day:'2-digit',month:'short',year:'numeric'}) : '—';
-    const overdue = tk.dueDate && tk.dueDate < new Date().toISOString().slice(0,10) && isOpen;
-    return `<div style="background:var(--bg-2);border:1.5px solid ${isOpen?'rgba(232,89,12,0.3)':'var(--b-1)'};border-radius:14px;padding:16px 20px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t-3)">#${tk.id.slice(-6).toUpperCase()}</span>
-            <span style="background:${isOpen?'rgba(232,89,12,0.15)':'rgba(48,209,88,0.12)'};color:${isOpen?'var(--p2)':'#30D158'};padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">${isOpen?'Open':'Closed'}</span>
-            ${overdue?'<span style="background:rgba(255,69,58,0.15);color:#FF453A;padding:2px 10px;border-radius:8px;font-size:11px;font-weight:700">Overdue</span>':''}
-          </div>
-          <div style="font-size:15px;font-weight:700;color:var(--t-1);margin-bottom:6px">${tk.name}</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--t-3)">
-            <span>👥 ${(tk.assignees||[]).join(', ')}</span>
-            <span>📦 ${tk.batch||'All Batches'}</span>
-            <span>📅 Due: ${due}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px">
-          ${isOpen?`<button onclick="bmCloseTicket('${tk.id}')" style="padding:6px 16px;border-radius:10px;background:rgba(48,209,88,0.12);color:#30D158;border:1px solid rgba(48,209,88,0.3);font-size:12px;font-weight:700;cursor:pointer">Close</button>`:''}
-          <button onclick="bmDeleteTicket('${tk.id}')" style="padding:6px 10px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1px solid rgba(255,69,58,0.3);font-size:12px;cursor:pointer">✕</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
 
 function bmOpenTaskModal(){
   const modal = document.getElementById('bm_task_modal');
