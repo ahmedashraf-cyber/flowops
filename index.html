@@ -3332,7 +3332,7 @@ function bmOpenNewTask(){
   if(modal){ modal.style.display='flex'; setTimeout(function(){ nxWrapSelect(document.getElementById('bm_task_batch')); nxDateInit(); },50); }
 }
 
-function bmToggleAssignee(btn, role){
+function bmToggleAssignee(btn){
   const isOn = btn.dataset.on==='1';
   btn.dataset.on = isOn?'0':'1';
   btn.style.background = isOn?'transparent':'rgba(232,89,12,0.12)';
@@ -3458,61 +3458,55 @@ async function bmDeleteTask(id){
 }
 
 // ── Task Notification Reader (for Coord + BSup roles) ──
-async function bmLoadTaskNotificationsForRole(role){
+function bmLoadTaskNotificationsForRole(role){
   if(!fbDb) return;
-  try{
-    const snap = await fbDb.collection('batch_notifications')
-      .where('type','==','task')
-      .where('forRole','==',role)
-      .where('status','==','open')
-      .get();
-    if(snap.empty) return;
-    const tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
-    const today = new Date().toISOString().slice(0,10);
-    tasks.forEach(t=>{
-      const isOverdue = t.dueDate && t.dueDate < today;
-      // Add to role notification panel
-      if(role==='batchsup' && typeof addBsupNotif==='function'){
-        addBsupNotif(
-          '📋 Task: '+t.taskName,
-          (t.batch&&t.batch!=='all'?t.batch+' · ':'')+
-          (t.dueDate?'Due '+t.dueDate:'')+
-          (isOverdue?' · OVERDUE':''),
-          isOverdue?'red':'orange'
-        );
+  // Use real-time listener so alarm auto-updates when BM closes/deletes tasks
+  fbDb.collection('batch_notifications')
+    .where('type','==','task')
+    .where('forRole','==',role)
+    .where('status','==','open')
+    .onSnapshot(snap => {
+      const tasks = snap.docs.map(d=>({id:d.id,...d.data()}));
+      const today = new Date().toISOString().slice(0,10);
+      const alarmId = role==='batchsup'?'bsupTaskAlarm':'coordTaskAlarm';
+      const itemsId = role==='batchsup'?'bsupTaskAlarmItems':'coordTaskAlarmItems';
+      const alarmEl = document.getElementById(alarmId);
+      const itemsEl = document.getElementById(itemsId);
+      if(!alarmEl) return;
+      if(!tasks.length){ alarmEl.style.display='none'; return; }
+      alarmEl.style.display='block';
+      // Add to notifications panel (only on first load to avoid duplicates)
+      if(snap.metadata && !snap.metadata.hasPendingWrites && snap.docChanges){
+        snap.docChanges().forEach(change => {
+          if(change.type==='added'){
+            const t = change.doc.data();
+            const isOverdue = t.dueDate && t.dueDate < today;
+            if(role==='batchsup' && typeof addBsupNotif==='function'){
+              addBsupNotif('📋 Task: '+t.taskName,(t.batch&&t.batch!=='all'?t.batch+' · ':'')+
+                (t.dueDate?'Due '+t.dueDate:'')+(isOverdue?' · OVERDUE':''),isOverdue?'red':'orange');
+            }
+            if(role==='coordinator' && typeof addNotif==='function'){
+              addNotif('📋 Task: '+t.taskName,(t.dueDate?'Due '+t.dueDate:'')+(isOverdue?' · OVERDUE':''),'orange');
+            }
+          }
+        });
       }
-      if(role==='coordinator'){
-        if(typeof addNotif==='function'){
-          addNotif('📋 Task: '+t.taskName,(t.dueDate?'Due '+t.dueDate:'')+(isOverdue?' · OVERDUE':''),'orange');
-        }
-      }
-    });
-    // Render individual task cards in the alarm banner
-    const alarmId = role==='batchsup'?'bsupTaskAlarm':'coordTaskAlarm';
-    const itemsId = role==='batchsup'?'bsupTaskAlarmItems':'coordTaskAlarmItems';
-    const alarmEl = document.getElementById(alarmId);
-    const itemsEl = document.getElementById(itemsId);
-    if(!alarmEl) return;
-    if(!tasks.length){ alarmEl.style.display='none'; return; }
-    alarmEl.style.display='block';
-    if(itemsEl){
-      itemsEl.innerHTML = tasks.map(t => {
-        const isOverdue = t.dueDate && t.dueDate < today;
-        const batchTag = t.batch&&t.batch!=='all' ? '<span style="padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.08);font-size:10px;color:rgba(255,255,255,0.5)">'+t.batch+'</span>' : '';
-        const dueTag = t.dueDate ? '<span style="padding:2px 8px;border-radius:6px;background:'+(isOverdue?'rgba(255,69,58,0.2)':'rgba(255,255,255,0.06)')+';font-size:10px;color:'+(isOverdue?'#FF453A':'rgba(255,255,255,0.45)')+'">📅 '+t.dueDate+(isOverdue?' · Overdue':'')+'</span>' : '';
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(232,89,12,0.2);border-radius:10px;gap:10px;flex-wrap:wrap">'+
-          '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">'+
-            '<span style="width:3px;height:32px;border-radius:2px;background:var(--p2);flex-shrink:0"></span>'+
-            '<div>'+
-              '<div style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+t.taskName+'</div>'+
-              '<div style="display:flex;gap:6px;margin-top:3px;flex-wrap:wrap">'+batchTag+dueTag+'</div>'+
+      if(itemsEl){
+        itemsEl.innerHTML = tasks.map(t => {
+          const isOverdue = t.dueDate && t.dueDate < today;
+          const batchTag = t.batch&&t.batch!=='all'?'<span style="padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.08);font-size:10px;color:rgba(255,255,255,0.5)">'+t.batch+'</span>':'';
+          const dueTag = t.dueDate?'<span style="padding:2px 8px;border-radius:6px;background:'+(isOverdue?'rgba(255,69,58,0.2)':'rgba(255,255,255,0.06)')+';font-size:10px;color:'+(isOverdue?'#FF453A':'rgba(255,255,255,0.45)')+'">📅 '+t.dueDate+(isOverdue?' · Overdue':'')+'</span>':'';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.04);border:1px solid rgba(232,89,12,0.2);border-radius:10px;gap:10px;flex-wrap:wrap">'+
+            '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">'+
+              '<span style="width:3px;height:32px;border-radius:2px;background:var(--p2);flex-shrink:0"></span>'+
+              '<div><div style="font-size:13px;font-weight:700;color:#fff">'+t.taskName+'</div>'+
+              '<div style="display:flex;gap:6px;margin-top:3px;flex-wrap:wrap">'+batchTag+dueTag+'</div></div>'+
             '</div>'+
-          '</div>'+
-          '<span style="font-size:10px;font-weight:700;color:var(--p2);background:rgba(232,89,12,0.15);padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0">OPEN</span>'+
-        '</div>';
-      }).join('');
-    }
-  }catch(e){ console.warn('bmLoadTaskNotificationsForRole:', e); }
+            '<span style="font-size:10px;font-weight:700;color:var(--p2);background:rgba(232,89,12,0.15);padding:3px 10px;border-radius:20px">OPEN</span>'+
+          '</div>';
+        }).join('');
+      }
+    }, e=>{ console.warn('Task listener:', e); });
 }
 
 // ============================================================
@@ -8700,8 +8694,8 @@ function btQuickAssignAll(){
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Assign To (select multiple)</label>
         <div id="bm_task_assignees" style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" onclick="bmToggleAssignee(this,'coordinator')" data-role="coordinator" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">📊 Batch Coordinator</button>
-          <button type="button" onclick="bmToggleAssignee(this,'batchsup')" data-role="batchsup" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">👔 Batch Supervisor</button>
+          <button type="button" onclick="bmToggleAssignee(this)" data-role="coordinator" data-on="0" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">📊 Batch Coordinator</button>
+          <button type="button" onclick="bmToggleAssignee(this)" data-role="batchsup" data-on="0" style="padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s">👔 Batch Supervisor</button>
         </div>
       </div>
       <div>
