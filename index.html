@@ -2811,9 +2811,6 @@ async function bmSaveEditStatus(){
 // ══════════════════════════════════════════════════════════════
 // ASSIGN SUPERVISORS
 // ══════════════════════════════════════════════════════════════
-// Track selected supervisors for assignment
-BM.selectedSups = new Set();
-
 function bmRenderSupList(){
   const container = document.getElementById('bm_sup_list');
   if(!container) return;
@@ -3306,6 +3303,7 @@ const BM = {
   attendance: {},
   assignments: {},
   supAssignments: {},
+  selectedSups: new Set(),
   tickets: [],
   filtered: [],
   activeTab: 'batches',
