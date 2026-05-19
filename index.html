@@ -2534,6 +2534,13 @@ async function initBMDashboard(){
   }, 150);
 }
 
+function bmCalcTier(pts){
+  const p = parseFloat(pts)||0;
+  if(p >= 85) return 'Top';
+  if(p >= 65) return 'Mid';
+  return 'Low';
+}
+
 async function bmLoadAllData(){
   if(!fbDb) return;
   // ── Source of truth: coordinator's end-of-batch notifications ──
@@ -2546,35 +2553,38 @@ async function bmLoadAllData(){
     snap.forEach(doc => {
       const d = doc.data();
       (d.acceptedCandidates||[]).forEach(t => {
-        const key = (t.name||t.nameEn||'')+'|'+(d.batchName||'');
+        const name = t.name || t.nameEn || '';
+        const batch = d.batchName || '';
+        const key = name+'|'+batch;
         if(seen.has(key)) return;
         seen.add(key);
+        const pts = parseFloat(t.pts)||0;
         BM.trainees.push({
           trainingCode: t.trainingCode || null,
-          name:     t.name || t.nameEn || '',
-          nameAr:   t.nameAr || '',
-          pts:      t.pts || 0,
-          tier:     t.tier || '',
-          batchName: d.batchName || '',
-          supervisor: null,   // filled below from bm_assignments
+          name:      name,
+          nameAr:    t.nameAr || '',
+          pts:       pts,
+          tier:      t.tier || bmCalcTier(pts),  // calc if not stored
+          batchName: batch,
+          supervisor: null,
           acceptedAt: d.timestamp || ''
         });
       });
     });
   } catch(e){ console.warn('BM trainees load:', e); }
 
-  // ── Overlay supervisor from bm_assignments ──
+  // ── Overlay supervisor from bm_assignments (keyed by supervisorCode) ──
   try {
-    const aSnap = await fbDb.collection('bm_assignments').get();
+    const aSnap = await fbDb.collection('accepted_trainees').get();
     aSnap.forEach(doc => {
       const d = doc.data();
-      Object.entries(d.assignments||{}).forEach(([supCode, ts]) => {
-        (ts||[]).forEach(t => {
-          const match = BM.trainees.find(bt =>
-            (bt.name||'') === (t.name||t.nameEn||'') && bt.batchName === (d.batchName||'')
-          );
-          if(match) match.supervisor = supCode;
-        });
+      if(!d.supervisorCode || !d.trainees) return;
+      d.trainees.forEach(t => {
+        const match = BM.trainees.find(bt =>
+          (bt.name||'') === (t.name||t.nameEn||'') &&
+          (bt.batchName||'') === (t.batchName||d.batchName||'')
+        );
+        if(match) match.supervisor = d.supervisorCode;
       });
     });
   } catch(e){}
@@ -2647,10 +2657,10 @@ function bmGetFilteredTrainees(){
   const from   = (document.getElementById('bm_filter_from')||{}).value || '';
   const to     = (document.getElementById('bm_filter_to')||{}).value || '';
 
-  return BM.trainees.filter(t => {
-    if(batch !== 'all' && t.batchName !== batch) return false;
-    if(tier  !== 'all' && t.tier !== tier) return false;
-    if(sup   !== 'all' && t.supervisor !== sup) return false;
+  const result = BM.trainees.filter(t => {
+    if(batch !== 'all' && (t.batchName||'') !== batch) return false;
+    if(tier  !== 'all' && bmCalcTier(t.pts) !== tier) return false; // always recalc from pts
+    if(sup   !== 'all' && (t.supervisor||'') !== sup) return false;
     const ts = BM.tsData[String(t.trainingCode)] || {};
     if(status !== 'all' && (ts.status||'In Training') !== status) return false;
     if(from || to){
@@ -2660,6 +2670,8 @@ function bmGetFilteredTrainees(){
     }
     return true;
   });
+  console.log('[BM Filter] batch='+batch+' tier='+tier+' sup='+sup+' status='+status+' → '+result.length+'/'+BM.trainees.length);
+  return result;
 }
 
 function bmApplyBatchFilters(){ bmRenderBatchTable(); }
