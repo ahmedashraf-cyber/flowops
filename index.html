@@ -3368,20 +3368,7 @@ function bmApplyFilters(){
 }
 
 // Aliases for the HTML buttons
-function bmApplyBatchFilters(){ bmApplyFilters(); }
-function bmClearBatchFilters(){
-  ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el){ el.value = 'all'; el.dispatchEvent(new Event('change')); }
-  });
-  ['bm_filter_from','bm_filter_to','bm_search'].forEach(id => {
-    const el = document.getElementById(id);
-    if(el) el.value = '';
-  });
-  BM.filtered = [...BM.trainees];
-  BM._filtersActive = false;
-  bmRenderBatches();
-}
+// duplicate filter functions removed — see bmApplyBatchFilters at top of BM section
 
 function bmGetTraineeSup(code){
   for(const batchKey of Object.keys(BM.assignments)){
