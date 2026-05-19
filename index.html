@@ -2524,8 +2524,21 @@ async function initBMDashboard(){
   bmLoadTasks();
   setTimeout(nxDateInit, 100);
   setTimeout(function(){
-    ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup',
-     'bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
+    // Filter selects — pass onChange that updates BM.filters directly
+    var filterMap = {
+      'bm_filter_batch':  'batch',
+      'bm_filter_status': 'status',
+      'bm_filter_tier':   'tier',
+      'bm_filter_sup':    'sup'
+    };
+    Object.keys(filterMap).forEach(function(id){
+      var sel = document.getElementById(id);
+      if(!sel) return;
+      var key = filterMap[id];
+      nxWrapSelect(sel, function(val){ BM.filters[key] = val; });
+    });
+    // Other selects without onChange tracking
+    ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
      'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
      'bm_edit_status','bm_edit_phase'].forEach(function(id){
       var sel = document.getElementById(id);
@@ -2650,12 +2663,13 @@ function nxSelectValue(id){
 }
 
 function bmGetFilteredTrainees(){
-  const batch  = nxSelectValue('bm_filter_batch');
-  const status = nxSelectValue('bm_filter_status');
-  const tier   = nxSelectValue('bm_filter_tier');
-  const sup    = nxSelectValue('bm_filter_sup');
-  const from   = (document.getElementById('bm_filter_from')||{}).value || '';
-  const to     = (document.getElementById('bm_filter_to')||{}).value || '';
+  // Read directly from BM.filters — updated by nx onChangeFn, never stale
+  const batch  = BM.filters.batch  || 'all';
+  const status = BM.filters.status || 'all';
+  const tier   = BM.filters.tier   || 'all';
+  const sup    = BM.filters.sup    || 'all';
+  const from   = BM.filters.from   || (document.getElementById('bm_filter_from')||{}).value || '';
+  const to     = BM.filters.to     || (document.getElementById('bm_filter_to')||{}).value   || '';
 
   const result = BM.trainees.filter(t => {
     if(batch !== 'all' && (t.batchName||'') !== batch) return false;
@@ -2676,17 +2690,15 @@ function bmGetFilteredTrainees(){
 
 function bmApplyBatchFilters(){ bmRenderBatchTable(); }
 function bmClearBatchFilters(){
+  // Reset JS filter state
+  BM.filters = { batch:'all', status:'all', tier:'all', sup:'all', from:'', to:'' };
+  // Reset nx label text
   ['bm_filter_batch','bm_filter_status','bm_filter_tier','bm_filter_sup'].forEach(id => {
     const el = document.getElementById(id);
     if(!el) return;
     el.selectedIndex = 0;
-    el.value = el.options[0] ? el.options[0].value : 'all';
     const wrap = el.closest('.nx-select-wrap');
-    if(wrap){ 
-      wrap.dataset.nxValue = 'all';
-      const lbl = wrap.querySelector('.nx-label'); 
-      if(lbl) lbl.textContent = el.options[0] ? el.options[0].text : 'All'; 
-    }
+    if(wrap){ const lbl = wrap.querySelector('.nx-label'); if(lbl && el.options[0]) lbl.textContent = el.options[0].text; }
   });
   ['bm_filter_from','bm_filter_to'].forEach(id => {
     const el = document.getElementById(id);
@@ -3195,13 +3207,15 @@ async function bmLoadTaskNotificationsForRole(role){
 // BATCH MANAGER — Full Implementation
 // ============================================================
 const BM = {
-  trainees: [],        // all accepted trainees from Firestore
-  tsStatuses: {},      // training_status records
-  attendance: {},      // attendance records
-  assignments: {},     // { batchName: { supCode: [trainees] } }
-  tickets: [],         // task tickets
-  filtered: [],        // currently filtered trainees
-  activeTab: 'batches'
+  trainees: [],
+  tsStatuses: {},
+  tsData: {},
+  attendance: {},
+  assignments: {},
+  tickets: [],
+  filtered: [],
+  activeTab: 'batches',
+  filters: { batch:'all', status:'all', tier:'all', sup:'all', from:'', to:'' }
 };
 
 const BM_SUPS = [
@@ -8084,11 +8098,11 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated From</label>
-            <input type="date" id="bm_filter_from" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
+            <input type="date" id="bm_filter_from" onchange="BM.filters.from=this.value" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">To</label>
-            <input type="date" id="bm_filter_to" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
+            <input type="date" id="bm_filter_to" onchange="BM.filters.to=this.value" style="padding:8px 12px;border:1px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:12px;font-family:DM Sans,sans-serif;outline:none"/>
           </div>
           <button onclick="bmApplyBatchFilters()" style="padding:8px 18px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer;align-self:flex-end">Filter</button>
           <button onclick="bmClearBatchFilters()" style="padding:8px 14px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:12px;font-weight:600;cursor:pointer;align-self:flex-end">Clear</button>
