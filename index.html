@@ -2536,45 +2536,55 @@ async function initBMDashboard(){
 
 async function bmLoadAllData(){
   if(!fbDb) return;
+  // ── Source of truth: coordinator's end-of-batch notifications ──
   try {
-    // Load trainees from group_assignments
-    const gaSnap = await fbDb.collection('group_assignments').get();
+    const snap = await fbDb.collection('batch_notifications')
+      .where('type','==','end_of_batch')
+      .get();
     const seen = new Set();
     BM.trainees = [];
-    gaSnap.forEach(doc => {
-      if(doc.id === 'current') return;
+    snap.forEach(doc => {
       const d = doc.data();
-      (d.groups||[]).forEach(g => {
-        (g.trainees||[]).forEach(t => {
-          if(t.trainingCode && !seen.has(String(t.trainingCode))){
-            seen.add(String(t.trainingCode));
-            BM.trainees.push({
-              trainingCode: t.trainingCode,
-              name: t.name || '',
-              pts: t.pts || 0,
-              tier: t.tier || '',
-              batchName: t.batchName || g.batchLabel || '',
-              supervisor: g.trainer || 'Unassigned',
-              groupIndex: g.groupIndex
-            });
-          }
+      (d.acceptedCandidates||[]).forEach(t => {
+        const key = (t.name||t.nameEn||'')+'|'+(d.batchName||'');
+        if(seen.has(key)) return;
+        seen.add(key);
+        BM.trainees.push({
+          trainingCode: t.trainingCode || null,
+          name:     t.name || t.nameEn || '',
+          nameAr:   t.nameAr || '',
+          pts:      t.pts || 0,
+          tier:     t.tier || '',
+          batchName: d.batchName || '',
+          supervisor: null,   // filled below from bm_assignments
+          acceptedAt: d.timestamp || ''
         });
       });
     });
   } catch(e){ console.warn('BM trainees load:', e); }
 
+  // ── Overlay supervisor from bm_assignments ──
   try {
-    // Load training status
+    const aSnap = await fbDb.collection('bm_assignments').get();
+    aSnap.forEach(doc => {
+      const d = doc.data();
+      Object.entries(d.assignments||{}).forEach(([supCode, ts]) => {
+        (ts||[]).forEach(t => {
+          const match = BM.trainees.find(bt =>
+            (bt.name||'') === (t.name||t.nameEn||'') && bt.batchName === (d.batchName||'')
+          );
+          if(match) match.supervisor = supCode;
+        });
+      });
+    });
+  } catch(e){}
+
+  // ── Training status ──
+  try {
     const tsSnap = await fbDb.collection('training_status').get();
     BM.tsData = {};
     tsSnap.forEach(doc => { BM.tsData[doc.id] = doc.data(); });
   } catch(e){ console.warn('BM ts load:', e); }
-
-  // Load sup assignments from Firestore
-  try {
-    const saDoc = await fbDb.collection('bm_sup_assignments').doc('all').get();
-    if(saDoc.exists) BM.supAssignments = saDoc.data().assignments || {};
-  } catch(e){}
 }
 
 function bmShowTab(tab){
