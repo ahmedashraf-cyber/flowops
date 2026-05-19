@@ -2633,15 +2633,19 @@ function bmPopulateFilters(){
   ['bm_filter_batch','bm_att_batch','bm_assign_batch','bm_task_batch'].forEach(id => {
     const sel = document.getElementById(id);
     if(!sel) return;
+    const prev = sel.value; // preserve current selection
     const isAssign = id === 'bm_assign_batch';
     sel.innerHTML = (isAssign ? '<option value="">— Select batch —</option>' : '<option value="all">All Batches</option>') +
-      batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
+      batches.map(b => '<option value="'+b+'"'+(b===prev?' selected':'')+'>'+b+'</option>').join('');
+    if(prev && prev !== 'all') sel.value = prev; // restore
   });
 
   const supSel = document.getElementById('bm_filter_sup');
   if(supSel){
+    const prev = supSel.value;
     supSel.innerHTML = '<option value="all">All Supervisors</option>' +
-      sups.map(s => '<option value="'+s+'">'+s+'</option>').join('');
+      sups.map(s => '<option value="'+s+'"'+(s===prev?' selected':'')+'>'+s+'</option>').join('');
+    if(prev && prev !== 'all') supSel.value = prev;
   }
 
   // Attendance day options
