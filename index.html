@@ -2664,20 +2664,13 @@ function nxSelectValue(id){
 
 function bmGetFilteredTrainees(){
   // Read directly from BM.filters — updated by nx onChangeFn, never stale
-  // Read from BM.filters (set by onChangeFn) OR directly from select element
-  function bmFV(id, key){
-    if(BM.filters[key] && BM.filters[key] !== 'all') return BM.filters[key];
-    const el = document.getElementById(id);
-    const v = el ? el.value : '';
-    if(v && v !== 'all') BM.filters[key] = v; // sync back
-    return v || 'all';
-  }
-  const batch  = bmFV('bm_filter_batch',  'batch');
-  const status = bmFV('bm_filter_status', 'status');
-  const tier   = bmFV('bm_filter_tier',   'tier');
-  const sup    = bmFV('bm_filter_sup',    'sup');
-  const from   = BM.filters.from || (document.getElementById('bm_filter_from')||{}).value || '';
-  const to     = BM.filters.to   || (document.getElementById('bm_filter_to')||{}).value   || '';
+  // Read directly from native selects (data-nx-skip prevents wrapping)
+  const batch  = (document.getElementById('bm_filter_batch') ||{}).value||'all';
+  const status = (document.getElementById('bm_filter_status')||{}).value||'all';
+  const tier   = (document.getElementById('bm_filter_tier')  ||{}).value||'all';
+  const sup    = (document.getElementById('bm_filter_sup')   ||{}).value||'all';
+  const from   = (document.getElementById('bm_filter_from')  ||{}).value||'';
+  const to     = (document.getElementById('bm_filter_to')    ||{}).value||'';
 
   const result = BM.trainees.filter(t => {
     if(batch !== 'all' && (t.batchName||'') !== batch) return false;
@@ -2764,7 +2757,7 @@ function bmRenderBatchTable(){
     const tierBg = {Top:'rgba(48,209,88,0.12)',Mid:'rgba(232,89,12,0.12)',Low:'rgba(255,69,58,0.12)'}[t.tier]||'var(--bg-3)';
     const tierColor = {Top:'#30D158',Mid:'var(--p2)',Low:'#FF453A'}[t.tier]||'var(--t-3)';
     return '<tr style="border-bottom:1px solid var(--b-1);transition:background .1s" onmouseenter="this.style.background=\'var(--bg-3)\'" onmouseleave="this.style.background=\'\'">'+
-      '<td style="padding:10px 16px;font-family:JetBrains Mono,monospace;font-size:12px;color:var(--p2);font-weight:700">#'+t.trainingCode+'</td>'+
+      '<td style="padding:10px 16px;font-family:JetBrains Mono,monospace;font-size:12px;color:var(--p2);font-weight:700">'+(t.trainingCode?'#'+t.trainingCode:'—')+'</td>'+
       '<td style="padding:10px 16px;font-size:13px;font-weight:600;color:var(--t-1)">'+t.name+'</td>'+
       '<td style="padding:10px 16px;font-size:12px;color:var(--t-2)">'+t.batchName+'</td>'+
       '<td style="padding:10px 16px;font-size:12px;font-family:JetBrains Mono,monospace;color:var(--t-2)">'+t.supervisor+'</td>'+
@@ -6375,7 +6368,8 @@ function maExportExcel(){
 var _nxOpenWrap = null;
 
 function nxWrapSelect(sel, onChangeFn){
-  // Already wrapped
+  // Skip filter selects that use native styling, or already wrapped
+  if(sel.dataset.nxSkip === '1') return;
   if(sel.closest('.nx-select-wrap') || sel.dataset.nxWrapped) return;
   sel.dataset.nxWrapped = '1';
   sel.style.display = 'none';
@@ -8118,11 +8112,11 @@ function btQuickAssignAll(){
         <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Batch</label>
-            <select id="bm_filter_batch"><option value="all">All Batches</option></select>
+            <select id="bm_filter_batch" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1"><option value="all">All Batches</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Status</label>
-            <select id="bm_filter_status">
+            <select id="bm_filter_status" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1">
               <option value="all">All Statuses</option>
               <option value="In Training">In Training</option>
               <option value="Distributed">Distributed</option>
@@ -8132,7 +8126,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Tier</label>
-            <select id="bm_filter_tier">
+            <select id="bm_filter_tier" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1">
               <option value="all">All Tiers</option>
               <option value="Top">Top</option>
               <option value="Mid">Mid</option>
@@ -8141,7 +8135,7 @@ function btQuickAssignAll(){
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Supervisor</label>
-            <select id="bm_filter_sup"><option value="all">All Supervisors</option></select>
+            <select id="bm_filter_sup" style="padding:8px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-2);color:var(--t-1);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;cursor:pointer;min-width:140px" data-nx-skip="1"><option value="all">All Supervisors</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
             <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em">Updated From</label>
