@@ -2693,15 +2693,21 @@ function bmGetFilteredTrainees(){
 }
 
 const BM_TS_COLORS = {
-  'In Training':      {bg:'rgba(48,209,88,0.12)', border:'rgba(48,209,88,0.3)',   text:'#30D158'},
-  'Distributed':      {bg:'rgba(10,132,255,0.12)',border:'rgba(10,132,255,0.3)',  text:'#0A84FF'},
-  'On Hold':          {bg:'rgba(255,214,10,0.12)',border:'rgba(255,214,10,0.3)',  text:'#FFD60A'},
-  'Dropped':          {bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
-  'Leaving - Fired':  {bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
-  'Leaving - Resigned':{bg:'rgba(255,69,58,0.12)',border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
-  'Leaving - Stopped':{bg:'rgba(255,69,58,0.12)', border:'rgba(255,69,58,0.3)',   text:'#FF453A'},
-  'Leaving - Suspended':{bg:'rgba(255,69,58,0.12)',border:'rgba(255,69,58,0.3)', text:'#FF453A'},
-  'Completed':        {bg:'rgba(191,90,242,0.12)',border:'rgba(191,90,242,0.3)',  text:'#BF5AF2'}
+  'In Training':               {bg:'rgba(48,209,88,0.12)',  border:'rgba(48,209,88,0.3)',  text:'#30D158'},
+  'Distributed':               {bg:'rgba(10,132,255,0.12)', border:'rgba(10,132,255,0.3)', text:'#0A84FF'},
+  'No show':                   {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  "Can't Cope":                {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'No show (During Training)': {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Performance / Quality':     {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Behavior':                  {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Another Offer':             {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.3)', text:'#FFD60A'},
+  'Postponed (During Training)':{bg:'rgba(255,214,10,0.12)',border:'rgba(255,214,10,0.3)',text:'#FFD60A'},
+  'Personal':                  {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'PC':                        {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Medical Condition':         {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.3)', text:'#FFD60A'},
+  'Documentation issues':      {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.3)', text:'#FFD60A'},
+  'Another Job':               {bg:'rgba(255,69,58,0.12)',  border:'rgba(255,69,58,0.3)',  text:'#FF453A'},
+  'Studying':                  {bg:'rgba(255,214,10,0.12)', border:'rgba(255,214,10,0.3)', text:'#FFD60A'}
 };
 
 function bmApplyBatchFilters(){ bmRenderBatchTable(); }
@@ -8082,8 +8088,19 @@ function btQuickAssignAll(){
               <option value="all">All Statuses</option>
               <option value="In Training">In Training</option>
               <option value="Distributed">Distributed</option>
-              <option value="On Hold">On Hold</option>
-              <option value="Dropped">Dropped</option>
+              <option value="No show">No Show</option>
+              <option value="Can't Cope">Can't Cope</option>
+              <option value="No show (During Training)">No Show (During Training)</option>
+              <option value="Performance / Quality">Performance / Quality</option>
+              <option value="Behavior">Behavior</option>
+              <option value="Another Offer">Another Offer</option>
+              <option value="Postponed (During Training)">Postponed (During Training)</option>
+              <option value="Personal">Personal</option>
+              <option value="PC">PC</option>
+              <option value="Medical Condition">Medical Condition</option>
+              <option value="Documentation issues">Documentation Issues</option>
+              <option value="Another Job">Another Job</option>
+              <option value="Studying">Studying</option>
             </select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -8285,11 +8302,22 @@ function btQuickAssignAll(){
         <div id="bm_edit_phase_row" style="display:none">
           <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px">Leaving Phase</label>
         </div>
-        <select id="bm_edit_status">
-          <option value="In Training">In Training</option>
-          <option value="Distributed">Distributed</option>
-          <option value="On Hold">On Hold</option>
-          <option value="Dropped">Dropped</option>
+        <select id="bm_edit_status" onchange="bmEditStatusChange()">
+          <option value="In Training">✅ In Training</option>
+          <option value="Distributed">🎓 Distributed</option>
+          <option value="No show">No Show</option>
+          <option value="Can't Cope">Can't Cope</option>
+          <option value="No show (During Training)">No Show (During Training)</option>
+          <option value="Performance / Quality">Performance / Quality</option>
+          <option value="Behavior">Behavior</option>
+          <option value="Another Offer">Another Offer</option>
+          <option value="Postponed (During Training)">Postponed (During Training)</option>
+          <option value="Personal">Personal</option>
+          <option value="PC">PC</option>
+          <option value="Medical Condition">Medical Condition</option>
+          <option value="Documentation issues">Documentation Issues</option>
+          <option value="Another Job">Another Job</option>
+          <option value="Studying">Studying</option>
         </select>
       </div>
       <div>
