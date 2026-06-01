@@ -4553,6 +4553,30 @@ const BSUP = {
 };
 
 const TRAINER_CODES = ['A-043', 'A-145', 'A-162', 'A-411', 'A-566', 'A-721', 'A-779', 'A-999', 'A-1262', 'A-1350', 'A-1373', 'A-1440', 'A-1643', 'A-2064', 'A-2082', 'A-2136'];
+const TEAM_SHEET_ID  = '1bErhs3yQiJMl6PXRJFgH512wLgfm2dM6Cpj2owimLuw';
+const TEAM_SHEET_API = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
+let _trainersCache = null;
+
+async function fetchTrainersFromSheet(){
+  if(_trainersCache) return _trainersCache;
+  try {
+    const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/Trainers!A2:E?key='+TEAM_SHEET_API;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(!data.values){ return []; }
+    const trainers = data.values
+      .filter(r => r[0] && String(r[0]).trim())
+      .map(r => ({
+        code:     String(r[0]||'').trim(),
+        name:     String(r[1]||'').trim(),
+        email:    String(r[2]||'').trim().toLowerCase(),
+        password: String(r[3]||'').trim(),
+        role:     'trainer'
+      }));
+    _trainersCache = trainers;
+    return trainers;
+  } catch(e){ console.warn('fetchTrainersFromSheet:', e); return []; }
+}
 
 // ============================================================
 // INIT BATCH SUPERVISOR DASHBOARD
