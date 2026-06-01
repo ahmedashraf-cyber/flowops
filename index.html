@@ -3244,18 +3244,6 @@ async function bmConfirmAssignment(){
     document.getElementById('bm_assign_msg').textContent = '✅ Assignment saved! Batch supervisors can now see their trainees.';
     btn.textContent='✅ Saved!'; btn.disabled=false;
     BM.assignPreview = null;
-    // Save trainer assignments to Firestore
-    if(BM._pendingTrainers && fbDb){
-      try {
-        await fbDb.collection('batch_trainer_assignments').doc(batch.replace(/\s+/g,'_')).set({
-          batchName: batch,
-          assignments: BM._pendingTrainers,
-          savedAt: new Date().toISOString(),
-          savedBy: A.user.email
-        });
-        console.log('Trainer assignments saved for', batch);
-      } catch(e){ console.warn('Trainer assign save error:', e); }
-    }
     setTimeout(()=>{ document.getElementById('bm_assign_confirm_btn').style.display='none'; btn.textContent='✅ Confirm & Save'; },3000);
   } catch(e){
     document.getElementById('bm_assign_msg').textContent = '❌ Error: '+e.message;
@@ -4083,85 +4071,9 @@ function bmGeneratePreview(batchName){
   // Store for confirm
   BM._pendingAssign = { batchName, dist };
 
-  // Show Step 4: auto-distribute trainers across supervisors
-  bmLoadTrainerAssignment(supsToUse, Object.values(dist).reduce((a,b)=>a+b.length,0));
-
   if(summary) summary.textContent = `${interleaved.length} trainees → ${supsToUse.length} supervisors · ~${count} each · Fairness: tier-balanced + score-balanced`;
 }
 
-
-// ═══════════════════════════════════════════════════════════════
-// STEP 4: TRAINER ASSIGNMENT (auto-distribute across supervisors)
-// ═══════════════════════════════════════════════════════════════
-async function bmLoadTrainerAssignment(sups, totalTrainees){
-  const card = document.getElementById('bm_trainer_assign_card');
-  const loadEl = document.getElementById('bm_trainer_loading');
-  const preview = document.getElementById('bm_trainer_preview');
-  if(!card) return;
-  card.style.display = 'block';
-  loadEl.style.display = 'block';
-  preview.innerHTML = '';
-
-  const trainers = await fetchTrainersFromSheet();
-  loadEl.style.display = 'none';
-
-  if(!trainers.length){
-    preview.innerHTML = '<div style="color:var(--color-warning);font-size:12px">⚠️ Could not load trainers from sheet. Check sheet access.</div>';
-    return;
-  }
-
-  // Calculate needed trainers (5-6 trainees each)
-  const trainersNeeded = Math.ceil(totalTrainees / 5.5);
-  const trainersPerSup = Math.ceil(trainersNeeded / sups.length);
-
-  // Shuffle trainers for fair distribution
-  const shuffled = [...trainers].sort(() => Math.random() - 0.5);
-  const pool = shuffled.slice(0, trainersNeeded);
-
-  // Distribute pool across supervisors
-  const trainerDist = {};
-  sups.forEach(s => trainerDist[s] = []);
-  pool.forEach((t, i) => {
-    const sup = sups[i % sups.length];
-    if(trainerDist[sup].length < trainersPerSup) trainerDist[sup].push(t);
-  });
-
-  // If some trainers remain unassigned, distribute the rest
-  const remaining = pool.filter((t, i) => {
-    const sup = sups[i % sups.length];
-    return !trainerDist[sup].includes(t);
-  });
-  let ri = 0;
-  sups.forEach(s => {
-    while(trainerDist[s].length < trainersPerSup && ri < remaining.length){
-      trainerDist[s].push(remaining[ri++]);
-    }
-  });
-
-  // Store for confirm
-  BM._pendingTrainers = trainerDist;
-
-  // Render preview per supervisor
-  preview.innerHTML = Object.entries(trainerDist).map(([sup, trs]) => {
-    const supName = (getRosterMember(sup)||{}).name||sup;
-    const firstTwo = supName.split(' ').slice(0,2).join(' ');
-    return '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
-        '<div>' +
-          '<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--p2)">' + sup + '</div>' +
-          '<div style="font-size:11px;color:var(--t-3)">' + firstTwo + '</div>' +
-        '</div>' +
-        '<span style="background:rgba(232,89,12,0.15);color:var(--p2);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">' + trs.length + ' trainers</span>' +
-      '</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
-        trs.map(t => '<div style="padding:4px 10px;border-radius:8px;background:var(--bg-3);border:1px solid var(--b-1);font-size:11px;font-weight:600">' +
-          '<span style="font-family:'JetBrains Mono',monospace;color:var(--p2)">' + t.code + '</span>' +
-          '<span style="color:var(--t-3);margin-left:5px">' + t.name.split(' ').slice(0,2).join(' ') + '</span>' +
-        '</div>').join('') +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
 
 // ── Page 3: Attendance (read-only) ────────────────────────────
 async function bmRenderAttendanceFilters(){
@@ -4401,25 +4313,15 @@ async function runSetup(){
   const bar = document.getElementById('setup_progress_bar');
   const txt = document.getElementById('setup_progress_text');
   const log = document.getElementById('setup_log');
-  btn.disabled = true; btn.textContent = 'Loading...';
+  btn.disabled = true; btn.textContent = 'Creating...';
   progress.style.display = 'block'; log.style.display = 'block';
   log.innerHTML = '';
 
-  // Fetch trainers from sheet and merge with TEAM_ROSTER
-  log.innerHTML += '<div style="color:var(--t-3)">📋 Fetching trainers from sheet...</div>';
-  const sheetTrainers = await fetchTrainersFromSheet();
-  log.innerHTML += '<div style="color:var(--t-3)">Found '+sheetTrainers.length+' trainers in sheet</div>';
-
-  // Merge: TEAM_ROSTER + sheet trainers (deduplicate by email)
-  const rosterEmails = new Set(TEAM_ROSTER.map(m => m.email));
-  const allMembers = [...TEAM_ROSTER, ...sheetTrainers.filter(t => t.email && !rosterEmails.has(t.email))];
-
-  btn.textContent = 'Creating...';
   let done = 0;
-  for(const m of allMembers){
-    const pct = Math.round((done/allMembers.length)*100);
+  for(const m of TEAM_ROSTER){
+    const pct = Math.round((done/TEAM_ROSTER.length)*100);
     bar.style.width = pct+'%';
-    txt.textContent = 'Creating '+m.code+' ('+done+'/'+allMembers.length+')...';
+    txt.textContent = 'Creating '+m.code+' ('+done+'/'+TEAM_ROSTER.length+')...';
     const statusEl = document.getElementById('setup_status_'+m.code.replace('-','_'));
     try {
       // Check if already exists
@@ -4433,21 +4335,16 @@ async function runSetup(){
       const cred = await firebase.auth().createUserWithEmailAndPassword(m.email, m.password);
       // Save profile to Firestore
       const nameParts = m.name.split(' ');
-      const profileData = {
+      await fbDb.collection('users').doc(cred.user.uid).set({
         firstName: nameParts[0],
         lastName: nameParts.slice(1).join(' '),
         email: m.email,
         role: m.role,
+        supervisorCode: m.code,
         displayName: m.name,
         createdAt: new Date().toISOString(),
         createdBy: 'setup'
-      };
-      if(m.role === 'trainer'){
-        profileData.trainerCode = m.code;
-      } else {
-        profileData.supervisorCode = m.code;
-      }
-      await fbDb.collection('users').doc(cred.user.uid).set(profileData);
+      });
       log.innerHTML += '<div style="color:#30D158">✅ '+m.code+' · '+m.email+'</div>';
       if(statusEl){ statusEl.textContent='✅ created'; statusEl.style.color='#30D158'; }
     } catch(e){
@@ -4652,49 +4549,16 @@ const BSUP = {
   codes:        {},   // uid -> training code mapping
   groups:       [],   // generated groups
   groupAssign:  {},   // groupIndex -> trainerCode
-  myTrainers:   [],   // trainers assigned to this supervisor by BM
   notifN:       0
 };
 
-const TRAINER_CODES = []; // Populated live from sheet — see fetchTrainersFromSheet()
-const TEAM_SHEET_ID = '1bErhs3yQiJMl6PXRJFgH512wLgfm2dM6Cpj2owimLuw';
-const TEAM_SHEET_API = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
-let _trainersCache = null; // cache until page reload
-
-async function fetchTrainersFromSheet(){
-  if(_trainersCache) return _trainersCache;
-  try {
-    const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/Trainers!A2:E?key='+TEAM_SHEET_API;
-    const res = await fetch(url);
-    const data = await res.json();
-    if(!data.values){ console.warn('Trainers tab empty or not found'); return []; }
-    const trainers = data.values
-      .filter(r => r[0] && r[0].toString().trim())
-      .map(r => ({
-        code:     (r[0]||'').toString().trim(),
-        name:     (r[1]||'').toString().trim(),
-        email:    (r[2]||'').toString().trim().toLowerCase(),
-        password: (r[3]||'').toString().trim(),
-        role:     'trainer'
-      }));
-    // Sync into TRAINER_CODES array
-    TRAINER_CODES.length = 0;
-    trainers.forEach(t => { if(!TRAINER_CODES.includes(t.code)) TRAINER_CODES.push(t.code); });
-    _trainersCache = trainers;
-    console.log('Trainers loaded from sheet:', trainers.length);
-    return trainers;
-  } catch(e){
-    console.error('fetchTrainersFromSheet error:', e);
-    return [];
-  }
-}
+const TRAINER_CODES = ['A-043', 'A-145', 'A-162', 'A-411', 'A-566', 'A-721', 'A-779', 'A-999', 'A-1262', 'A-1350', 'A-1373', 'A-1440', 'A-1643', 'A-2064', 'A-2082', 'A-2136'];
 
 // ============================================================
 // INIT BATCH SUPERVISOR DASHBOARD
 // ============================================================
 async function initBsupDashboard(){
   await loadBsupTrainees();
-  await loadMyTrainersFromBM();
   listenForBatchNotifications();
   await loadSavedCodes();
   await loadSavedGroups();
@@ -5011,29 +4875,6 @@ function populateBsupGroupBatch(){
     batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
 }
 
-async function loadMyTrainersFromBM(){
-  // Read which trainers were assigned to this supervisor by the BM
-  if(!fbDb || !A.user) return;
-  const myCode = A.user.supervisorCode;
-  if(!myCode) return;
-  try {
-    // Get all batch assignments and find ones for this supervisor
-    const snap = await fbDb.collection('batch_trainer_assignments').get();
-    const myTrainers = [];
-    const seen = new Set();
-    snap.forEach(doc => {
-      const d = doc.data();
-      if(d.assignments && d.assignments[myCode]){
-        d.assignments[myCode].forEach(t => {
-          if(!seen.has(t.code)){ seen.add(t.code); myTrainers.push(t); }
-        });
-      }
-    });
-    BSUP.myTrainers = myTrainers;
-    console.log('My assigned trainers:', myTrainers.length);
-  } catch(e){ console.warn('loadMyTrainersFromBM error:', e); }
-}
-
 function updateBsupGroupsAvailability(){
   const coded = BSUP.trainees.filter(t => t.trainingCode).length;
   if(coded > 0){
@@ -5149,13 +4990,9 @@ function renderGroups(){
         '</div>';
     }).join('');
 
-    // Use BM-assigned trainers if available, else fall back to full sheet list
-    const trainerSource = BSUP.myTrainers.length ? BSUP.myTrainers : TRAINER_CODES.map(c => ({code:c,name:''}));
-    const trainerOpts = trainerSource.map(t => {
-      const c = t.code||t;
-      const label = t.name ? c+' · '+t.name.split(' ').slice(0,2).join(' ') : c;
-      return '<option value="'+c+'"'+(assigned===c?' selected':'')+'>'+label+'</option>';
-    }).join('');
+    const trainerOpts = TRAINER_CODES.map(c =>
+      '<option value="'+c+'"'+(assigned===c?' selected':'')+'>'+c+'</option>'
+    ).join('');
 
     return '<div class="card" style="border:1px solid var(--border-strong)">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
@@ -9118,18 +8955,7 @@ function btQuickAssignAll(){
               </div>
             </div>
 
-            <!-- Step 4: Assign Batch Trainers -->
-            <div class="card" id="bm_trainer_assign_card" style="padding:22px;display:none">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-                <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">4</span>
-                <span style="font-size:14px;font-weight:700">Assign Batch Trainers</span>
-                <span style="font-size:11px;color:var(--t-3);margin-left:auto">5–6 trainees per trainer · auto-distributed</span>
-              </div>
-              <div id="bm_trainer_loading" style="font-size:12px;color:var(--t-3);padding:10px 0;display:none">⏳ Loading trainers from sheet...</div>
-              <div id="bm_trainer_preview" style="display:flex;flex-direction:column;gap:10px"></div>
-            </div>
-
-            <!-- Step 5: Actions -->
+            <!-- Step 4: Actions -->
             <div style="display:flex;gap:10px">
               <button onclick="bmPreviewAssignment()" style="flex:1;padding:12px;border-radius:12px;background:var(--bg-3);color:var(--t-1);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">👁 Preview</button>
               <button onclick="bmConfirmAssignment()" id="bm_assign_confirm_btn" style="flex:2;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;display:none">✅ Confirm &amp; Save</button>
