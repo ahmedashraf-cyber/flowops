@@ -4317,8 +4317,17 @@ function switchRoleAsSup(member){
     BSUP.trainees = [];
     BSUP.groups = [];
   }
-  // Show bsup screen
+  // Show bsup screen — reset any lingering opacity from transitions
   showScreen('bsupScreen');
+  const bsupEl = document.getElementById('bsupScreen');
+  if(bsupEl){
+    bsupEl.style.opacity = '1';
+    bsupEl.style.transition = 'none';
+    // Also reset all child elements that may have been faded
+    bsupEl.querySelectorAll('[style*="opacity"]').forEach(el => {
+      el.style.opacity = '1';
+    });
+  }
   // Keep role switcher visible for Training Manager
   const sw = document.getElementById('roleSwitcher');
   if(sw) sw.style.display = 'block';
@@ -5134,9 +5143,9 @@ function switchRole(role){
       showToast('Coming soon — we are building this role dashboard.');
       return;
     }
-    // Fade in new screen
+    // Fade in new screen (skip if we returned early for BSup picker)
     const next = document.querySelector('.screen.active');
-    if(next){
+    if(next && !skipFade){
       next.style.opacity = '0';
       next.style.transition = 'none';
       requestAnimationFrame(()=>{
