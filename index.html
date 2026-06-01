@@ -4307,8 +4307,11 @@ function switchRoleAsSup(member){
   // Close the menu
   const menu = document.getElementById('viewAsSupMenu');
   if(menu) menu.style.display = 'none';
+  const chev = document.getElementById('viewAsSupChev');
+  if(chev) chev.textContent = '▾';
   // Store the impersonated supervisor
   A._viewAsSup = member;
+  try { sessionStorage.setItem('viewAsSupCode', member.code); } catch(e){}
   // Update BSUP state as if this supervisor is logged in
   if(typeof BSUP !== 'undefined'){
     BSUP.trainees = [];
@@ -4348,6 +4351,7 @@ function exitViewAsSup(origCode){
   if(banner) banner.remove();
   A.user.supervisorCode = origCode;
   A._viewAsSup = null;
+  try { sessionStorage.removeItem('viewAsSupCode'); } catch(e){}
   // Return to Training Manager screen
   switchRole('manager');
 }
@@ -5080,6 +5084,17 @@ function switchRole(role){
     // Reset trainer state if switching away
     if(role !== 'trainer' && typeof btReset === 'function') btReset();
     if(role === 'batchsup'){
+      // Training Manager switching to BSup — show supervisor picker
+      const menu = document.getElementById('viewAsSupMenu');
+      const chev = document.getElementById('viewAsSupChev');
+      if(menu && (A.user.role==='manager'||A.user.role==='batchmanager')){
+        if(current){ current.style.opacity='1'; }
+        menu.style.display = 'block';
+        if(chev) chev.textContent = '▴';
+        renderViewAsSupList();
+        return; // don't navigate — wait for supervisor selection
+      }
+      // Real batchsup user switching
       injectLogos();
       document.getElementById('bsupPill').textContent = A.user.name + ' · Batch Supervisor';
       showScreen('bsupScreen');
