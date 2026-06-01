@@ -4544,11 +4544,12 @@ initFirebaseAuth();
 // BATCH SUPERVISOR — State & Data
 // ============================================================
 const BSUP = {
-  trainees:     [],   // accepted trainees from Firestore
+  trainees:     [],
   traineesFilt: 'all',
-  codes:        {},   // uid -> training code mapping
-  groups:       [],   // generated groups
-  groupAssign:  {},   // groupIndex -> trainerCode
+  codes:        {},
+  groups:       [],
+  groupAssign:  {},
+  myTrainers:   [],   // trainers assigned to this supervisor by BM
   notifN:       0
 };
 
@@ -4583,6 +4584,7 @@ async function fetchTrainersFromSheet(){
 // ============================================================
 async function initBsupDashboard(){
   await loadBsupTrainees();
+  await loadMyTrainersFromBM();
   listenForBatchNotifications();
   await loadSavedCodes();
   await loadSavedGroups();
@@ -4899,6 +4901,26 @@ function populateBsupGroupBatch(){
     batches.map(b => '<option value="'+b+'">'+b+'</option>').join('');
 }
 
+async function loadMyTrainersFromBM(){
+  if(!fbDb || !A.user) return;
+  const myCode = A.user.supervisorCode;
+  if(!myCode) return;
+  try {
+    const snap = await fbDb.collection('batch_trainer_assignments').get();
+    const myTrainers = [];
+    const seen = new Set();
+    snap.forEach(doc => {
+      const d = doc.data();
+      if(d.assignments && d.assignments[myCode]){
+        d.assignments[myCode].forEach(t => {
+          if(!seen.has(t.code)){ seen.add(t.code); myTrainers.push(t); }
+        });
+      }
+    });
+    BSUP.myTrainers = myTrainers;
+  } catch(e){ console.warn('loadMyTrainersFromBM:', e); }
+}
+
 function updateBsupGroupsAvailability(){
   const coded = BSUP.trainees.filter(t => t.trainingCode).length;
   if(coded > 0){
@@ -5014,9 +5036,14 @@ function renderGroups(){
         '</div>';
     }).join('');
 
-    const trainerOpts = TRAINER_CODES.map(c =>
-      '<option value="'+c+'"'+(assigned===c?' selected':'')+'>'+c+'</option>'
-    ).join('');
+    const trainerSource = BSUP.myTrainers.length
+      ? BSUP.myTrainers
+      : TRAINER_CODES.map(c => ({code:c, name:''}));
+    const trainerOpts = trainerSource.map(t => {
+      const c = t.code||t;
+      const lbl = t.name ? c+' · '+t.name.split(' ').slice(0,2).join(' ') : c;
+      return '<option value="'+c+'"'+(assigned===c?' selected':'')+'>'+lbl+'</option>';
+    }).join('');
 
     return '<div class="card" style="border:1px solid var(--border-strong)">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
