@@ -4432,65 +4432,81 @@ async function runSetup(){
   const bar = document.getElementById('setup_progress_bar');
   const txt = document.getElementById('setup_progress_text');
   const log = document.getElementById('setup_log');
-  btn.disabled = true; btn.textContent = 'Creating...';
+  btn.disabled = true; btn.textContent = 'Loading...';
   progress.style.display = 'block'; log.style.display = 'block';
   log.innerHTML = '';
 
+  // Fetch trainers from sheet and merge with TEAM_ROSTER
+  log.innerHTML += '<div style="color:var(--t-3)">📋 Fetching trainers from sheet...</div>';
+  log.scrollTop = log.scrollHeight;
+  const sheetTrainers = await fetchTrainersFromSheet();
+  log.innerHTML += '<div style="color:var(--t-3)">Found '+sheetTrainers.length+' trainers in sheet</div>';
+  log.scrollTop = log.scrollHeight;
+
+  // Merge: TEAM_ROSTER + sheet trainers (skip duplicates by email)
+  const rosterEmails = new Set(TEAM_ROSTER.map(m => m.email));
+  const allMembers = [
+    ...TEAM_ROSTER,
+    ...sheetTrainers.filter(t => t.email && !rosterEmails.has(t.email))
+  ];
+
+  btn.textContent = 'Creating...';
   let done = 0;
-  for(const m of TEAM_ROSTER){
-    const pct = Math.round((done/TEAM_ROSTER.length)*100);
+
+  for(const m of allMembers){
+    const pct = Math.round((done/allMembers.length)*100);
     bar.style.width = pct+'%';
-    txt.textContent = 'Creating '+m.code+' ('+done+'/'+TEAM_ROSTER.length+')...';
-    const statusEl = document.getElementById('setup_status_'+m.code.replace('-','_'));
+    txt.textContent = 'Creating '+m.code+' ('+done+'/'+allMembers.length+')...';
+    // Try to get status element (only exists for TEAM_ROSTER members)
+    const safeCode = (m.code||'').replace(/-/g,'_').replace(/\./g,'_');
+    const statusEl = document.getElementById('setup_status_'+safeCode);
     try {
-      // Check if already exists
       const existing = await fbDb.collection('users').where('email','==',m.email).limit(1).get();
       if(!existing.empty){
         log.innerHTML += '<div style="color:#30D158">✅ '+m.code+' already exists</div>';
         if(statusEl){ statusEl.textContent='✅ exists'; statusEl.style.color='#30D158'; }
-        done++; continue;
+        done++; log.scrollTop=log.scrollHeight; continue;
       }
-      // Create Firebase Auth account
       const cred = await firebase.auth().createUserWithEmailAndPassword(m.email, m.password);
-      // Save profile to Firestore
       const nameParts = m.name.split(' ');
-      await fbDb.collection('users').doc(cred.user.uid).set({
-        firstName: nameParts[0],
-        lastName: nameParts.slice(1).join(' '),
-        email: m.email,
-        role: m.role,
-        supervisorCode: m.code,
+      const profile = {
+        firstName:   nameParts[0],
+        lastName:    nameParts.slice(1).join(' '),
+        email:       m.email,
+        role:        m.role,
         displayName: m.name,
-        createdAt: new Date().toISOString(),
-        createdBy: 'setup'
-      });
+        createdAt:   new Date().toISOString(),
+        createdBy:   'setup'
+      };
+      // Use trainerCode for trainers, supervisorCode for everyone else
+      if(m.role === 'trainer'){
+        profile.trainerCode = m.code;
+      } else {
+        profile.supervisorCode = m.code;
+      }
+      await fbDb.collection('users').doc(cred.user.uid).set(profile);
       log.innerHTML += '<div style="color:#30D158">✅ '+m.code+' · '+m.email+'</div>';
       if(statusEl){ statusEl.textContent='✅ created'; statusEl.style.color='#30D158'; }
     } catch(e){
-      const msg = e.code === 'auth/email-already-in-use'
-        ? '⚠️ '+m.code+' email already in Auth (no Firestore profile — fixed)'
+      const isUsed = e.code === 'auth/email-already-in-use';
+      const msg = isUsed
+        ? '⚠️ '+m.code+' already in Auth — no Firestore profile yet'
         : '❌ '+m.code+' — '+e.message;
-      log.innerHTML += '<div style="color:'+(e.code==='auth/email-already-in-use'?'#FFD60A':'#FF453A')+'">'+msg+'</div>';
-      if(e.code === 'auth/email-already-in-use'){
-        // Auth exists but maybe no Firestore profile — create it
-        try {
-          const nameParts = m.name.split(' ');
-          // We can't get UID without signing in, so just log
-          log.innerHTML += '<div style="color:var(--t-3)">  → Sign in as '+m.email+' to fix profile</div>';
-        } catch(e2){}
+      log.innerHTML += '<div style="color:'+(isUsed?'#FFD60A':'#FF453A')+'">'+msg+'</div>';
+      if(isUsed){
+        log.innerHTML += '<div style="color:var(--t-3)">  → Sign in as '+m.email+' to auto-fix profile</div>';
       }
       if(statusEl){ statusEl.textContent='see log'; statusEl.style.color='#FFD60A'; }
     }
     done++;
     log.scrollTop = log.scrollHeight;
-    await new Promise(r => setTimeout(r, 300)); // rate limit
+    await new Promise(r => setTimeout(r, 300));
   }
   bar.style.width = '100%';
-  txt.textContent = '✅ Complete — '+done+' accounts processed';
+  txt.textContent = '✅ Complete — '+done+' accounts processed ('+TEAM_ROSTER.length+' roster + '+(allMembers.length-TEAM_ROSTER.length)+' trainers from sheet)';
   btn.textContent = '✅ Done'; btn.disabled = false;
-  // Sign back in as the manager (setup may have changed auth state)
   if(A.user && A.user.email){
-    log.innerHTML += '<div style="color:var(--t-3)">Restoring your session...</div>';
+    log.innerHTML += '<div style="color:var(--t-3)">Session intact — you are still signed in as '+A.user.email+'</div>';
   }
 }
 
