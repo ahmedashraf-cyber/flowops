@@ -4738,16 +4738,14 @@ const TEAM_SHEET_API = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 let _trainersCache = null;
 
 async function debugTrainersSheet(){
-  const tabNames = ['Trainers','trainers','Batch Trainers','TRAINERS'];
-  for(const tab of tabNames){
-    const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/'+encodeURIComponent(tab)+'!A1:E5?key='+TEAM_SHEET_API;
-    console.log('Trying tab:', tab, url);
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      console.log('Tab "'+tab+'" response:', JSON.stringify(data).substring(0,500));
-    } catch(e){ console.log('Tab "'+tab+'" error:', e.message); }
-  }
+  const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/Trainers!A1:G10?key='+TEAM_SHEET_API;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    console.log('=== TRAINERS SHEET RAW (first 10 rows) ===');
+    (data.values||[]).forEach((row,i) => console.log('Row '+i+':', JSON.stringify(row)));
+    if(!data.values) console.log('Full response:', JSON.stringify(data));
+  } catch(e){ console.log('Error:', e.message); }
 }
 
 async function fetchTrainersFromSheet(){
