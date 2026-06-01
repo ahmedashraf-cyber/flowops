@@ -4739,7 +4739,6 @@ let _trainersCache = null;
 
 async function fetchTrainersFromSheet(){
   if(_trainersCache) return _trainersCache;
-  // Try multiple possible tab name variants
   const tabNames = ['Trainers','trainers','Batch Trainers','batch trainers','TRAINERS','Trainer'];
   for(const tab of tabNames){
     try {
@@ -4750,19 +4749,20 @@ async function fetchTrainersFromSheet(){
         const trainers = data.values
           .filter(r => r[0] && String(r[0]).trim())
           .map(r => ({
-            code:     String(r[0]||'').trim(),
+            code:     String(r[0]||'').replace(/\s+/g,'').trim(),
             name:     String(r[1]||'').trim(),
-            email:    String(r[2]||'').trim().toLowerCase(),
+            email:    String(r[2]||'').replace(/\s+/g,'').trim().toLowerCase(),
             password: String(r[3]||'').trim(),
             role:     'trainer'
-          }));
+          }))
+          .filter(t => t.code && t.email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(t.email));
         _trainersCache = trainers;
         console.log('Trainers loaded from tab "'+tab+'":', trainers.length);
         return trainers;
       }
     } catch(e){ /* try next */ }
   }
-  console.warn('fetchTrainersFromSheet: no matching tab found. Tried:', tabNames.join(', '));
+  console.warn('fetchTrainersFromSheet: no matching tab found');
   return [];
 }
 
