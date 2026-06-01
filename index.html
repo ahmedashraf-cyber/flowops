@@ -4071,9 +4071,73 @@ function bmGeneratePreview(batchName){
   // Store for confirm
   BM._pendingAssign = { batchName, dist };
 
+  // Trigger Step 4: trainer assignment
+  const usedSups = Object.keys(dist);
+  const totalT = Object.values(dist).reduce((a,b) => a + b.length, 0);
+  bmLoadTrainerAssignment(usedSups, totalT);
+
   if(summary) summary.textContent = `${interleaved.length} trainees → ${supsToUse.length} supervisors · ~${count} each · Fairness: tier-balanced + score-balanced`;
 }
 
+
+// ── Step 4: Trainer Assignment ───────────────────────────────
+async function bmLoadTrainerAssignment(sups, totalTrainees){
+  const card = document.getElementById('bm_trainer_assign_card');
+  const loadEl = document.getElementById('bm_trainer_loading');
+  const preview = document.getElementById('bm_trainer_preview');
+  if(!card) return;
+  card.style.display = 'block';
+  if(loadEl) loadEl.style.display = 'block';
+  if(preview) preview.innerHTML = '';
+
+  const trainers = await fetchTrainersFromSheet();
+  if(loadEl) loadEl.style.display = 'none';
+
+  if(!trainers.length){
+    if(preview) preview.innerHTML = '<div style="color:#FF9F0A;font-size:12px;padding:8px">Could not load trainers from sheet (400 error means tab name mismatch — check sheet tab is named exactly "Trainers")</div>';
+    return;
+  }
+
+  const trainersNeeded = Math.ceil(totalTrainees / 5.5);
+  const trainersPerSup = Math.ceil(trainersNeeded / sups.length);
+  const shuffled = [...trainers].sort(() => Math.random() - 0.5);
+  const pool = shuffled.slice(0, trainersNeeded);
+
+  const trainerDist = {};
+  sups.forEach(s => { trainerDist[s] = []; });
+  pool.forEach((t, i) => {
+    const sup = sups[i % sups.length];
+    if(trainerDist[sup].length < trainersPerSup) trainerDist[sup].push(t);
+  });
+  // distribute any remainder
+  let ri = 0;
+  const leftover = pool.filter(t => !Object.values(trainerDist).some(arr => arr.includes(t)));
+  sups.forEach(s => { while(leftover[ri] && trainerDist[s].length < trainersPerSup + 1){ trainerDist[s].push(leftover[ri++]); } });
+
+  BM._pendingTrainers = trainerDist;
+
+  if(preview) preview.innerHTML = Object.entries(trainerDist).map(([sup, trs]) => {
+    const m = getRosterMember(sup);
+    const shortName = m ? m.name.split(' ').slice(0,2).join(' ') : sup;
+    return '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<div>' +
+          '<span style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:700;color:var(--p2)">' + sup + '</span>' +
+          '<span style="font-size:11px;color:var(--t-3);margin-left:8px">' + shortName + '</span>' +
+        '</div>' +
+        '<span style="background:rgba(232,89,12,0.15);color:var(--p2);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">' + trs.length + ' trainers</span>' +
+      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
+        trs.map(t =>
+          '<div style="padding:4px 10px;border-radius:8px;background:var(--bg-3);border:1px solid var(--b-1);font-size:11px">' +
+            '<span style="font-family:JetBrains Mono,monospace;color:var(--p2);font-weight:700">' + t.code + '</span>' +
+            '<span style="color:var(--t-3);margin-left:5px">' + t.name.split(' ').slice(0,2).join(' ') + '</span>' +
+          '</div>'
+        ).join('') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
 
 // ── Page 3: Attendance (read-only) ────────────────────────────
 async function bmRenderAttendanceFilters(){
@@ -9006,7 +9070,18 @@ function btQuickAssignAll(){
               </div>
             </div>
 
-            <!-- Step 4: Actions -->
+            <!-- Step 4: Assign Batch Trainers -->
+            <div class="card" id="bm_trainer_assign_card" style="padding:22px;display:none">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <span style="width:26px;height:26px;border-radius:50%;background:var(--p2);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">4</span>
+                <span style="font-size:14px;font-weight:700">Assign Batch Trainers</span>
+                <span style="font-size:11px;color:var(--t-3);margin-left:auto">5-6 trainees per trainer · auto-distributed</span>
+              </div>
+              <div id="bm_trainer_loading" style="font-size:12px;color:var(--t-3);padding:8px 0;display:none">Loading trainers from sheet...</div>
+              <div id="bm_trainer_preview" style="display:flex;flex-direction:column;gap:8px"></div>
+            </div>
+
+            <!-- Step 5: Actions -->
             <div style="display:flex;gap:10px">
               <button onclick="bmPreviewAssignment()" style="flex:1;padding:12px;border-radius:12px;background:var(--bg-3);color:var(--t-1);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">👁 Preview</button>
               <button onclick="bmConfirmAssignment()" id="bm_assign_confirm_btn" style="flex:2;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;display:none">✅ Confirm &amp; Save</button>
