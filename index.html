@@ -4737,6 +4737,19 @@ const TEAM_SHEET_ID  = '1bErhs3yQiJMl6PXRJFgH512wLgfm2dM6Cpj2owimLuw';
 const TEAM_SHEET_API = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 let _trainersCache = null;
 
+async function debugTrainersSheet(){
+  const tabNames = ['Trainers','trainers','Batch Trainers','TRAINERS'];
+  for(const tab of tabNames){
+    const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/'+encodeURIComponent(tab)+'!A1:E5?key='+TEAM_SHEET_API;
+    console.log('Trying tab:', tab, url);
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      console.log('Tab "'+tab+'" response:', JSON.stringify(data).substring(0,500));
+    } catch(e){ console.log('Tab "'+tab+'" error:', e.message); }
+  }
+}
+
 async function fetchTrainersFromSheet(){
   if(_trainersCache) return _trainersCache;
   const tabNames = ['Trainers','trainers','Batch Trainers','batch trainers','TRAINERS','Trainer'];
