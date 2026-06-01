@@ -4296,6 +4296,9 @@ function switchRoleAsSup(member){
   }
   // Show bsup screen
   showScreen('bsupScreen');
+  // Keep role switcher visible for Training Manager
+  const sw = document.getElementById('roleSwitcher');
+  if(sw) sw.style.display = 'block';
   const pill = document.getElementById('bsupUserPill');
   if(pill) pill.textContent = member.code + ' · ' + member.name.split(' ').slice(0,2).join(' ') + ' (Viewing as)';
   // Override supervisorCode for data loading
@@ -4331,6 +4334,9 @@ function exitViewAsSup(origCode){
 
 // ── Add Setup button to Training Manager gate ─────────────────
 function addSetupBtn(){
+  // Ensure role switcher is visible for Training Manager
+  const sw = document.getElementById('roleSwitcher');
+  if(sw) sw.style.display = 'block';
   // Add to the role switcher panel — visible only to manager role
   const switcher = document.getElementById('roleSwitcher');
   if(!switcher || document.getElementById('setup_nav_btn')) return;
@@ -4993,6 +4999,11 @@ function updateBsupBadge(){
 function switchRole(role){
   if(!A.user) return;
   A.requestedRole = role;
+  // Always keep switcher visible for manager/batchmanager
+  if(A.user.role==='manager'||A.user.role==='batchmanager'){
+    const sw = document.getElementById('roleSwitcher');
+    if(sw) sw.style.display = 'block';
+  }
 
   // Cinematic transition: fade out current screen
   const current = document.querySelector('.screen.active');
