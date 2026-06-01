@@ -2521,6 +2521,64 @@ setTimeout(nxDateInit, 200);
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════
+async function bmResetAllData(){
+  const confirmed = confirm(
+    '⚠️ RESET ALL BATCH DATA\n\n' +
+    'This will permanently delete:\n' +
+    '• All end-of-batch notifications from Coordinator\n' +
+    '• All supervisor assignments\n' +
+    '• All training status records\n' +
+    '• All BM assignment records\n\n' +
+    'The data will need to come fresh from the Batch Coordinator.\n\n' +
+    'Type "RESET" to confirm — click OK only if you are sure.'
+  );
+  if(!confirmed) return;
+
+  const word = prompt('Type RESET to confirm:');
+  if(word !== 'RESET'){ alert('Cancelled — nothing was deleted.'); return; }
+
+  const btn = document.querySelector('button[onclick="bmResetAllData()"]');
+  if(btn){ btn.textContent = 'Deleting...'; btn.disabled = true; }
+
+  try {
+    let deleted = 0;
+
+    // 1. Delete batch_notifications of type end_of_batch
+    const bnSnap = await fbDb.collection('batch_notifications')
+      .where('type','==','end_of_batch').get();
+    for(const d of bnSnap.docs){ await d.ref.delete(); deleted++; }
+
+    // 2. Delete all accepted_trainees docs
+    const atSnap = await fbDb.collection('accepted_trainees').get();
+    for(const d of atSnap.docs){ await d.ref.delete(); deleted++; }
+
+    // 3. Delete all bm_assignments docs
+    const baSnap = await fbDb.collection('bm_assignments').get();
+    for(const d of baSnap.docs){ await d.ref.delete(); deleted++; }
+
+    // 4. Delete all training_status docs
+    const tsSnap = await fbDb.collection('training_status').get();
+    for(const d of tsSnap.docs){ await d.ref.delete(); deleted++; }
+
+    // Reset local state
+    BM.trainees = [];
+    BM.tsData = {};
+    BM.assignments = {};
+    BM.supAssignments = {};
+    BM.filters = { batch:'all', status:'all', tier:'all', sup:'all', from:'', to:'' };
+
+    alert('✅ Reset complete — ' + deleted + ' records deleted.\nWaiting for Batch Coordinator to send new batch data.');
+    bmPopulateFilters();
+    bmRenderBatchTable();
+    bmRenderSupList();
+
+  } catch(e){
+    alert('Error during reset: ' + e.message);
+  } finally {
+    if(btn){ btn.textContent = '🗑 Reset All Data'; btn.disabled = false; }
+  }
+}
+
 async function initBMDashboard(){
   injectLogos();
   bmShowTab('batches');
@@ -8309,9 +8367,12 @@ function btQuickAssignAll(){
 
       <!-- ══ BATCHES TAB ══ -->
       <div id="bm_tab_batches" class="bm-tab">
-        <div class="page-hdr" style="margin-bottom:20px">
-          <h2>Batches</h2>
-          <p>All accepted trainees across batches — training status view</p>
+        <div class="page-hdr" style="margin-bottom:20px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div>
+            <h2 style="margin:0 0 4px">Batches</h2>
+            <p style="margin:0;font-size:13px;color:var(--t-3)">All accepted trainees across batches — training status view</p>
+          </div>
+          <button onclick="bmResetAllData()" style="padding:8px 16px;border-radius:10px;background:rgba(255,69,58,0.1);color:#FF453A;border:1.5px solid rgba(255,69,58,0.3);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">🗑 Reset All Data</button>
         </div>
 
         <!-- Filters -->
