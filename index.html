@@ -4269,9 +4269,10 @@ function toggleViewAsSup(){
 function renderViewAsSupList(){
   const list = document.getElementById('viewAsSupList');
   if(!list) return;
-  list.innerHTML = TEAM_ROSTER
+  list.innerHTML = '';
+  TEAM_ROSTER
     .filter(m => m.role === 'batchsup')
-    .map(m => {
+    .forEach(m => {
       const btn = document.createElement('button');
       btn.style.cssText = 'width:100%;padding:8px 10px;background:transparent;border:none;text-align:left;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:8px';
       btn.innerHTML =
@@ -4280,8 +4281,8 @@ function renderViewAsSupList(){
       btn.addEventListener('mouseenter', function(){ this.style.background='var(--bg-3)'; });
       btn.addEventListener('mouseleave', function(){ this.style.background='transparent'; });
       btn.addEventListener('click', function(){ switchRoleAsSup(m); });
-      return btn.outerHTML;
-    }).join('');
+      list.appendChild(btn);
+    });
 }
 
 function switchRoleAsSup(member){
