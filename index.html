@@ -4861,7 +4861,14 @@ async function initBsupDashboard(){
   await loadSavedCodes();
   await loadSavedGroups();
   if(typeof cleanupDuplicateGroupDocs === 'function') cleanupDuplicateGroupDocs();
-  loadBMTicketAlerts(); // check for open tickets from Batch Manager
+  loadBMTicketAlerts();
+  // Update identity card
+  const myCode = A.user && A.user.supervisorCode;
+  const myName = A.user && A.user.name;
+  const codeEl = document.getElementById('bsup_id_code');
+  const nameEl = document.getElementById('bsup_id_name');
+  if(codeEl) codeEl.textContent = myCode || '—';
+  if(nameEl) nameEl.textContent = myName ? myName.split(' ').slice(0,3).join(' ') : '—';
 }
 
 // Load accepted trainees from Firestore
@@ -7694,15 +7701,15 @@ async function btLoginWithCode(code){
     BT.allAssignments = myGroups;
     BT.activeAssignmentIdx = 0;
     btActivateAssignment(0);
-    // Update topbar pill with trainer name + code
+    // Update topbar pill + identity card with trainer name + code
+    const tm = (BT._allTrainers||[]).find(t=>t.code===code) || {name:A.user&&A.user.name||''};
+    const shortName = tm.name ? tm.name.split(' ').slice(0,3).join(' ') : code;
     const trainerInfo = document.getElementById('bt_userInfo');
-    if(trainerInfo){
-      const tm = (BM && BM._allTrainers||[]).find(t=>t.code===code) ||
-                 (BT._allTrainers||[]).find(t=>t.code===code) ||
-                 {name:''};
-      const shortName = tm.name ? tm.name.split(' ').slice(0,2).join(' ') : (A.user&&A.user.name?A.user.name.split(' ').slice(0,2).join(' '):'');
-      trainerInfo.textContent = code + (shortName ? ' · '+shortName : '') + ' · Batch Trainer';
-    }
+    if(trainerInfo) trainerInfo.textContent = code + (shortName ? ' · '+shortName : '') + ' · Batch Trainer';
+    const btCodeEl = document.getElementById('bt_id_code');
+    const btNameEl = document.getElementById('bt_id_name');
+    if(btCodeEl) btCodeEl.textContent = code;
+    if(btNameEl) btNameEl.textContent = shortName || code;
     const dayEl = document.getElementById('bt_attDay');
     if(dayEl && dayEl.options.length < 2){
       for(let i=1;i<=30;i++){ const o=document.createElement('option'); o.value=i; o.textContent='Day '+i; dayEl.appendChild(o); }
@@ -8352,6 +8359,14 @@ function btQuickAssignAll(){
 
       <!-- PAGE 1: ACCEPTED TRAINEES -->
       <div id="bsupTrainees" class="container">
+        <div id="bsup_identity_card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(232,89,12,0.06);border:1px solid rgba(232,89,12,0.2);border-radius:14px;margin-bottom:20px">
+          <div style="width:40px;height:40px;border-radius:50%;background:rgba(232,89,12,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">👔</div>
+          <div>
+            <div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:800;color:var(--p2)" id="bsup_id_code">—</div>
+            <div style="font-size:14px;font-weight:600;color:var(--t-1);margin-top:2px" id="bsup_id_name">Loading...</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:1px">Batch Supervisor</div>
+          </div>
+        </div>
         <div class="page-hdr">
           <h2>Accepted Trainees</h2>
           <p id="bsupTraineeSub">Trainees from completed batches</p>
@@ -9042,6 +9057,14 @@ function btQuickAssignAll(){
 
       <!-- ── MY GROUP PAGE ── -->
       <div id="bt_page_group">
+        <div id="bt_identity_card" style="display:flex;align-items:center;gap:14px;padding:14px 18px;background:rgba(232,89,12,0.06);border:1px solid rgba(232,89,12,0.2);border-radius:14px;margin-bottom:20px">
+          <div style="width:40px;height:40px;border-radius:50%;background:rgba(232,89,12,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🏋</div>
+          <div>
+            <div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:800;color:var(--p2)" id="bt_id_code">—</div>
+            <div style="font-size:14px;font-weight:600;color:var(--t-1);margin-top:2px" id="bt_id_name">Loading...</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:1px">Batch Trainer</div>
+          </div>
+        </div>
         <div class="page-hdr">
           <h2 id="bt_groupTitle">My Group</h2>
           <p id="bt_groupSubtitle">Loading your group...</p>
