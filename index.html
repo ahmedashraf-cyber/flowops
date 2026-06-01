@@ -4620,27 +4620,13 @@ function switchRoleAsSup(member){
   const origCode = A.user.supervisorCode;
   A.user.supervisorCode = member.code;
   setTimeout(async ()=>{
-    // Remove any existing banner first (switching supervisors)
+    // Remove any existing banner (no longer shown)
     const oldBanner = document.getElementById('viewAsBanner');
     if(oldBanner) oldBanner.remove();
     await initBsupDashboard();
-    // Update pill
+    // Update topbar pill
     const pill = document.getElementById('bsupPill');
     if(pill) pill.textContent = member.code + ' · ' + member.name.split(' ').slice(0,2).join(' ');
-    // Show a banner indicating view-as mode
-    const banner = document.createElement('div');
-    banner.id = 'viewAsBanner';
-    banner.style.cssText = 'position:sticky;top:52px;z-index:888;background:rgba(10,132,255,0.9);color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600';
-    const label = document.createTextNode('👁 Viewing as '+member.code+' · '+member.name.split(' ').slice(0,2).join(' '));
-    const exitBtn = document.createElement('button');
-    exitBtn.textContent = 'Exit view';
-    exitBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px';
-    exitBtn.dataset.origCode = origCode;
-    exitBtn.addEventListener('click', function(){ exitViewAsSup(this.dataset.origCode); });
-    banner.appendChild(label);
-    banner.appendChild(exitBtn);
-    const bsupContent = document.querySelector('#bsupScreen .app-shell > div:last-child');
-    if(bsupContent) bsupContent.prepend(banner);
   }, 100);
 }
 
@@ -4862,13 +4848,15 @@ async function initBsupDashboard(){
   await loadSavedGroups();
   if(typeof cleanupDuplicateGroupDocs === 'function') cleanupDuplicateGroupDocs();
   loadBMTicketAlerts();
-  // Update identity card
+  // Update identity card — use roster name (not A.user.name which is TM's name)
   const myCode = A.user && A.user.supervisorCode;
-  const myName = A.user && A.user.name;
+  const rosterM = getRosterMember(myCode);
+  const displayName = rosterM ? rosterM.name.split(' ').slice(0,3).join(' ')
+    : (A.user && A.user.name ? A.user.name.split(' ').slice(0,3).join(' ') : '—');
   const codeEl = document.getElementById('bsup_id_code');
   const nameEl = document.getElementById('bsup_id_name');
   if(codeEl) codeEl.textContent = myCode || '—';
-  if(nameEl) nameEl.textContent = myName ? myName.split(' ').slice(0,3).join(' ') : '—';
+  if(nameEl) nameEl.textContent = displayName;
 }
 
 // Load accepted trainees from Firestore
