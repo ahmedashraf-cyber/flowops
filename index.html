@@ -3160,10 +3160,25 @@ function bmPreviewAssignment(){
 
 async function bmConfirmAssignment(){
   if(!BM.assignPreview){ alert('Run Preview first.'); return; }
+  const { batch, supGroups } = BM.assignPreview;
+
+  // Check if this batch is already assigned to anyone
+  if(fbDb){
+    const existing = await fbDb.collection('accepted_trainees')
+      .where('batchName','==',batch).limit(1).get();
+    if(!existing.empty){
+      const override = confirm(
+        '⚠️ Batch "'+batch+'" is already assigned to supervisors.\n\n'+
+        'Re-assigning will OVERWRITE the existing assignment.\n'+
+        'The previous supervisors will lose their trainees for this batch.\n\n'+
+        'Are you sure you want to continue?'
+      );
+      if(!override){ document.getElementById('bm_assign_confirm_btn').textContent='✅ Confirm & Save'; document.getElementById('bm_assign_confirm_btn').disabled=false; return; }
+    }
+  }
+
   const btn = document.getElementById('bm_assign_confirm_btn');
   btn.textContent='Saving...'; btn.disabled=true;
-
-  const { batch, supGroups } = BM.assignPreview;
   const now = new Date().toISOString();
 
   // Save to Firestore bm_sup_assignments
@@ -3757,6 +3772,65 @@ function bmInitFilters(){
 }
 
 // ── Page 1: Batches ───────────────────────────────────────────
+async function bmGenerateTrainingCodes(){
+  const trainees = BM.trainees;
+  if(!trainees.length){ alert('No trainees loaded.'); return; }
+  const btn = document.getElementById('bmGenCodesBtn');
+  const statusEl = document.getElementById('bm_code_status');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Generating...'; }
+
+  // Shuffle all trainees for random code assignment
+  const shuffled = [...trainees].sort(()=>Math.random()-0.5);
+  const existingMax = Math.max(0, ...trainees.map(t=>parseInt(t.trainingCode)||0));
+  let counter = existingMax;
+  let assigned = 0;
+
+  for(const t of shuffled){
+    if(t.trainingCode) continue; // skip already-coded
+    counter++;
+    t.trainingCode = counter;
+    // Save to Firestore training_status
+    if(fbDb){
+      try {
+        await fbDb.collection('training_status').doc(String(counter)).set({
+          trainingCode: counter,
+          name: t.name,
+          batchName: t.batchName,
+          supervisor: t.supervisor||null,
+          status: 'In Training',
+          updatedAt: new Date().toISOString()
+        }, {merge:true});
+      } catch(e){ console.warn('Code save error:', e); }
+    }
+    assigned++;
+  }
+
+  // Push updated trainees (with codes) back to accepted_trainees for each supervisor
+  if(fbDb){
+    const supGroups = {};
+    trainees.forEach(t => {
+      const sup = t.supervisor;
+      if(sup){ if(!supGroups[sup]) supGroups[sup]=[]; supGroups[sup].push(t); }
+    });
+    for(const [supCode, supTrainees] of Object.entries(supGroups)){
+      const docId = 'sup_'+supCode.replace(/-/g,'_');
+      const batch = supTrainees[0].batchName||'';
+      await fbDb.collection('accepted_trainees').doc(docId).set({
+        supervisorCode: supCode, batchName: batch,
+        trainees: supTrainees.map(t=>({
+          trainingCode: t.trainingCode||null, name:t.name, nameAr:t.nameAr||'',
+          pts:t.pts||0, tier:t.tier||'', batchName:t.batchName||batch, status:'Accepted'
+        })),
+        savedAt: new Date().toISOString(), codesGenerated: true
+      });
+    }
+  }
+
+  if(btn){ btn.disabled=false; btn.textContent='✅ Codes Generated'; }
+  if(statusEl) statusEl.textContent = assigned+' codes assigned across '+trainees.length+' trainees';
+  bmRenderBatchTable();
+}
+
 function bmGetFilterValue(id){
   // Reads value from either a plain select or an nx-wrapped one
   const el = document.getElementById(id);
@@ -3857,6 +3931,12 @@ function bmOpenEditStatus(code){
   document.getElementById('bm_edit_code').value = code;
   const statusEl = document.getElementById('bm_edit_status');
   if(statusEl) statusEl.value = ts.status||'In Training';
+  // Populate supervisor field
+  const supEl = document.getElementById('bm_edit_supervisor');
+  if(supEl){
+    const trainee = BM.trainees.find(t=>String(t.trainingCode)===String(code));
+    supEl.value = (trainee&&trainee.supervisor)||ts.supervisor||'';
+  }
   const phaseEl = document.getElementById('bm_edit_phase');
   if(phaseEl) phaseEl.value = ts.leavingPhase||'';
   const noteEl = document.getElementById('bm_edit_note');
@@ -3864,7 +3944,7 @@ function bmOpenEditStatus(code){
   const dateEl = document.getElementById('bm_edit_leaving_date');
   if(dateEl) dateEl.value = ts.leavingDate||'';
   const modal = document.getElementById('bm_edit_modal');
-  if(modal){ modal.style.display='flex'; setTimeout(nxDateInit,50); }
+  if(modal){ modal.style.cssText = modal.style.cssText.replace('display:none',''); modal.style.display='flex'; setTimeout(nxDateInit,50); }
 }
 
 function bmEditStatusChange(){
@@ -3879,8 +3959,14 @@ async function bmSaveEditStatus(){
   const phase  = document.getElementById('bm_edit_phase')&&document.getElementById('bm_edit_phase').value||'';
   const note   = document.getElementById('bm_edit_note').value;
   const ldDate = document.getElementById('bm_edit_leaving_date')&&document.getElementById('bm_edit_leaving_date').value||'';
-  const record = { status, notes:note||null, leavingPhase:phase||null, leavingDate:ldDate||null, updatedAt:new Date().toISOString(), updatedBy:A.user.email };
+  const newSup = document.getElementById('bm_edit_supervisor') ? document.getElementById('bm_edit_supervisor').value : '';
+  const record = { status, notes:note||null, leavingPhase:phase||null, leavingDate:ldDate||null, updatedAt:new Date().toISOString(), updatedBy:A.user.email, supervisor:newSup||null };
   BM.tsStatuses[code] = record;
+  // Update supervisor in local trainees array
+  if(newSup){
+    const trainee = BM.trainees.find(t=>String(t.trainingCode)===String(code));
+    if(trainee) trainee.supervisor = newSup;
+  }
   if(fbDb) await fbDb.collection('training_status').doc(String(code)).set({...record, trainingCode:parseInt(code)});
   document.getElementById('bm_edit_modal').style.display='none';
   bmApplyFilters();
@@ -7928,9 +8014,7 @@ function btQuickAssignAll(){
               <div style="font-size:13px;color:var(--text-secondary)" id="bsupCodeStatus">Generate sequential training codes for all accepted trainees</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-primary" id="bsupGenBtn" onclick="generateTrainingCodes()">
-                🎲 Generate Training Codes
-              </button>
+              <!-- Training codes generated by Batch Manager -->
               <button class="btn btn-secondary btn-sm" id="bsupResetBtn" onclick="resetTrainingCodes()" style="display:none">
                 ↺ Reset Codes
               </button>
@@ -8753,7 +8837,11 @@ function btQuickAssignAll(){
         </div>
 
         <!-- Stats row -->
-        <div id="bm_batch_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px"></div>
+        <div id="bm_batch_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div id="bm_code_status" style="font-size:12px;color:var(--t-3)"></div>
+          <button onclick="bmGenerateTrainingCodes()" id="bmGenCodesBtn" style="padding:8px 18px;border-radius:10px;background:var(--p2);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">🎲 Generate Training Codes</button>
+        </div>
 
         <!-- Table -->
         <div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:16px;overflow:hidden">
@@ -8953,11 +9041,27 @@ function btQuickAssignAll(){
 </div>
 
 <!-- BM EDIT STATUS MODAL -->
-<div id="bm_edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:none;align-items:center;justify-content:center">
+<div id="bm_edit_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:420px;max-width:95vw;border:1px solid var(--b-1)">
     <h3 style="margin:0 0 20px;font-size:16px">Edit Training Status</h3>
     <input type="hidden" id="bm_edit_code"/>
     <div style="display:grid;gap:14px">
+      <div>
+        <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Batch Supervisor</label>
+        <select id="bm_edit_supervisor" style="width:100%;padding:10px 14px;border:1.5px solid var(--b-1);border-radius:12px;background:var(--bg-3);color:var(--t-1);font-size:13px;outline:none">
+          <option value="">— No supervisor assigned —</option>
+          <option value="A-043">A-043 · Mohamed Elsayed</option>
+          <option value="A-047">A-047 · Tarek Mohamed</option>
+          <option value="A-070">A-070 · Omar Mohamed</option>
+          <option value="A-246">A-246 · Mohab Mohamed</option>
+          <option value="A-248">A-248 · Mahmoud Reda</option>
+          <option value="A-275">A-275 · Ahmed Farghaly</option>
+          <option value="A-317">A-317 · Ali Mohamed</option>
+          <option value="A-551">A-551 · Ahmed Magdy</option>
+          <option value="A-774">A-774 · Mostafa Saad</option>
+          <option value="A-1589">A-1589 · Abdelrahman Hamed</option>
+        </select>
+      </div>
       <div>
         <label style="font-size:12px;font-weight:700;color:var(--t-3);display:block;margin-bottom:6px">Status</label>
         <input type="hidden" id="bm_edit_leaving_date" value=""/>
