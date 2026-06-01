@@ -4165,8 +4165,10 @@ function bmRenderTrainerAssignment(){
   });
 
   preview.querySelectorAll('.bm-tr-add').forEach(function(sel){
-    sel.addEventListener('change', function(){
-      var sup = this.dataset.sup, code = this.value;
+    // nx-wrap first so the change event fires on the underlying select
+    nxWrapSelect(sel, function(val){
+      var sup = sel.dataset.sup;
+      var code = val;
       if(!code) return;
       var trainer = (BM._allTrainers||[]).find(function(t){ return t.code === code; });
       if(!trainer) return;
