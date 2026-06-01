@@ -1629,7 +1629,8 @@ function initFirebaseAuth(){
           role,
           phone: profile.phone||'',
           supervisorCode: profile.supervisorCode || (rosterMember ? rosterMember.code : ''),
-          rosterCode:     rosterMember ? rosterMember.code : (profile.supervisorCode||'')
+          trainerCode:    profile.trainerCode || '',
+          rosterCode:     rosterMember ? rosterMember.code : (profile.supervisorCode||profile.trainerCode||'')
         };
 
         // Route to correct dashboard based on role
@@ -4647,6 +4648,83 @@ function exitViewAsSup(origCode){
   switchRole('manager');
 }
 
+// ── View as Trainer ─────────────────────────────────────────
+async function toggleViewAsTrainer(){
+  const menu = document.getElementById('viewAsTrainerMenu');
+  if(!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if(!isOpen) await renderViewAsTrainerList();
+}
+
+async function renderViewAsTrainerList(){
+  const list = document.getElementById('viewAsTrainerList');
+  if(!list) return;
+  list.innerHTML = '<div style="font-size:11px;color:var(--t-3);padding:6px 10px">Loading...</div>';
+  const trainers = await fetchTrainersFromSheet();
+  list.innerHTML = '';
+  if(!trainers.length){
+    list.innerHTML = '<div style="font-size:11px;color:var(--t-3);padding:6px 10px">No trainers found</div>';
+    return;
+  }
+  trainers.forEach(t => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'width:100%;padding:8px 10px;background:transparent;border:none;text-align:left;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:8px';
+    btn.innerHTML =
+      '<span style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:var(--p2);flex-shrink:0">'+t.code+'</span>'+
+      '<span style="font-size:12px;color:var(--t-1)">'+t.name.split(' ').slice(0,2).join(' ')+'</span>';
+    btn.addEventListener('mouseenter', function(){ this.style.background='var(--bg-3)'; });
+    btn.addEventListener('mouseleave', function(){ this.style.background='transparent'; });
+    btn.addEventListener('click', function(){ switchRoleAsTrainer(t); });
+    list.appendChild(btn);
+  });
+}
+
+function switchRoleAsTrainer(trainer){
+  const menu = document.getElementById('viewAsTrainerMenu');
+  if(menu) menu.style.display = 'none';
+
+  // Store original state
+  const origCode = A.user.trainerCode;
+  A._viewAsTrainer = trainer;
+  A.user.trainerCode = trainer.code;
+
+  showScreen('trainerScreen');
+  const el = document.getElementById('trainerScreen');
+  if(el){ el.style.opacity='1'; el.style.transition='none'; }
+  const sw = document.getElementById('roleSwitcher');
+  if(sw) sw.style.display = 'block';
+
+  btReset();
+  initTrainerDashboard().then(() => {
+    btLoginWithCode(trainer.code);
+
+    // Banner
+    setTimeout(() => {
+      const existing = document.getElementById('viewAsTrainerBanner');
+      if(existing) existing.remove();
+      const banner = document.createElement('div');
+      banner.id = 'viewAsTrainerBanner';
+      banner.style.cssText = 'position:sticky;top:52px;z-index:888;background:rgba(48,209,88,0.85);color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600';
+      const label = document.createTextNode('👁 Viewing as '+trainer.code+' · '+trainer.name.split(' ').slice(0,2).join(' '));
+      const exitBtn = document.createElement('button');
+      exitBtn.textContent = 'Exit view';
+      exitBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px';
+      exitBtn.addEventListener('click', function(){
+        const banner = document.getElementById('viewAsTrainerBanner');
+        if(banner) banner.remove();
+        A.user.trainerCode = origCode;
+        A._viewAsTrainer = null;
+        switchRole('manager');
+      });
+      banner.appendChild(label);
+      banner.appendChild(exitBtn);
+      const content = document.querySelector('#trainerScreen .app-shell > div:last-child') || document.getElementById('bt_dashboard');
+      if(content) content.prepend(banner);
+    }, 500);
+  });
+}
+
 // ── Add Setup button to Training Manager gate ─────────────────
 function addSetupBtn(){
   // Ensure role switcher is visible for Training Manager
@@ -5479,7 +5557,18 @@ function switchRole(role){
       showScreen('trainerScreen');
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
-      setTimeout(()=>{ btReset(); initTrainerDashboard(); }, 100);
+      setTimeout(()=>{
+        btReset();
+        initTrainerDashboard().then(()=>{
+          // Auto-login with trainer's own code from Firestore profile
+          const myCode = A.user && A.user.trainerCode;
+          if(myCode){
+            const sel = document.getElementById('bt_codeSelect');
+            if(sel){ sel.value = myCode; }
+            btLoginWithCode(myCode);
+          }
+        });
+      }, 100);
     } else if(role === 'batchmanager'){
       injectLogos();
       document.getElementById('bmUserPill').textContent = A.user.name + ' · Batch Manager';
@@ -7529,8 +7618,13 @@ function btCodeChanged(){}
 
 async function btLogin(){
   const sel = document.getElementById('bt_codeSelect');
+  const code = sel ? (sel.value || nxSelectValue('bt_codeSelect')) : '';
+  if(!code){ const e=document.getElementById('bt_loginError'); if(e){e.textContent='Please select your trainer code';e.style.display='block';} return; }
+  btLoginWithCode(code);
+}
+
+async function btLoginWithCode(code){
   const errEl = document.getElementById('bt_loginError');
-  const code = sel ? sel.value : '';
   if(!code){ errEl.textContent='Please select your trainer code'; errEl.style.display='block'; return; }
   errEl.style.display='none';
   try{
@@ -9485,7 +9579,18 @@ function btQuickAssignAll(){
     </div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('batchmanager')" style="justify-content:flex-start">📋 Batch Manager</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
-    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainer')" style="justify-content:flex-start">🏋 Batch Trainer</button>
+    <div style="position:relative">
+      <button class="btn btn-secondary btn-sm" onclick="toggleViewAsTrainer()" style="justify-content:space-between;width:100%">
+        <span>🏋 Batch Trainer</span>
+        <span id="viewAsTrainerChev" style="font-size:10px;color:var(--t-3)">▾</span>
+      </button>
+      <div id="viewAsTrainerMenu" style="display:none;margin-top:4px;background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;overflow:hidden;max-height:240px;overflow-y:auto">
+        <div style="padding:4px">
+          <div style="font-size:10px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px">Select trainer</div>
+          <div id="viewAsTrainerList"></div>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Current</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainee')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🏃 Trainee <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
   </div>
