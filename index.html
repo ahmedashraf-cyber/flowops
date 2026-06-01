@@ -1619,13 +1619,16 @@ function initFirebaseAuth(){
         const profile = doc.exists ? doc.data() : {};
         const name = profile.displayName || user.displayName || user.email.split('@')[0];
         const role = profile.role || 'coordinator';
+        // Enrich with TEAM_ROSTER data if available
+        const rosterMember = TEAM_ROSTER.find(m => m.email === user.email);
         A.user = {
           uid:   user.uid,
           email: user.email,
           name,
           role,
           phone: profile.phone||'',
-          supervisorCode: profile.supervisorCode||''
+          supervisorCode: profile.supervisorCode || (rosterMember ? rosterMember.code : ''),
+          rosterCode:     rosterMember ? rosterMember.code : (profile.supervisorCode||'')
         };
 
         // Route to correct dashboard based on role
@@ -1648,7 +1651,7 @@ function initFirebaseAuth(){
           // Training Manager default: show coordinator dashboard + role switcher
           document.getElementById('userPill').textContent = name + ' · Training Manager';
           showScreen('coordScreen');
-          setTimeout(()=>{ loadData(); bmLoadTaskNotificationsForRole('coordinator'); }, 300);
+          setTimeout(()=>{ loadData(); bmLoadTaskNotificationsForRole('coordinator'); addSetupBtn(); }, 300);
         } else {
           document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
           showScreen('coordScreen');
@@ -2887,13 +2890,17 @@ function bmRenderSupList(){
   if(!dragList) return;
   dragList.innerHTML = BM_SUPS.map(code => {
     const inZone = BM.selectedSups.has(code);
+    const shortName = getSupName(code);
     return '<div draggable="true" data-code="'+code+'" '+
       'ondragstart="bmDragStart(event)" '+
       'style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-radius:12px;'+
       'background:'+(inZone?'rgba(48,209,88,0.08)':'var(--bg-3)')+';border:1.5px solid '+(inZone?'rgba(48,209,88,0.3)':'var(--b-1)')+';'+
-      'cursor:grab;transition:all .15s;user-select:none">'+
-      '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:'+(inZone?'#30D158':'var(--t-1)')+'">'+code+'</span>'+
-      (inZone?'<span style="font-size:10px;color:#30D158">✓ added</span>':'<span style="font-size:10px;color:var(--t-3)">drag →</span>')+
+      'cursor:grab;transition:all .15s;user-select:none;gap:10px">'+
+      '<div style="min-width:0">'+
+        '<div style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:'+(inZone?'#30D158':'var(--p2)')+'">'+code+'</div>'+
+        '<div style="font-size:11px;color:var(--t-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">'+shortName+'</div>'+
+      '</div>'+
+      (inZone?'<span style="font-size:10px;color:#30D158;flex-shrink:0">✓</span>':'<span style="font-size:10px;color:var(--t-3);flex-shrink:0">drag →</span>')+
     '</div>';
   }).join('');
   const sumEl = document.getElementById('bm_sup_summary');
@@ -2929,7 +2936,8 @@ function bmAddDropPill(code){
   pill.dataset.code = code;
   pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;background:rgba(232,89,12,0.15);border:1.5px solid rgba(232,89,12,0.4);font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;color:var(--p2)';
   const span = document.createElement('span');
-  span.textContent = code;
+  const member = getRosterMember(code);
+  span.textContent = member ? code + ' · ' + member.name.split(' ').slice(0,2).join(' ') : code;
   const btn = document.createElement('button');
   btn.textContent = '×';
   btn.style.cssText = 'background:none;border:none;color:rgba(232,89,12,0.6);cursor:pointer;font-size:14px;line-height:1;padding:0';
@@ -3584,11 +3592,31 @@ const BM = {
   filters: { batch:'all', status:'all', tier:'all', sup:'all', from:'', to:'' }
 };
 
-const BM_SUPS = [
-  'A-1589','A-920','A-082','A-275','A-551','A-317',
-  'A-985','A-248','A-246','A-043','A-1024','A-933',
-  'A-774','A-070','A-047'
+// ── Team Roster — source: Google Sheet ──────────────────────
+const TEAM_ROSTER = [
+  {code:'A-024', name:'Fady Mamdouh Maurice Abdelnour',       role:'batchmanager',  email:'fady.mamdouh@hudl.com',           password:'R7!mK9#vQ2@xLp4Z'},
+  {code:'A-031', name:'Ahmed Atef Atteya Abdelmageed',        role:'batchmanager',  email:'ahmed.atef@hudl.com',              password:'T$8cN1&wHy5!Dr7P'},
+  {code:'A-043', name:'Mohamed Elsayed Abdelhafiz Shamseldin',role:'batchsup',       email:'mohamed.elsayed@hudl.com',         password:'g4#Xz9@Lm2!Qv8Kc'},
+  {code:'A-047', name:'Tarek Mohamed Elsayed Mohamed Mahmoud',role:'batchsup',       email:'tarek.muhammed@hudl.com',          password:'J!6pRw3$Nd9&Ty2M'},
+  {code:'A-070', name:'Omar Mohamed Ali Mahmoud',             role:'batchsup',       email:'omar.attia@hudl.com',              password:'u8@Fk1#Hs7!Qm4Zv'},
+  {code:'A-082', name:'Ahmed Adel Abdellateif Mourad',        role:'coordinator',    email:'ahmed.morad@hudl.com',             password:'B2&xLp9!Cr5$Wn8J'},
+  {code:'A-246', name:'Mohab Mohamed Ramadan Abosaada',       role:'batchsup',       email:'mohab.mohamed@hudl.com',           password:'y7#Md3@Tk1!Vq6Rp'},
+  {code:'A-248', name:'Mahmoud Reda Saleh Abdullah',          role:'batchsup',       email:'mahmoud.reda@hudl.com',            password:'Q$4hZn8&Ls2!Xc9F'},
+  {code:'A-275', name:'Ahmed Adel Salah Farghaly',            role:'batchsup',       email:'ahmed.farghaly@hudl.com',          password:'n1!Wr7@Kb5#Py8Dm'},
+  {code:'A-317', name:'Ali Mohamed Ali Ahmed',                role:'batchsup',       email:'ali.mohamed@hudl.com',             password:'C9&vQ2!Ht6$Lx4Rg'},
+  {code:'A-551', name:'Ahmed Magdy Mohamed Abdelhamid',       role:'batchsup',       email:'ahmed.magdymohamed@hudl.com',      password:'p5#Js8@Nm1!Yw7Kf'},
+  {code:'A-774', name:'Mostafa Saad Eldin Abdelrahman Ahmed', role:'batchsup',       email:'mustafa.saad@hudl.com',            password:'X!3dTr9&Qm4$Hz2V'},
+  {code:'A-1589',name:'Abdelrahman Ali Hamed Saber Ahmed',    role:'batchsup',       email:'abdelrahman.hamed@hudl.com',       password:'k8@Lp1#Wc7!Fn5Ry'},
 ];
+
+// Derived lists from roster
+const BM_SUPS = TEAM_ROSTER
+  .filter(m => m.role === 'batchsup')
+  .map(m => m.code);
+
+function getRosterMember(code){ return TEAM_ROSTER.find(m => m.code === code); }
+function getSupName(code){ const m = getRosterMember(code); return m ? m.name.split(' ').slice(0,2).join(' ') : code; }
+function getSupByEmail(email){ return TEAM_ROSTER.find(m => m.email === email); }
 
 const BM_TS_STATUSES = ['In Training','Distributed','Leaving - Fired','Leaving - Resigned',
   'Leaving - Stopped','Leaving - Suspended','Completed','On Hold'];
@@ -4121,6 +4149,202 @@ function bmShowTicketAlertBanner(alerts){
 // ============================================================
 // END BATCH MANAGER
 // ============================================================
+
+// ── Team Setup Screen ────────────────────────────────────────
+function showSetupScreen(){
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const s = document.getElementById('setupScreen');
+  if(s){ s.classList.add('active'); renderSetupRoster(); }
+}
+
+function renderSetupRoster(){
+  const list = document.getElementById('setup_roster_list');
+  if(!list) return;
+  list.innerHTML = TEAM_ROSTER.map(m =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-3);border-radius:10px;gap:8px">'+
+      '<div>'+
+        '<span style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:var(--p2)">'+m.code+'</span>'+
+        '<span style="font-size:12px;font-weight:600;color:var(--t-1);margin-left:8px">'+m.name.split(' ').slice(0,3).join(' ')+'</span>'+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="font-size:10px;color:var(--t-3)">'+m.email+'</span>'+
+        '<span id="setup_status_'+m.code.replace('-','_')+'" style="font-size:10px;padding:2px 8px;border-radius:6px;background:var(--bg-2);color:var(--t-3)">pending</span>'+
+      '</div>'+
+    '</div>'
+  ).join('');
+}
+
+async function checkSetupStatus(){
+  if(!fbDb) return;
+  for(const m of TEAM_ROSTER){
+    const el = document.getElementById('setup_status_'+m.code.replace('-','_'));
+    try {
+      const snap = await fbDb.collection('users').where('email','==',m.email).limit(1).get();
+      if(el) el.textContent = snap.empty ? 'not created' : '✅ exists';
+      if(el) el.style.color = snap.empty ? 'var(--t-3)' : '#30D158';
+    } catch(e){ if(el){ el.textContent='error'; el.style.color='#FF453A'; } }
+  }
+}
+
+async function runSetup(){
+  const btn = document.getElementById('setup_btn');
+  const progress = document.getElementById('setup_progress');
+  const bar = document.getElementById('setup_progress_bar');
+  const txt = document.getElementById('setup_progress_text');
+  const log = document.getElementById('setup_log');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  progress.style.display = 'block'; log.style.display = 'block';
+  log.innerHTML = '';
+
+  let done = 0;
+  for(const m of TEAM_ROSTER){
+    const pct = Math.round((done/TEAM_ROSTER.length)*100);
+    bar.style.width = pct+'%';
+    txt.textContent = 'Creating '+m.code+' ('+done+'/'+TEAM_ROSTER.length+')...';
+    const statusEl = document.getElementById('setup_status_'+m.code.replace('-','_'));
+    try {
+      // Check if already exists
+      const existing = await fbDb.collection('users').where('email','==',m.email).limit(1).get();
+      if(!existing.empty){
+        log.innerHTML += '<div style="color:#30D158">✅ '+m.code+' already exists</div>';
+        if(statusEl){ statusEl.textContent='✅ exists'; statusEl.style.color='#30D158'; }
+        done++; continue;
+      }
+      // Create Firebase Auth account
+      const cred = await firebase.auth().createUserWithEmailAndPassword(m.email, m.password);
+      // Save profile to Firestore
+      const nameParts = m.name.split(' ');
+      await fbDb.collection('users').doc(cred.user.uid).set({
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(' '),
+        email: m.email,
+        role: m.role,
+        supervisorCode: m.code,
+        displayName: m.name,
+        createdAt: new Date().toISOString(),
+        createdBy: 'setup'
+      });
+      log.innerHTML += '<div style="color:#30D158">✅ '+m.code+' · '+m.email+'</div>';
+      if(statusEl){ statusEl.textContent='✅ created'; statusEl.style.color='#30D158'; }
+    } catch(e){
+      const msg = e.code === 'auth/email-already-in-use'
+        ? '⚠️ '+m.code+' email already in Auth (no Firestore profile — fixed)'
+        : '❌ '+m.code+' — '+e.message;
+      log.innerHTML += '<div style="color:'+(e.code==='auth/email-already-in-use'?'#FFD60A':'#FF453A')+'">'+msg+'</div>';
+      if(e.code === 'auth/email-already-in-use'){
+        // Auth exists but maybe no Firestore profile — create it
+        try {
+          const nameParts = m.name.split(' ');
+          // We can't get UID without signing in, so just log
+          log.innerHTML += '<div style="color:var(--t-3)">  → Sign in as '+m.email+' to fix profile</div>';
+        } catch(e2){}
+      }
+      if(statusEl){ statusEl.textContent='see log'; statusEl.style.color='#FFD60A'; }
+    }
+    done++;
+    log.scrollTop = log.scrollHeight;
+    await new Promise(r => setTimeout(r, 300)); // rate limit
+  }
+  bar.style.width = '100%';
+  txt.textContent = '✅ Complete — '+done+' accounts processed';
+  btn.textContent = '✅ Done'; btn.disabled = false;
+  // Sign back in as the manager (setup may have changed auth state)
+  if(A.user && A.user.email){
+    log.innerHTML += '<div style="color:var(--t-3)">Restoring your session...</div>';
+  }
+}
+
+// ── View as Supervisor ────────────────────────────────────────
+function toggleViewAsSup(){
+  const menu = document.getElementById('viewAsSupMenu');
+  const chev = document.getElementById('viewAsSupChev');
+  if(!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+  if(chev) chev.textContent = isOpen ? '▾' : '▴';
+  if(!isOpen) renderViewAsSupList();
+}
+
+function renderViewAsSupList(){
+  const list = document.getElementById('viewAsSupList');
+  if(!list) return;
+  list.innerHTML = TEAM_ROSTER
+    .filter(m => m.role === 'batchsup')
+    .map(m => {
+      const btn = document.createElement('button');
+      btn.style.cssText = 'width:100%;padding:8px 10px;background:transparent;border:none;text-align:left;cursor:pointer;border-radius:8px;display:flex;align-items:center;gap:8px';
+      btn.innerHTML =
+        '<span style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:var(--p2);flex-shrink:0">'+m.code+'</span>'+
+        '<span style="font-size:12px;color:var(--t-1)">'+m.name.split(' ').slice(0,2).join(' ')+'</span>';
+      btn.addEventListener('mouseenter', function(){ this.style.background='var(--bg-3)'; });
+      btn.addEventListener('mouseleave', function(){ this.style.background='transparent'; });
+      btn.addEventListener('click', function(){ switchRoleAsSup(m); });
+      return btn.outerHTML;
+    }).join('');
+}
+
+function switchRoleAsSup(member){
+  // Close the menu
+  const menu = document.getElementById('viewAsSupMenu');
+  if(menu) menu.style.display = 'none';
+  // Store the impersonated supervisor
+  A._viewAsSup = member;
+  // Update BSUP state as if this supervisor is logged in
+  if(typeof BSUP !== 'undefined'){
+    BSUP.trainees = [];
+    BSUP.groups = [];
+  }
+  // Show bsup screen
+  showScreen('bsupScreen');
+  const pill = document.getElementById('bsupUserPill');
+  if(pill) pill.textContent = member.code + ' · ' + member.name.split(' ').slice(0,2).join(' ') + ' (Viewing as)';
+  // Override supervisorCode for data loading
+  const origCode = A.user.supervisorCode;
+  A.user.supervisorCode = member.code;
+  setTimeout(async ()=>{
+    await initBsupDashboard();
+    // Show a banner indicating view-as mode
+    const banner = document.createElement('div');
+    banner.id = 'viewAsBanner';
+    banner.style.cssText = 'position:sticky;top:52px;z-index:888;background:rgba(10,132,255,0.9);color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600';
+    const label = document.createTextNode('👁 Viewing as '+member.code+' · '+member.name.split(' ').slice(0,2).join(' '));
+    const exitBtn = document.createElement('button');
+    exitBtn.textContent = 'Exit view';
+    exitBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px';
+    exitBtn.dataset.origCode = origCode;
+    exitBtn.addEventListener('click', function(){ exitViewAsSup(this.dataset.origCode); });
+    banner.appendChild(label);
+    banner.appendChild(exitBtn);
+    const content = document.querySelector('#bsupScreen .content');
+    if(content) content.prepend(banner);
+  }, 100);
+}
+
+function exitViewAsSup(origCode){
+  const banner = document.getElementById('viewAsBanner');
+  if(banner) banner.remove();
+  A.user.supervisorCode = origCode;
+  A._viewAsSup = null;
+  // Return to Training Manager screen
+  switchRole('manager');
+}
+
+// ── Add Setup button to Training Manager gate ─────────────────
+function addSetupBtn(){
+  // Add to the role switcher panel — visible only to manager role
+  const switcher = document.getElementById('roleSwitcher');
+  if(!switcher || document.getElementById('setup_nav_btn')) return;
+  const div = document.createElement('div');
+  div.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px solid var(--b-1)';
+  const btn = document.createElement('button');
+  btn.id = 'setup_nav_btn';
+  btn.className = 'btn btn-ghost btn-sm';
+  btn.style.cssText = 'justify-content:flex-start;width:100%;opacity:.7;font-size:11px';
+  btn.textContent = '⚙️ Team Account Setup';
+  btn.addEventListener('click', showSetupScreen);
+  div.appendChild(btn);
+  switcher.appendChild(div);
+}
 
 // Initialize Firebase Auth — handles all devices automatically
 initFirebaseAuth();
@@ -8767,7 +8991,18 @@ function btQuickAssignAll(){
   <div style="font-size:11px;font-weight:700;color:var(--color-primary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">⚙️ Training Manager — All Roles</div>
   <div style="display:flex;flex-direction:column;gap:6px">
     <button class="btn btn-secondary btn-sm" onclick="switchRole('coordinator')" style="justify-content:flex-start">📊 Batch Coordinator</button>
-    <button class="btn btn-secondary btn-sm" onclick="switchRole('batchsup')" style="justify-content:flex-start">👔 Batch Supervisor</button>
+    <div style="position:relative">
+      <button class="btn btn-secondary btn-sm" onclick="toggleViewAsSup()" style="justify-content:space-between;width:100%">
+        <span>👔 Batch Supervisor</span>
+        <span id="viewAsSupChev" style="font-size:10px;color:var(--t-3)">▾</span>
+      </button>
+      <div id="viewAsSupMenu" style="display:none;margin-top:4px;background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;overflow:hidden">
+        <div style="padding:4px">
+          <div style="font-size:10px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px">Select supervisor</div>
+          <div id="viewAsSupList"></div>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('batchmanager')" style="justify-content:flex-start">📋 Batch Manager</button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainer')" style="justify-content:flex-start">🏋 Batch Trainer</button>
@@ -8776,5 +9011,32 @@ function btQuickAssignAll(){
   </div>
 </div>
 
+<!-- Auto-Setup Screen (Training Manager only) -->
+<div id="setupScreen" class="screen" style="background:var(--bg);min-height:100vh;padding:40px 20px">
+  <div style="max-width:640px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
+      <div>
+        <h1 style="margin:0 0 4px;font-size:22px;font-weight:700">Team Account Setup</h1>
+        <p style="margin:0;font-size:13px;color:var(--t-3)">Creates Firebase accounts for all team members — run once</p>
+      </div>
+      <button onclick="showScreen('coordScreen')" style="padding:8px 16px;border-radius:10px;border:1px solid var(--b-1);background:var(--bg-3);color:var(--t-2);font-size:12px;cursor:pointer">← Back</button>
+    </div>
+    <div class="card" style="padding:24px;margin-bottom:16px">
+      <div style="display:grid;gap:8px;margin-bottom:20px" id="setup_roster_list"></div>
+      <div id="setup_progress" style="display:none;margin-bottom:16px">
+        <div style="background:var(--bg-3);border-radius:8px;height:6px;overflow:hidden;margin-bottom:8px">
+          <div id="setup_progress_bar" style="height:100%;background:var(--p2);border-radius:8px;transition:width .3s;width:0%"></div>
+        </div>
+        <div id="setup_progress_text" style="font-size:12px;color:var(--t-3)"></div>
+      </div>
+      <div id="setup_log" style="font-size:11px;font-family:JetBrains Mono,monospace;color:var(--t-3);max-height:200px;overflow-y:auto;margin-bottom:16px;display:none"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="runSetup()" id="setup_btn" style="flex:1;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:14px;font-weight:700;cursor:pointer">🚀 Create All Accounts</button>
+        <button onclick="checkSetupStatus()" style="padding:12px 16px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;cursor:pointer">Check Status</button>
+      </div>
+      <p style="margin:12px 0 0;font-size:11px;color:var(--t-3)">⚠️ Safe to run multiple times — skips accounts that already exist</p>
+    </div>
+  </div>
+</div>
 </body>
 </html>
