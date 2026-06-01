@@ -4451,7 +4451,7 @@ async function initBsupDashboard(){
   listenForBatchNotifications();
   await loadSavedCodes();
   await loadSavedGroups();
-  cleanupDuplicateGroupDocs();
+  if(typeof cleanupDuplicateGroupDocs === 'function') cleanupDuplicateGroupDocs();
   loadBMTicketAlerts(); // check for open tickets from Batch Manager
 }
 
@@ -5089,14 +5089,12 @@ function switchRole(role){
       const menu = document.getElementById('viewAsSupMenu');
       const chev = document.getElementById('viewAsSupChev');
       if(menu && (A.user.role==='manager'||A.user.role==='batchmanager')){
-        // Restore screen opacity — we're not navigating away
-        if(current){ current.style.opacity='1'; current.style.transition='none'; }
-        // Also fade back in the active screen
-        requestAnimationFrame(()=>{ if(current) current.style.opacity='1'; });
+        // Restore ALL screens opacity — don't navigate anywhere
+        document.querySelectorAll('.screen').forEach(s=>{ s.style.opacity='1'; s.style.transition='none'; });
         menu.style.display = 'block';
         if(chev) chev.textContent = '▴';
         renderViewAsSupList();
-        return; // don't navigate — wait for supervisor selection
+        return;
       }
       // Real batchsup user switching
       injectLogos();
