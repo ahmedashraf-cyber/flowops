@@ -1791,8 +1791,8 @@ async function loadData(){
         const id = r[0].trim();
         // Skip header rows (literal "id" text)
         if(id.toLowerCase()==='id') return false;
-        // ID must contain digits
-        if(!/\d/.test(id)) return false;
+        // ID must contain digits — Western (0-9) OR Eastern Arabic (٠-٩)
+        if(!/[\d٠١٢٣٤٥٦٧٨٩]/.test(id)) return false;
         // Must have Name (col B)
         if(!r[1]||!r[1].trim()) return false;
         // Must have valid Batch (col R index 17) — no batch = skip entirely
@@ -1815,7 +1815,7 @@ async function loadData(){
         return{
           id:i+1,
           nameEn, nameAr,
-          nid:(r[0]||'').trim(),        // A = ID
+          nid:((r[0]||'').trim()).replace(/[٠١٢٣٤٥٦٧٨٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)),  // A = ID (normalize Eastern Arabic digits)
           itvr:'',
           form:pct(r[2]),               // C = Form Test%
           iv:pct(r[3]),                 // D = Interview Score%
