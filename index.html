@@ -3177,14 +3177,33 @@ async function bmConfirmAssignment(){
     }
     await fbDb.collection('bm_sup_assignments').doc('all').set({ assignments:assignPayload, batch, updatedAt:now, updatedBy:A.user?A.user.email:'' }, {merge:true});
 
-    // Write each supervisor's group to group_assignments collection
-    // so it shows in the BSup accepted trainees page automatically
+    // ── Write to accepted_trainees — the collection BSup reads from ──
+    for(const sg of supGroups){
+      if(!sg.trainees.length) continue;
+      const docId = 'sup_' + sg.code.replace(/-/g,'_');
+      await fbDb.collection('accepted_trainees').doc(docId).set({
+        supervisorCode: sg.code,
+        batchName: batch,
+        trainees: sg.trainees.map(t=>({
+          trainingCode: t.trainingCode || null,
+          name:         t.name || '',
+          nameAr:       t.nameAr || '',
+          pts:          t.pts || 0,
+          tier:         t.tier || '',
+          batchName:    t.batchName || batch,
+          status:       'Accepted'
+        })),
+        savedAt: now,
+        savedBy: A.user ? A.user.email : 'batchmanager'
+      });
+    }
+
+    // Also write to group_assignments for BSup group workflow
     for(const sg of supGroups){
       if(!sg.trainees.length) continue;
       const batchKey = 'batch_'+batch.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();
       const existingDoc = await fbDb.collection('group_assignments').doc(batchKey).get();
       const existing = existingDoc.exists ? (existingDoc.data().groups||[]) : [];
-      // Find or create group for this supervisor
       const supIdx = BM_SUPS.indexOf(sg.code);
       const groupPayload = {
         groupIndex: supIdx+1,
@@ -3192,7 +3211,6 @@ async function bmConfirmAssignment(){
         batchLabel: batch,
         trainees: sg.trainees.map(t=>({trainingCode:t.trainingCode,name:t.name,pts:t.pts,tier:t.tier,batchName:t.batchName}))
       };
-      // Merge with existing groups
       const otherGroups = existing.filter(g=>g.trainer!==sg.code);
       const mergedGroups = [...otherGroups, groupPayload];
       await fbDb.collection('group_assignments').doc(batchKey).set({
