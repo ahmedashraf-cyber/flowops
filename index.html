@@ -4397,27 +4397,71 @@ function showSetupScreen(){
   if(s){ s.classList.add('active'); renderSetupRoster(); }
 }
 
-function renderSetupRoster(){
+function renderSetupRosterMembers(members){
   const list = document.getElementById('setup_roster_list');
   if(!list) return;
-  list.innerHTML = TEAM_ROSTER.map(m =>
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-3);border-radius:10px;gap:8px">'+
-      '<div>'+
+  list.innerHTML = members.map(m => {
+    const safeId = (m.code||'').replace(/-/g,'_').replace(/\./g,'_');
+    const roleTag = m.role === 'trainer'
+      ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(10,132,255,0.15);color:#0A84FF;font-weight:700;margin-left:6px">TRAINER</span>'
+      : '';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-3);border-radius:10px;gap:8px">'+
+      '<div style="display:flex;align-items:center">'+
         '<span style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:700;color:var(--p2)">'+m.code+'</span>'+
         '<span style="font-size:12px;font-weight:600;color:var(--t-1);margin-left:8px">'+m.name.split(' ').slice(0,3).join(' ')+'</span>'+
+        roleTag+
       '</div>'+
       '<div style="display:flex;align-items:center;gap:8px">'+
         '<span style="font-size:10px;color:var(--t-3)">'+m.email+'</span>'+
-        '<span id="setup_status_'+m.code.replace('-','_')+'" style="font-size:10px;padding:2px 8px;border-radius:6px;background:var(--bg-2);color:var(--t-3)">pending</span>'+
+        '<span id="setup_status_'+safeId+'" style="font-size:10px;padding:2px 8px;border-radius:6px;background:var(--bg-2);color:var(--t-3)">pending</span>'+
       '</div>'+
-    '</div>'
-  ).join('');
+    '</div>';
+  }).join('');
+}
+
+async function renderSetupRoster(){
+  const list = document.getElementById('setup_roster_list');
+  if(!list) return;
+  // Show TEAM_ROSTER immediately
+  renderSetupRosterMembers(TEAM_ROSTER);
+  // Fetch trainers from sheet and append
+  list.innerHTML += '<div id="setup_trainers_loading" style="font-size:11px;color:var(--t-3);padding:8px 12px">Loading trainers from sheet...</div>';
+  const sheetTrainers = await fetchTrainersFromSheet();
+  const loadingEl = document.getElementById('setup_trainers_loading');
+  if(loadingEl) loadingEl.remove();
+  if(sheetTrainers.length){
+    // Section header
+    list.innerHTML += '<div style="font-size:10px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.08em;padding:8px 4px 4px">Batch Trainers from Sheet ('+sheetTrainers.length+')</div>';
+    const rosterEmails = new Set(TEAM_ROSTER.map(m => m.email));
+    const newTrainers = sheetTrainers.filter(t => t.email && !rosterEmails.has(t.email));
+    const div = document.createElement('div');
+    div.style.cssText = 'display:grid;gap:8px';
+    renderSetupRosterMembers(newTrainers);
+    // Re-render all as one list
+    const allMembers = [...TEAM_ROSTER, ...newTrainers];
+    renderSetupRosterMembers(allMembers);
+  } else {
+    list.innerHTML += '<div style="font-size:11px;color:#FF9F0A;padding:8px 12px">Could not load trainers from sheet</div>';
+  }
 }
 
 async function checkSetupStatus(){
   if(!fbDb) return;
+  // Check TEAM_ROSTER
   for(const m of TEAM_ROSTER){
-    const el = document.getElementById('setup_status_'+m.code.replace('-','_'));
+    const el = document.getElementById('setup_status_'+m.code.replace(/-/g,'_'));
+    try {
+      const snap = await fbDb.collection('users').where('email','==',m.email).limit(1).get();
+      if(el) el.textContent = snap.empty ? 'not created' : '✅ exists';
+      if(el) el.style.color = snap.empty ? 'var(--t-3)' : '#30D158';
+    } catch(e){ if(el){ el.textContent='error'; el.style.color='#FF453A'; } }
+  }
+  // Check sheet trainers
+  const sheetTrainers = await fetchTrainersFromSheet();
+  const rosterEmails = new Set(TEAM_ROSTER.map(m => m.email));
+  for(const m of sheetTrainers.filter(t => !rosterEmails.has(t.email))){
+    const safeId = (m.code||'').replace(/-/g,'_').replace(/\./g,'_');
+    const el = document.getElementById('setup_status_'+safeId);
     try {
       const snap = await fbDb.collection('users').where('email','==',m.email).limit(1).get();
       if(el) el.textContent = snap.empty ? 'not created' : '✅ exists';
