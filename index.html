@@ -2603,7 +2603,7 @@ async function initBMDashboard(){
     // Non-filter selects
     ['bm_assign_batch','bm_att_day','bm_att_batch','bm_att_status',
      'bm_task_filter_status','bm_task_filter_role','bm_task_batch',
-     'bm_edit_status','bm_edit_phase'].forEach(function(id){
+     'bm_edit_status','bm_edit_phase','bm_edit_supervisor'].forEach(function(id){
       var sel = document.getElementById(id);
       if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
     });
@@ -2651,7 +2651,7 @@ async function bmLoadAllData(){
   } catch(e){ console.warn('BM trainees load:', e); }
   console.log('[BM] Trainees loaded:', BM.trainees.length);
 
-  // ── Overlay supervisor from bm_assignments (keyed by supervisorCode) ──
+  // ── Overlay supervisor + trainingCode from accepted_trainees ──
   try {
     const aSnap = await fbDb.collection('accepted_trainees').get();
     aSnap.forEach(doc => {
@@ -2662,7 +2662,10 @@ async function bmLoadAllData(){
           (bt.name||'') === (t.name||t.nameEn||'') &&
           (bt.batchName||'') === (t.batchName||d.batchName||'')
         );
-        if(match) match.supervisor = d.supervisorCode;
+        if(match){
+          match.supervisor = d.supervisorCode;
+          if(t.trainingCode) match.trainingCode = t.trainingCode; // persist codes
+        }
       });
     });
   } catch(e){}
@@ -3944,7 +3947,20 @@ function bmOpenEditStatus(code){
   const dateEl = document.getElementById('bm_edit_leaving_date');
   if(dateEl) dateEl.value = ts.leavingDate||'';
   const modal = document.getElementById('bm_edit_modal');
-  if(modal){ modal.style.cssText = modal.style.cssText.replace('display:none',''); modal.style.display='flex'; setTimeout(nxDateInit,50); }
+  if(modal){
+    modal.style.cssText = modal.style.cssText.replace('display:none','');
+    modal.style.display='flex';
+    setTimeout(function(){
+      nxDateInit();
+      var supSel = document.getElementById('bm_edit_supervisor');
+      if(supSel && !supSel.dataset.nxWrapped) nxWrapSelect(supSel);
+      else if(supSel && supSel.dataset.nxWrapped){
+        // sync nx label with current value
+        var wrap = supSel.closest('.nx-select-wrap');
+        if(wrap){ var lbl=wrap.querySelector('.nx-label'); var o=supSel.options[supSel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
+      }
+    },50);
+  }
 }
 
 function bmEditStatusChange(){
@@ -3959,7 +3975,7 @@ async function bmSaveEditStatus(){
   const phase  = document.getElementById('bm_edit_phase')&&document.getElementById('bm_edit_phase').value||'';
   const note   = document.getElementById('bm_edit_note').value;
   const ldDate = document.getElementById('bm_edit_leaving_date')&&document.getElementById('bm_edit_leaving_date').value||'';
-  const newSup = document.getElementById('bm_edit_supervisor') ? document.getElementById('bm_edit_supervisor').value : '';
+  const supEl2 = document.getElementById('bm_edit_supervisor'); const newSup = supEl2 ? (supEl2.value || nxSelectValue('bm_edit_supervisor')) : '';
   const record = { status, notes:note||null, leavingPhase:phase||null, leavingDate:ldDate||null, updatedAt:new Date().toISOString(), updatedBy:A.user.email, supervisor:newSup||null };
   BM.tsStatuses[code] = record;
   // Update supervisor in local trainees array
