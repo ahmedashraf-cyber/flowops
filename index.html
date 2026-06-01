@@ -1645,7 +1645,7 @@ function initFirebaseAuth(){
           showScreen('bmScreen');
           setTimeout(()=>{ initBMDashboard(); }, 300);
         } else if(isBsup || (isManager && A.requestedRole === 'batchsup')){
-          document.getElementById('bsupPill').textContent = name + ' · Batch Supervisor';
+          document.getElementById('bsupPill').textContent = (profile.supervisorCode||(rosterMember?rosterMember.code:'')) + ' · ' + name.split(' ').slice(0,2).join(' ');
           // logo already hardcoded
           showScreen('bsupScreen');
           setTimeout(()=>{ initBsupDashboard(); }, 300);
@@ -4620,7 +4620,13 @@ function switchRoleAsSup(member){
   const origCode = A.user.supervisorCode;
   A.user.supervisorCode = member.code;
   setTimeout(async ()=>{
+    // Remove any existing banner first (switching supervisors)
+    const oldBanner = document.getElementById('viewAsBanner');
+    if(oldBanner) oldBanner.remove();
     await initBsupDashboard();
+    // Update pill
+    const pill = document.getElementById('bsupPill');
+    if(pill) pill.textContent = member.code + ' · ' + member.name.split(' ').slice(0,2).join(' ');
     // Show a banner indicating view-as mode
     const banner = document.createElement('div');
     banner.id = 'viewAsBanner';
@@ -4633,8 +4639,8 @@ function switchRoleAsSup(member){
     exitBtn.addEventListener('click', function(){ exitViewAsSup(this.dataset.origCode); });
     banner.appendChild(label);
     banner.appendChild(exitBtn);
-    const content = document.querySelector('#bsupScreen .content');
-    if(content) content.prepend(banner);
+    const bsupContent = document.querySelector('#bsupScreen .app-shell > div:last-child');
+    if(bsupContent) bsupContent.prepend(banner);
   }, 100);
 }
 
@@ -7597,17 +7603,26 @@ function btReset(){
 }
 
 async function initTrainerDashboard(){
-  // Populate trainer code select
+  // Fetch trainers from sheet to populate picker + name lookup
+  const trainers = await fetchTrainersFromSheet();
+  BT._allTrainers = trainers;
   const sel = document.getElementById('bt_codeSelect');
   if(sel){
-    TRAINER_CODES.forEach(c => {
+    sel.innerHTML = '<option value="">— Select your code —</option>';
+    trainers.forEach(t => {
       const o = document.createElement('option');
-      o.value = c; o.textContent = c;
+      o.value = t.code;
+      o.textContent = t.code + (t.name ? ' · '+t.name.split(' ').slice(0,2).join(' ') : '');
       sel.appendChild(o);
     });
+    // Fallback: also add legacy TRAINER_CODES not already in list
+    const existing = new Set(trainers.map(t=>t.code));
+    TRAINER_CODES.forEach(c => {
+      if(!existing.has(c)){
+        const o = document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o);
+      }
+    });
   }
-  // Day options built in btLogin after group is known
-  // Show login panel
   document.getElementById('bt_loginPanel').style.display = 'flex';
   document.getElementById('bt_dashboard').style.display = 'none';
   setTimeout(initNxSelects, 50);
@@ -7679,6 +7694,15 @@ async function btLoginWithCode(code){
     BT.allAssignments = myGroups;
     BT.activeAssignmentIdx = 0;
     btActivateAssignment(0);
+    // Update topbar pill with trainer name + code
+    const trainerInfo = document.getElementById('bt_userInfo');
+    if(trainerInfo){
+      const tm = (BM && BM._allTrainers||[]).find(t=>t.code===code) ||
+                 (BT._allTrainers||[]).find(t=>t.code===code) ||
+                 {name:''};
+      const shortName = tm.name ? tm.name.split(' ').slice(0,2).join(' ') : (A.user&&A.user.name?A.user.name.split(' ').slice(0,2).join(' '):'');
+      trainerInfo.textContent = code + (shortName ? ' · '+shortName : '') + ' · Batch Trainer';
+    }
     const dayEl = document.getElementById('bt_attDay');
     if(dayEl && dayEl.options.length < 2){
       for(let i=1;i<=30;i++){ const o=document.createElement('option'); o.value=i; o.textContent='Day '+i; dayEl.appendChild(o); }
