@@ -4093,7 +4093,7 @@ async function bmLoadTrainerAssignment(sups, totalTrainees){
   if(loadEl) loadEl.style.display = 'none';
 
   if(!trainers.length){
-    if(preview) preview.innerHTML = '<div style="color:#FF9F0A;font-size:12px;padding:8px">Could not load trainers from sheet (400 error means tab name mismatch — check sheet tab is named exactly "Trainers")</div>';
+    if(preview) preview.innerHTML = '<div style="color:#FF9F0A;font-size:12px;padding:8px">Could not load trainers from sheet.</div>';
     return;
   }
 
@@ -4108,16 +4108,39 @@ async function bmLoadTrainerAssignment(sups, totalTrainees){
     const sup = sups[i % sups.length];
     if(trainerDist[sup].length < trainersPerSup) trainerDist[sup].push(t);
   });
-  // distribute any remainder
+  const usedSet = new Set(Object.values(trainerDist).flat().map(t => t.code));
+  const leftover = pool.filter(t => !usedSet.has(t.code));
   let ri = 0;
-  const leftover = pool.filter(t => !Object.values(trainerDist).some(arr => arr.includes(t)));
-  sups.forEach(s => { while(leftover[ri] && trainerDist[s].length < trainersPerSup + 1){ trainerDist[s].push(leftover[ri++]); } });
+  sups.forEach(s => { while(ri < leftover.length){ trainerDist[s].push(leftover[ri++]); } });
 
   BM._pendingTrainers = trainerDist;
+  BM._allTrainers = trainers;
+  bmRenderTrainerAssignment();
+}
 
-  if(preview) preview.innerHTML = Object.entries(trainerDist).map(([sup, trs]) => {
+function bmRenderTrainerAssignment(){
+  const preview = document.getElementById('bm_trainer_preview');
+  if(!preview || !BM._pendingTrainers) return;
+  const dist = BM._pendingTrainers;
+  const allTrainers = BM._allTrainers || [];
+
+  preview.innerHTML = Object.entries(dist).map(([sup, trs]) => {
     const m = getRosterMember(sup);
     const shortName = m ? m.name.split(' ').slice(0,2).join(' ') : sup;
+    const usedCodes = new Set(Object.values(dist).flat().map(t => t.code));
+    const unassigned = allTrainers.filter(t => !usedCodes.has(t.code));
+
+    const pills = trs.map(t =>
+      '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 5px 4px 10px;border-radius:20px;background:var(--bg-3);border:1px solid var(--b-1);font-size:11px">' +
+        '<span style="font-family:JetBrains Mono,monospace;color:var(--p2);font-weight:700">' + t.code + '</span>' +
+        '<span style="color:var(--t-2);margin-left:3px">' + t.name.split(' ').slice(0,2).join(' ') + '</span>' +
+        '<button class="bm-tr-remove" data-sup="' + sup + '" data-code="' + t.code + '" style="width:16px;height:16px;border-radius:50%;background:rgba(255,69,58,0.15);border:none;color:#FF453A;font-size:10px;font-weight:800;cursor:pointer;padding:0;line-height:1;margin-left:4px">x</button>' +
+      '</div>'
+    ).join('');
+
+    const addOpts = '<option value="">+ Add trainer</option>' +
+      unassigned.map(t => '<option value="' + t.code + '">' + t.code + ' - ' + t.name.split(' ').slice(0,2).join(' ') + '</option>').join('');
+
     return '<div style="background:var(--bg-2);border:1px solid var(--b-1);border-radius:12px;padding:14px 16px">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
         '<div>' +
@@ -4126,16 +4149,35 @@ async function bmLoadTrainerAssignment(sups, totalTrainees){
         '</div>' +
         '<span style="background:rgba(232,89,12,0.15);color:var(--p2);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700">' + trs.length + ' trainers</span>' +
       '</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
-        trs.map(t =>
-          '<div style="padding:4px 10px;border-radius:8px;background:var(--bg-3);border:1px solid var(--b-1);font-size:11px">' +
-            '<span style="font-family:JetBrains Mono,monospace;color:var(--p2);font-weight:700">' + t.code + '</span>' +
-            '<span style="color:var(--t-3);margin-left:5px">' + t.name.split(' ').slice(0,2).join(' ') + '</span>' +
-          '</div>'
-        ).join('') +
-      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">' + pills + '</div>' +
+      '<select class="bm-tr-add" data-sup="' + sup + '" style="width:100%;padding:7px 10px;border:1.5px solid var(--b-1);border-radius:10px;background:var(--bg-3);color:var(--t-1);font-size:12px;outline:none;cursor:pointer">' + addOpts + '</select>' +
     '</div>';
   }).join('');
+
+  preview.querySelectorAll('.bm-tr-remove').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var sup = this.dataset.sup, code = this.dataset.code;
+      if(BM._pendingTrainers[sup]){
+        BM._pendingTrainers[sup] = BM._pendingTrainers[sup].filter(function(t){ return t.code !== code; });
+        bmRenderTrainerAssignment();
+      }
+    });
+  });
+
+  preview.querySelectorAll('.bm-tr-add').forEach(function(sel){
+    sel.addEventListener('change', function(){
+      var sup = this.dataset.sup, code = this.value;
+      if(!code) return;
+      var trainer = (BM._allTrainers||[]).find(function(t){ return t.code === code; });
+      if(!trainer) return;
+      Object.keys(BM._pendingTrainers).forEach(function(s){
+        if(s !== sup) BM._pendingTrainers[s] = BM._pendingTrainers[s].filter(function(t){ return t.code !== code; });
+      });
+      if(!BM._pendingTrainers[sup]) BM._pendingTrainers[sup] = [];
+      BM._pendingTrainers[sup].push(trainer);
+      bmRenderTrainerAssignment();
+    });
+  });
 }
 
 // ── Page 3: Attendance (read-only) ────────────────────────────
