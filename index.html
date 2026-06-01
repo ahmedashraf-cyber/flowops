@@ -1042,6 +1042,7 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
         <div class="alert alert-err" id="suErr"></div>
         <div class="auth-switch">Already have an account? <a onclick="showScreen('signinScreen')">Sign in</a></div>
         <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:12px">Only @hudl.com addresses are permitted</p>
+        <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:6px">Wrong role after login? <button onclick="showRoleFixModal()" style="background:none;border:none;color:var(--p2);font-size:11px;cursor:pointer;text-decoration:underline;padding:0">Fix my role</button></p>
       </div>
     </div>
   </div>
@@ -4350,6 +4351,50 @@ function addSetupBtn(){
   btn.addEventListener('click', showSetupScreen);
   div.appendChild(btn);
   switcher.appendChild(div);
+}
+
+// ── Role Fix ─────────────────────────────────────────────────
+function showRoleFixModal(){
+  // Pre-fill from current signed-in user if available
+  const modal = document.getElementById('roleFix_modal');
+  if(!modal) return;
+  if(firebase.auth().currentUser){
+    const el = document.getElementById('rolefix_email');
+    if(el) el.value = firebase.auth().currentUser.email || '';
+    // Try to match against TEAM_ROSTER
+    const member = getSupByEmail(firebase.auth().currentUser.email);
+    if(member){
+      const roleEl = document.getElementById('rolefix_role');
+      if(roleEl) roleEl.value = member.role;
+    }
+  }
+  modal.style.display = 'flex';
+}
+
+async function applyRoleFix(){
+  const email = (document.getElementById('rolefix_email')||{}).value||'';
+  const pass  = (document.getElementById('rolefix_pass')||{}).value||'';
+  const role  = (document.getElementById('rolefix_role')||{}).value||'';
+  const msg   = document.getElementById('rolefix_msg');
+  const showMsg = (txt, col) => { if(msg){ msg.textContent=txt; msg.style.color=col||'var(--t-3)'; msg.style.display='block'; } };
+  if(!email||!pass||!role){ showMsg('Fill all fields.'); return; }
+  try {
+    showMsg('Signing in...', 'var(--t-3)');
+    const cred = await firebase.auth().signInWithEmailAndPassword(email, pass);
+    const uid = cred.user.uid;
+    // Get roster member for supervisorCode
+    const member = getSupByEmail(email);
+    const updates = { role };
+    if(member) updates.supervisorCode = member.code;
+    await fbDb.collection('users').doc(uid).set(updates, {merge:true});
+    showMsg('✅ Role updated to "'+role+'" — signing you in...', '#30D158');
+    setTimeout(() => {
+      document.getElementById('roleFix_modal').style.display = 'none';
+      window.location.reload(); // reload so auth listener picks up new role
+    }, 1500);
+  } catch(e){
+    showMsg('❌ ' + e.message, '#FF453A');
+  }
 }
 
 // Initialize Firebase Auth — handles all devices automatically
@@ -9046,6 +9091,39 @@ function btQuickAssignAll(){
         <button onclick="checkSetupStatus()" style="padding:12px 16px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;cursor:pointer">Check Status</button>
       </div>
       <p style="margin:12px 0 0;font-size:11px;color:var(--t-3)">⚠️ Safe to run multiple times — skips accounts that already exist</p>
+    </div>
+  </div>
+</div>
+<!-- Role Fix Modal -->
+<div id="roleFix_modal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg-1);border:1px solid var(--b-1);border-radius:20px;padding:28px;width:100%;max-width:420px">
+    <h3 style="margin:0 0 6px;font-size:16px;font-weight:700">Fix my role</h3>
+    <p style="margin:0 0 20px;font-size:13px;color:var(--t-3)">Sign in first, then use this to correct your role in Firestore.</p>
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Email</label>
+        <input type="email" id="rolefix_email" class="input" placeholder="your@hudl.com"/>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Password</label>
+        <input type="password" id="rolefix_pass" class="input" placeholder="Your password"/>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Correct role</label>
+        <select id="rolefix_role" class="input">
+          <option value="">— Select correct role —</option>
+          <option value="manager">Training Manager</option>
+          <option value="batchmanager">Batch Manager</option>
+          <option value="coordinator">Batch Coordinator</option>
+          <option value="batchsup">Batch Supervisor</option>
+          <option value="trainer">Batch Trainer</option>
+        </select>
+      </div>
+      <div id="rolefix_msg" style="font-size:12px;color:var(--t-3);display:none"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('roleFix_modal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="applyRoleFix()" style="flex:2;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Fix Role</button>
     </div>
   </div>
 </div>
