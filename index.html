@@ -5073,9 +5073,10 @@ function switchRole(role){
     if(sw) sw.style.display = 'block';
   }
 
-  // Cinematic transition: fade out current screen
+  // Cinematic transition: fade out current screen (skip for batchsup picker — it stays in place)
   const current = document.querySelector('.screen.active');
-  if(current){
+  const skipFade = (role === 'batchsup' && (A.user.role==='manager'||A.user.role==='batchmanager'));
+  if(current && !skipFade){
     current.style.transition = 'opacity .25s cubic-bezier(0.4,0,0.2,1)';
     current.style.opacity = '0';
   }
@@ -5088,7 +5089,10 @@ function switchRole(role){
       const menu = document.getElementById('viewAsSupMenu');
       const chev = document.getElementById('viewAsSupChev');
       if(menu && (A.user.role==='manager'||A.user.role==='batchmanager')){
-        if(current){ current.style.opacity='1'; }
+        // Restore screen opacity — we're not navigating away
+        if(current){ current.style.opacity='1'; current.style.transition='none'; }
+        // Also fade back in the active screen
+        requestAnimationFrame(()=>{ if(current) current.style.opacity='1'; });
         menu.style.display = 'block';
         if(chev) chev.textContent = '▴';
         renderViewAsSupList();
