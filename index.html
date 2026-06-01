@@ -3159,6 +3159,10 @@ function bmPreviewAssignment(){
   previewEl.style.display = 'block';
   document.getElementById('bm_assign_confirm_btn').style.display = 'block';
   document.getElementById('bm_assign_msg').textContent = 'Review the distribution above, then confirm to save.';
+
+  // Step 4: auto-distribute trainers across the selected supervisors
+  const totalAssignedT = supGroups.reduce((s,g) => s + g.trainees.length, 0);
+  bmLoadTrainerAssignment(activeSups, totalAssignedT);
 }
 
 async function bmConfirmAssignment(){
@@ -4071,11 +4075,6 @@ function bmGeneratePreview(batchName){
   // Store for confirm
   BM._pendingAssign = { batchName, dist };
 
-  // Trigger Step 4: trainer assignment
-  const usedSups = Object.keys(dist);
-  const totalT = Object.values(dist).reduce((a,b) => a + b.length, 0);
-  bmLoadTrainerAssignment(usedSups, totalT);
-
   if(summary) summary.textContent = `${interleaved.length} trainees → ${supsToUse.length} supervisors · ~${count} each · Fairness: tier-balanced + score-balanced`;
 }
 
@@ -4624,23 +4623,31 @@ let _trainersCache = null;
 
 async function fetchTrainersFromSheet(){
   if(_trainersCache) return _trainersCache;
-  try {
-    const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/Trainers!A2:E?key='+TEAM_SHEET_API;
-    const res = await fetch(url);
-    const data = await res.json();
-    if(!data.values){ return []; }
-    const trainers = data.values
-      .filter(r => r[0] && String(r[0]).trim())
-      .map(r => ({
-        code:     String(r[0]||'').trim(),
-        name:     String(r[1]||'').trim(),
-        email:    String(r[2]||'').trim().toLowerCase(),
-        password: String(r[3]||'').trim(),
-        role:     'trainer'
-      }));
-    _trainersCache = trainers;
-    return trainers;
-  } catch(e){ console.warn('fetchTrainersFromSheet:', e); return []; }
+  // Try multiple possible tab name variants
+  const tabNames = ['Trainers','trainers','Batch Trainers','batch trainers','TRAINERS','Trainer'];
+  for(const tab of tabNames){
+    try {
+      const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/'+encodeURIComponent(tab)+'!A2:E?key='+TEAM_SHEET_API;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.values && data.values.length){
+        const trainers = data.values
+          .filter(r => r[0] && String(r[0]).trim())
+          .map(r => ({
+            code:     String(r[0]||'').trim(),
+            name:     String(r[1]||'').trim(),
+            email:    String(r[2]||'').trim().toLowerCase(),
+            password: String(r[3]||'').trim(),
+            role:     'trainer'
+          }));
+        _trainersCache = trainers;
+        console.log('Trainers loaded from tab "'+tab+'":', trainers.length);
+        return trainers;
+      }
+    } catch(e){ /* try next */ }
+  }
+  console.warn('fetchTrainersFromSheet: no matching tab found. Tried:', tabNames.join(', '));
+  return [];
 }
 
 // ============================================================
