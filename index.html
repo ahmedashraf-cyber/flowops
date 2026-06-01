@@ -3243,11 +3243,23 @@ async function bmConfirmAssignment(){
       });
     }
 
+    // ── Save trainer assignments to Firestore ──
+    if(BM._pendingTrainers){
+      const batchKey = batch.replace(/[^a-zA-Z0-9]/g,'_');
+      await fbDb.collection('batch_trainer_assignments').doc(batchKey).set({
+        batchName: batch,
+        assignments: BM._pendingTrainers,
+        savedAt: now,
+        savedBy: A.user ? A.user.email : 'batchmanager'
+      });
+    }
+
     BM.supAssignments = assignPayload;
     bmRenderSupList();
     document.getElementById('bm_assign_msg').textContent = '✅ Assignment saved! Batch supervisors can now see their trainees.';
     btn.textContent='✅ Saved!'; btn.disabled=false;
     BM.assignPreview = null;
+    BM._pendingTrainers = null;
     setTimeout(()=>{ document.getElementById('bm_assign_confirm_btn').style.display='none'; btn.textContent='✅ Confirm & Save'; },3000);
   } catch(e){
     document.getElementById('bm_assign_msg').textContent = '❌ Error: '+e.message;
