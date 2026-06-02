@@ -4718,7 +4718,7 @@ function switchRoleAsTrainer(trainer){
 // ═══════════════════════════════════════════════════════════════
 // TRAINING SUPERVISOR GATE
 // ═══════════════════════════════════════════════════════════════
-const TS = {
+const TSUP = {
   batches: [],
   filter: 'all',
   notifs: [],
@@ -4783,10 +4783,10 @@ async function tsLoadBatches(){
   if(!fbDb) return;
   try {
     const snap = await fbDb.collection('ts_batches').orderBy('createdAt','desc').get();
-    TS.batches = [];
+    TSUP.batches = [];
     snap.forEach(doc => {
       const d = doc.data();
-      TS.batches.push({...d, id: doc.id});
+      TSUP.batches.push({...d, id: doc.id});
     });
     tsCheckMilestones();
     tsRenderOverview();
@@ -4803,7 +4803,7 @@ async function tsCheckMilestones(){
     { day: 25, key: 'day25', title: '🏁 Batch Complete', body: 'Training finished — initiate staging process', roles: ['trainsup','batchmanager','coordinator','batchsup','trainer'] }
   ];
 
-  for(const batch of TS.batches){
+  for(const batch of TSUP.batches){
     const day = tsCalcDay(batch.startDate);
     for(const ms of milestones){
       if(day >= ms.day){
@@ -4843,9 +4843,9 @@ async function tsLoadNotifs(){
       .orderBy('firedAt','desc')
       .limit(50)
       .get();
-    TS.notifs = [];
-    snap.forEach(doc => TS.notifs.push({...doc.data(), id: doc.id}));
-    TS.notifN = TS.notifs.filter(n => n.status === 'unread').length;
+    TSUP.notifs = [];
+    snap.forEach(doc => TSUP.notifs.push({...doc.data(), id: doc.id}));
+    TSUP.notifN = TSUP.notifs.filter(n => n.status === 'unread').length;
     tsUpdateBadge();
     tsRenderNotifs();
   } catch(e){ console.warn('tsLoadNotifs:', e); }
@@ -4854,16 +4854,16 @@ async function tsLoadNotifs(){
 function tsUpdateBadge(){
   const b1 = document.getElementById('tsNBadge');
   const b2 = document.getElementById('tsNSide');
-  if(b1) b1.textContent = TS.notifN;
-  if(b2) b2.textContent = TS.notifN;
+  if(b1) b1.textContent = TSUP.notifN;
+  if(b2) b2.textContent = TSUP.notifN;
 }
 
 // ── Render Overview ───────────────────────────────────────────
 function tsRenderOverview(){
-  const active = TS.batches.filter(b => tsBatchStatus(b) === 'active');
-  const completed = TS.batches.filter(b => tsBatchStatus(b) === 'completed');
-  const totalTrainees = TS.batches.reduce((s,b) => s + (parseInt(b.traineeCount)||0), 0);
-  const totalLeavers = TS.batches.reduce((s,b) => s + (parseInt(b.leavers)||0), 0);
+  const active = TSUP.batches.filter(b => tsBatchStatus(b) === 'active');
+  const completed = TSUP.batches.filter(b => tsBatchStatus(b) === 'completed');
+  const totalTrainees = TSUP.batches.reduce((s,b) => s + (parseInt(b.traineeCount)||0), 0);
+  const totalLeavers = TSUP.batches.reduce((s,b) => s + (parseInt(b.leavers)||0), 0);
 
   const statActive = document.getElementById('ts_stat_active');
   const statTrainees = document.getElementById('ts_stat_trainees');
@@ -4945,7 +4945,7 @@ function tsBatchCard(batch){
 function tsRenderBatchList(){
   const container = document.getElementById('ts_batches_list');
   if(!container) return;
-  const filtered = TS.filter === 'all' ? TS.batches : TS.batches.filter(b => tsBatchStatus(b) === TS.filter);
+  const filtered = TSUP.filter === 'all' ? TSUP.batches : TSUP.batches.filter(b => tsBatchStatus(b) === TSUP.filter);
   if(!filtered.length){
     container.innerHTML = '<div class="card" style="padding:30px;text-align:center;color:var(--t-3)">No batches found</div>';
     return;
@@ -4971,7 +4971,7 @@ function tsRenderBatchList(){
 }
 
 function tsFilterBatches(f){
-  TS.filter = f;
+  TSUP.filter = f;
   ['all','active','completed','upcoming'].forEach(x => {
     const btn = document.getElementById('tsF_'+x);
     if(btn){ btn.style.background = x===f ? 'var(--p2)' : ''; btn.style.color = x===f ? '#fff' : ''; }
@@ -4983,11 +4983,11 @@ function tsFilterBatches(f){
 function tsRenderNotifs(){
   const container = document.getElementById('ts_notif_list');
   if(!container) return;
-  if(!TS.notifs.length){
+  if(!TSUP.notifs.length){
     container.innerHTML = '<div class="card" style="padding:30px;text-align:center;color:var(--t-3)">No notifications yet</div>';
     return;
   }
-  container.innerHTML = TS.notifs.map(n => {
+  container.innerHTML = TSUP.notifs.map(n => {
     const milestoneColors = { day11:'#FF9F0A', day15:'#30D158', day25:'var(--p2)' };
     const c = milestoneColors[n.milestoneKey] || 'var(--p2)';
     const ts = n.firedAt ? new Date(n.firedAt).toLocaleDateString('en-EG',{day:'2-digit',month:'short',year:'numeric'}) : '';
@@ -5021,7 +5021,7 @@ function tsResetForm(){
 }
 
 function tsEditBatch(id){
-  const batch = TS.batches.find(b => b.id === id);
+  const batch = TSUP.batches.find(b => b.id === id);
   if(!batch) return;
   document.getElementById('ts_edit_id').value = id;
   document.getElementById('ts_f_name').value = batch.name||'';
@@ -5117,9 +5117,9 @@ function showTsTab(tab){
     if(nav) nav.classList.toggle('active', t===tab);
   });
   if(tab === 'tsNotifs'){
-    TS.notifN = 0; tsUpdateBadge();
+    TSUP.notifN = 0; tsUpdateBadge();
     // Mark all as read in Firestore
-    if(fbDb) TS.notifs.filter(n=>n.status==='unread').forEach(n=>{
+    if(fbDb) TSUP.notifs.filter(n=>n.status==='unread').forEach(n=>{
       fbDb.collection('batch_notifications').doc(n.id).update({status:'read'}).catch(()=>{});
     });
   }
@@ -5135,7 +5135,7 @@ function listenTsMilestoneAlerts(){
     .onSnapshot(snap => {
       const unread = snap.docs.filter(d => d.data().status === 'unread').length;
       if(A.user.role === 'trainsup'){
-        TS.notifN = unread;
+        TSUP.notifN = unread;
         tsUpdateBadge();
       }
       // Show alert banner for BM milestone notifications
