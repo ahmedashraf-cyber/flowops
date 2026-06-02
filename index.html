@@ -4691,29 +4691,12 @@ function switchRoleAsTrainer(trainer){
   initTrainerDashboard().then(() => {
     btLoginWithCode(trainer.code);
 
-    // Banner
+    // No banner — identity card on the page is enough
+    // Clean up any leftover banner from previous view
     setTimeout(() => {
       const existing = document.getElementById('viewAsTrainerBanner');
       if(existing) existing.remove();
-      const banner = document.createElement('div');
-      banner.id = 'viewAsTrainerBanner';
-      banner.style.cssText = 'position:sticky;top:52px;z-index:888;background:rgba(48,209,88,0.85);color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600';
-      const label = document.createTextNode('👁 Viewing as '+trainer.code+' · '+trainer.name.split(' ').slice(0,2).join(' '));
-      const exitBtn = document.createElement('button');
-      exitBtn.textContent = 'Exit view';
-      exitBtn.style.cssText = 'background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px';
-      exitBtn.addEventListener('click', function(){
-        const banner = document.getElementById('viewAsTrainerBanner');
-        if(banner) banner.remove();
-        A.user.trainerCode = origCode;
-        A._viewAsTrainer = null;
-        switchRole('manager');
-      });
-      banner.appendChild(label);
-      banner.appendChild(exitBtn);
-      const content = document.querySelector('#trainerScreen .app-shell > div:last-child') || document.getElementById('bt_dashboard');
-      if(content) content.prepend(banner);
-    }, 500);
+    }, 200);
   });
 }
 
