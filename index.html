@@ -5036,14 +5036,19 @@ function tsEditBatch(id){
   document.getElementById('ts_save_btn').textContent = '✅ Save Changes';
   showTsTab('tsCreate');
   // Re-sync nx selects
-  setTimeout(()=>{
-    ['ts_f_bm','ts_f_bl','ts_f_type'].forEach(id=>{
-      const sel = document.getElementById(id);
+  setTimeout(function(){
+    ['ts_f_bm','ts_f_bl','ts_f_type'].forEach(function(id){
+      var sel = document.getElementById(id);
       if(sel && sel.dataset.nxWrapped){
-        const wrap = sel.closest('.nx-select-wrap');
-        if(wrap){ const lbl=wrap.querySelector('.nx-label'); const o=sel.options[sel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
+        var wrap = sel.closest('.nx-select-wrap');
+        if(wrap){ var lbl=wrap.querySelector('.nx-label'); var o=sel.options[sel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
+      } else if(sel && !sel.dataset.nxWrapped){
+        nxWrapSelect(sel);
+        var wrap2 = sel.closest('.nx-select-wrap');
+        if(wrap2){ var lbl2=wrap2.querySelector('.nx-label'); var o2=sel.options[sel.selectedIndex]; if(lbl2&&o2) lbl2.textContent=o2.text; }
       }
     });
+    nxDateInit();
   }, 100);
 }
 
@@ -5054,9 +5059,9 @@ async function tsSaveBatch(){
 
   const name = document.getElementById('ts_f_name').value.trim();
   const count = document.getElementById('ts_f_count').value.trim();
-  const bmCode = nxSelectValue('ts_f_bm') || document.getElementById('ts_f_bm').value;
-  const bl = nxSelectValue('ts_f_bl') || document.getElementById('ts_f_bl').value;
-  const type = nxSelectValue('ts_f_type') || document.getElementById('ts_f_type').value;
+  const bmCode = nxSelectValue('ts_f_bm');
+  const bl = nxSelectValue('ts_f_bl');
+  const type = nxSelectValue('ts_f_type');
   const startDate = document.getElementById('ts_f_start').value;
   const endDate = document.getElementById('ts_f_end').value;
   const notes = document.getElementById('ts_f_notes').value.trim();
@@ -5123,7 +5128,13 @@ function showTsTab(tab){
       fbDb.collection('batch_notifications').doc(n.id).update({status:'read'}).catch(()=>{});
     });
   }
-  if(tab === 'tsCreate') setTimeout(initNxSelects, 80);
+  if(tab === 'tsCreate') setTimeout(function(){
+    ['ts_f_bm','ts_f_bl','ts_f_type'].forEach(function(id){
+      var sel = document.getElementById(id);
+      if(sel && !sel.dataset.nxWrapped) nxWrapSelect(sel);
+    });
+    nxDateInit();
+  }, 80);
 }
 
 // ── Add TS notification listener for BM milestone alerts ──────
