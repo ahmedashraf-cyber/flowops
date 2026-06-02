@@ -4878,7 +4878,8 @@ function tsRenderOverview(){
   if(!container) return;
 
   if(!active.length){
-    container.innerHTML = '<div class="card" style="padding:40px;text-align:center;color:var(--t-3)">No active batches — <button onclick="showTsTab('tsCreate')" class="btn btn-primary btn-sm" style="margin-left:8px">Create one</button></div>';
+    container.innerHTML = '<div class="card" style="padding:40px;text-align:center;color:var(--t-3)">No active batches <span id="ts_create_link" style="margin-left:8px"></span></div>';
+    var tsEL=document.getElementById('ts_create_link'); if(tsEL){var tsBtn=document.createElement('button'); tsBtn.className='btn btn-primary btn-sm'; tsBtn.textContent='Create one'; tsBtn.addEventListener('click',function(){showTsTab('tsCreate');}); tsEL.appendChild(tsBtn);}
     return;
   }
 
