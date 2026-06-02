@@ -4926,10 +4926,8 @@ function tsBatchCard(batch){
       '</div>' +
       // Week markers
       '<div style="display:flex;justify-content:space-between;margin-top:4px">' +
-        ['W1','W2','W3','W4','W5'].map((w,i) => {
-          const wDay = (i+1)*5;
-          const done = day >= wDay;
-          return '<span style="font-size:9px;font-weight:700;color:'+(done?statusColor:'var(--b-2)')+'">'+w+'</span>';
+        [['W1',5],['W2',10],['W3',15],['W4',20],['W5',25]].map(function(pair){
+          return '<span style="font-size:9px;font-weight:700;color:'+(day>=pair[1]?statusColor:'var(--b-2)')+'">'+pair[0]+'</span>';
         }).join('') +
       '</div>' +
     '</div>' +
