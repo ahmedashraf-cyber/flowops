@@ -7898,6 +7898,11 @@ function nxWrapSelect(sel, onChangeFn){
     if(isOpen){ closeAllDropdowns(); return; }
     closeAllDropdowns();
 
+    var optCount = sel.options.length;
+    var searchHtml = '';
+    if(optCount > 6){
+      searchHtml = '<div style="padding:8px 10px 4px"><input type="text" placeholder="Search..." class="nx-search-input" style="width:100%;padding:7px 12px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.9);font-size:13px;font-family:DM Sans,sans-serif;outline:none;box-sizing:border-box" autocomplete="off"/></div>';
+    }
     var html = '';
     for(var i=0;i<sel.options.length;i++){
       var isSel = sel.options[i].value === sel.value;
@@ -7906,12 +7911,28 @@ function nxWrapSelect(sel, onChangeFn){
         +sel.options[i].text+'</div>';
     }
     var r = trigger.getBoundingClientRect();
-    dd.innerHTML = '<div style="padding:4px">'+html+'</div>';
+    dd.innerHTML = searchHtml + '<div class="nx-opts-list" style="padding:4px">'+html+'</div>';
     dd.style.cssText = 'display:block;position:fixed;top:'+(r.bottom+6)+'px;left:'+r.left+'px;min-width:'+r.width+'px;width:auto;max-width:360px;z-index:99999;max-height:320px;overflow-y:auto;background:#12121C;border:1px solid rgba(255,255,255,0.10);border-radius:16px;box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;';
     document.body.appendChild(dd);
     dd.addEventListener('wheel',function(e){e.stopPropagation();},{passive:true});
     trigger.classList.add('open');
     _nxOpenWrap = wrap;
+
+    // Wire search
+    var searchInp = dd.querySelector('.nx-search-input');
+    if(searchInp){
+      searchInp.addEventListener('mousedown', function(e){ e.stopPropagation(); });
+      searchInp.addEventListener('input', function(){
+        var q = this.value.toLowerCase();
+        var optsList = dd.querySelector('.nx-opts-list');
+        if(!optsList) return;
+        optsList.querySelectorAll('.nx-opt').forEach(function(opt){
+          var txt = opt.textContent.toLowerCase();
+          opt.style.display = txt.includes(q) ? '' : 'none';
+        });
+      });
+      setTimeout(function(){ searchInp.focus(); }, 50);
+    }
 
     dd.querySelectorAll('.nx-opt').forEach(function(opt){
       opt.addEventListener('mousedown',function(ev){
@@ -7964,6 +7985,8 @@ function initNxSelects(){
       closeAllDropdowns();
 
       // Build items
+      var optCount2=sel.options.length;
+      var srchHtml=optCount2>6?'<div style="padding:8px 10px 4px"><input type="text" placeholder="Search..." class="nx-search-input" style="width:100%;padding:7px 12px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.9);font-size:13px;font-family:DM Sans,sans-serif;outline:none;box-sizing:border-box" autocomplete="off"/></div>':'';
       var html='';
       for(var i=0;i<sel.options.length;i++){
         var isSel=sel.options[i].value===sel.value;
@@ -7973,7 +7996,7 @@ function initNxSelects(){
       }
 
       var r=trigger.getBoundingClientRect();
-      dd.innerHTML='<div style="padding:4px">'+html+'</div>';
+      dd.innerHTML=srchHtml+'<div class="nx-opts-list" style="padding:4px">'+html+'</div>';
       dd.style.cssText='display:block;position:fixed;top:'+(r.bottom+6)+'px;left:'+r.left+'px;min-width:'+r.width+'px;width:auto;max-width:280px;z-index:99999;max-height:280px;overflow-y:auto;background:#12121C;border:1px solid rgba(255,255,255,0.10);border-radius:16px;box-shadow:0 0 0 1px rgba(0,0,0,0.5),0 20px 60px rgba(0,0,0,0.8),0 8px 20px rgba(0,0,0,0.5);animation:nxSlide .18s cubic-bezier(0,0,0.2,1) both;';
       document.body.appendChild(dd);
       // Stop wheel/scroll events from bubbling to window (keeps list open while scrolling)
@@ -7981,6 +8004,18 @@ function initNxSelects(){
       dd.addEventListener('scroll',function(e){ e.stopPropagation(); },{passive:true});
       trigger.classList.add('open');
       _nxOpenWrap=wrap;
+
+      var sInp2=dd.querySelector('.nx-search-input');
+      if(sInp2){
+        sInp2.addEventListener('mousedown',function(e){e.stopPropagation();});
+        sInp2.addEventListener('input',function(){
+          var q2=this.value.toLowerCase();
+          var ol2=dd.querySelector('.nx-opts-list');
+          if(!ol2)return;
+          ol2.querySelectorAll('.nx-opt').forEach(function(o2){o2.style.display=o2.textContent.toLowerCase().includes(q2)?'':'none';});
+        });
+        setTimeout(function(){sInp2.focus();},50);
+      }
 
       dd.querySelectorAll('.nx-opt').forEach(function(opt){
         opt.addEventListener('mousedown',function(ev){
