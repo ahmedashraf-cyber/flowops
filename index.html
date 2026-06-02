@@ -854,6 +854,8 @@ select option {
   max-height:280px;overflow-y:auto;
 }
 @keyframes dropIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes pageIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.page-transition{animation:pageIn .18s cubic-bezier(0,0,0.2,1) both}
 
 .nx-dropdown::-webkit-scrollbar{width:3px}
 .nx-dropdown::-webkit-scrollbar-track{background:transparent}
@@ -2222,10 +2224,18 @@ function updateBadge(){document.getElementById('nBadge').textContent=A.notifN;do
 // ============================================================
 // NAVIGATION
 // ============================================================
+function animateTabIn(el){
+  if(!el) return;
+  el.classList.remove('page-transition');
+  void el.offsetWidth; // force reflow
+  el.classList.add('page-transition');
+}
+
 function showTab(t){
   ['overview','candidates','report','attendance','notifs'].forEach(x=>{
     const el=document.getElementById('tab_'+x);if(el)el.style.display=x===t?'block':'none';
     const n=document.getElementById('nav_'+x);if(n)n.classList.toggle('active',x===t);
+    if(x===t && el) animateTabIn(el);
   });
   document.querySelectorAll('.mob-nav-i').forEach(el=>el.classList.toggle('active',el.textContent.toLowerCase().trim().startsWith(t.slice(0,4))));
   if(t==='report'){setTimeout(()=>{buildCharts();updateReportStats();initNxSelects();},50);}
@@ -3754,7 +3764,7 @@ function bmShowTab(tab){
   // Also clear sidebar-item active states for BM
   document.querySelectorAll('#bmScreen .sidebar-item').forEach(n => n.classList.remove('active'));
   const tabEl = document.getElementById('bm_tab_'+tab);
-  if(tabEl) tabEl.style.display = 'block';
+  if(tabEl){ tabEl.style.display = 'block'; animateTabIn(tabEl); }
   const navEl = document.getElementById('bm_nav_'+tab);
   if(navEl) navEl.classList.add('active');
 
@@ -5440,7 +5450,7 @@ async function saveGroupAssignments(){
 function showBsupTab(tab){
   ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupMatches','bsupNotifs'].forEach(t => {
     const el = document.getElementById(t);
-    if(el) el.style.display = t===tab ? 'block' : 'none';
+    if(el){ el.style.display = t===tab ? 'block' : 'none'; if(t===tab) animateTabIn(el); }
     const nav = document.getElementById('bsupNav_'+t.replace('bsup','').toLowerCase());
     if(nav) nav.classList.toggle('active', t===tab);
   });
@@ -7761,7 +7771,9 @@ function btShowPage(page){
   closeAllDropdowns();
   BT.currentPage = page;
   ['group','attendance','matches'].forEach(p=>{
-    document.getElementById('bt_page_'+p).style.display = p===page?'block':'none';
+    const btEl = document.getElementById('bt_page_'+p);
+    btEl.style.display = p===page?'block':'none';
+    if(p===page) animateTabIn(btEl);
     const nav = document.getElementById('bt_nav_'+p);
     if(nav){ nav.classList.toggle('active', p===page); nav.classList.toggle('sidebar-item', true); }
   });
