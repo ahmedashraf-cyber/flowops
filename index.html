@@ -1640,12 +1640,16 @@ function initFirebaseAuth(){
         const isManager = role === 'manager';
         const isBsup = role === 'batchsup';
         const isBatchManager = role === 'batchmanager';
-        const isCoord = role === 'coordinator' || role === 'trainer' || role === 'trainsup' || role === 'trainee';
+        const isCoord = role === 'coordinator' || role === 'trainer' || role === 'trainee';
 
         if(isBatchManager || (isManager && A.requestedRole === 'batchmanager')){
           document.getElementById('bmUserPill').textContent = name + ' · Batch Manager';
           showScreen('bmScreen');
           setTimeout(()=>{ initBMDashboard(); }, 300);
+        } else if(role === 'trainsup'){
+          injectLogos();
+          showScreen('tsScreen');
+          setTimeout(()=>{ initTSDashboard(); listenTsMilestoneAlerts(); }, 300);
         } else if(isBsup || (isManager && A.requestedRole === 'batchsup')){
           document.getElementById('bsupPill').textContent = (profile.supervisorCode||(rosterMember?rosterMember.code:'')) + ' · ' + name.split(' ').slice(0,2).join(' ');
           // logo already hardcoded
@@ -2620,6 +2624,7 @@ async function initBMDashboard(){
     });
     nxDateInit();
   }, 150);
+  listenTsMilestoneAlerts();
 }
 
 function bmCalcTier(pts){
@@ -4710,6 +4715,455 @@ function switchRoleAsTrainer(trainer){
   });
 }
 
+// ═══════════════════════════════════════════════════════════════
+// TRAINING SUPERVISOR GATE
+// ═══════════════════════════════════════════════════════════════
+const TS = {
+  batches: [],
+  filter: 'all',
+  notifs: [],
+  notifN: 0
+};
+
+// 25-day schedule — skip weekends (Fri/Sat in Egypt = 5/6, working days Sun-Thu)
+function tsCalcDay(startDateStr){
+  if(!startDateStr) return null;
+  const start = new Date(startDateStr);
+  const today = new Date();
+  start.setHours(0,0,0,0); today.setHours(0,0,0,0);
+  if(today < start) return 0; // not started yet
+  let workingDays = 0;
+  let d = new Date(start);
+  while(d <= today){
+    const dow = d.getDay(); // 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
+    if(dow !== 5 && dow !== 6) workingDays++;
+    d.setDate(d.getDate()+1);
+  }
+  return Math.min(workingDays, 25);
+}
+
+function tsGetWeek(day){
+  if(day <= 0) return 0;
+  if(day <= 5) return 1;
+  if(day <= 10) return 2;
+  if(day <= 15) return 3;
+  if(day <= 20) return 4;
+  return 5;
+}
+
+function tsBatchStatus(batch){
+  const day = tsCalcDay(batch.startDate);
+  if(day === 0) return 'upcoming';
+  if(day >= 25) return 'completed';
+  return 'active';
+}
+
+// ── Init ──────────────────────────────────────────────────────
+async function initTSDashboard(){
+  // Update topbar pill
+  const pill = document.getElementById('tsPill');
+  if(pill) pill.textContent = (A.user && A.user.name ? A.user.name.split(' ').slice(0,2).join(' ') : 'Training Supervisor') + ' · Training Supervisor';
+
+  // Populate BM dropdown from TEAM_ROSTER
+  const bmSel = document.getElementById('ts_f_bm');
+  if(bmSel){
+    bmSel.innerHTML = '<option value="">— Select BM —</option>' +
+      TEAM_ROSTER.filter(m => m.role === 'batchmanager').map(m =>
+        '<option value="'+m.code+'">'+m.code+' · '+m.name.split(' ').slice(0,2).join(' ')+'</option>'
+      ).join('');
+  }
+
+  await tsLoadBatches();
+  showTsTab('tsOverview');
+  setTimeout(initNxSelects, 100);
+}
+
+// ── Load all batches from Firestore ───────────────────────────
+async function tsLoadBatches(){
+  if(!fbDb) return;
+  try {
+    const snap = await fbDb.collection('ts_batches').orderBy('createdAt','desc').get();
+    TS.batches = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      TS.batches.push({...d, id: doc.id});
+    });
+    tsCheckMilestones();
+    tsRenderOverview();
+    tsRenderBatchList();
+  } catch(e){ console.warn('tsLoadBatches:', e); }
+}
+
+// ── Milestone engine ──────────────────────────────────────────
+async function tsCheckMilestones(){
+  if(!fbDb) return;
+  const milestones = [
+    { day: 11, key: 'day11', title: '📋 Week 3 Started', body: 'Contact Quality team for trainee review', roles: ['trainsup','batchmanager'] },
+    { day: 15, key: 'day15', title: '🎯 Week 3 Complete', body: 'HR codes required for all trainees now', roles: ['trainsup','batchmanager','coordinator','batchsup'] },
+    { day: 25, key: 'day25', title: '🏁 Batch Complete', body: 'Training finished — initiate staging process', roles: ['trainsup','batchmanager','coordinator','batchsup','trainer'] }
+  ];
+
+  for(const batch of TS.batches){
+    const day = tsCalcDay(batch.startDate);
+    for(const ms of milestones){
+      if(day >= ms.day){
+        const firedKey = 'milestone_'+batch.id+'_'+ms.key;
+        // Check if already fired
+        try {
+          const existing = await fbDb.collection('batch_notifications').doc(firedKey).get();
+          if(!existing.exists){
+            // Fire it
+            await fbDb.collection('batch_notifications').doc(firedKey).set({
+              type: 'milestone',
+              batchId: batch.id,
+              batchName: batch.name,
+              milestoneKey: ms.key,
+              milestoneDay: ms.day,
+              title: ms.title,
+              body: ms.body + ' — ' + batch.name,
+              roles: ms.roles,
+              firedAt: new Date().toISOString(),
+              status: 'unread'
+            });
+          }
+        } catch(e){ console.warn('milestone check:', e); }
+      }
+    }
+  }
+  // Load TS notifications
+  tsLoadNotifs();
+}
+
+async function tsLoadNotifs(){
+  if(!fbDb) return;
+  try {
+    const snap = await fbDb.collection('batch_notifications')
+      .where('type','==','milestone')
+      .where('roles','array-contains','trainsup')
+      .orderBy('firedAt','desc')
+      .limit(50)
+      .get();
+    TS.notifs = [];
+    snap.forEach(doc => TS.notifs.push({...doc.data(), id: doc.id}));
+    TS.notifN = TS.notifs.filter(n => n.status === 'unread').length;
+    tsUpdateBadge();
+    tsRenderNotifs();
+  } catch(e){ console.warn('tsLoadNotifs:', e); }
+}
+
+function tsUpdateBadge(){
+  const b1 = document.getElementById('tsNBadge');
+  const b2 = document.getElementById('tsNSide');
+  if(b1) b1.textContent = TS.notifN;
+  if(b2) b2.textContent = TS.notifN;
+}
+
+// ── Render Overview ───────────────────────────────────────────
+function tsRenderOverview(){
+  const active = TS.batches.filter(b => tsBatchStatus(b) === 'active');
+  const completed = TS.batches.filter(b => tsBatchStatus(b) === 'completed');
+  const totalTrainees = TS.batches.reduce((s,b) => s + (parseInt(b.traineeCount)||0), 0);
+  const totalLeavers = TS.batches.reduce((s,b) => s + (parseInt(b.leavers)||0), 0);
+
+  const statActive = document.getElementById('ts_stat_active');
+  const statTrainees = document.getElementById('ts_stat_trainees');
+  const statLeavers = document.getElementById('ts_stat_leavers');
+  const statCompleted = document.getElementById('ts_stat_completed');
+  if(statActive) statActive.textContent = active.length;
+  if(statTrainees) statTrainees.textContent = totalTrainees;
+  if(statLeavers) statLeavers.textContent = totalLeavers;
+  if(statCompleted) statCompleted.textContent = completed.length;
+
+  const container = document.getElementById('ts_batch_cards');
+  if(!container) return;
+
+  if(!active.length){
+    container.innerHTML = '<div class="card" style="padding:40px;text-align:center;color:var(--t-3)">No active batches — <button onclick="showTsTab('tsCreate')" class="btn btn-primary btn-sm" style="margin-left:8px">Create one</button></div>';
+    return;
+  }
+
+  container.innerHTML = active.map(b => tsBatchCard(b)).join('');
+}
+
+function tsBatchCard(batch){
+  const day = tsCalcDay(batch.startDate);
+  const week = tsGetWeek(day);
+  const pct = Math.round((day / 25) * 100);
+  const status = tsBatchStatus(batch);
+  const statusColor = status === 'active' ? 'var(--p2)' : status === 'completed' ? '#30D158' : '#FF9F0A';
+  const bm = getRosterMember(batch.bmCode);
+  const bmName = bm ? bm.name.split(' ').slice(0,2).join(' ') : (batch.bmCode || '—');
+
+  // Milestone flags
+  const flags = [];
+  if(day >= 11 && day < 15) flags.push('<span style="background:rgba(255,159,10,0.15);color:#FF9F0A;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">📋 Contact Quality Team</span>');
+  if(day >= 15 && day < 25) flags.push('<span style="background:rgba(48,209,88,0.15);color:#30D158;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">🎯 HR Codes Required</span>');
+  if(day >= 25) flags.push('<span style="background:rgba(48,209,88,0.15);color:#30D158;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700">🏁 Complete</span>');
+
+  return '<div class="card" style="padding:20px">' +
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+      '<div>' +
+        '<div style="font-size:16px;font-weight:800;color:var(--t-1);margin-bottom:4px">' + batch.name + '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<span style="font-size:11px;color:var(--t-3)">' + (batch.bl||'') + ' · ' + (batch.type||'') + '</span>' +
+          '<span style="font-size:11px;color:var(--t-3)">BM: <span style="color:var(--p2);font-weight:700">' + bmName + '</span></span>' +
+          '<span style="font-size:11px;color:var(--t-3)">' + (batch.traineeCount||0) + ' trainees</span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        (flags.join('')) +
+        '<button onclick="tsEditBatch(''+batch.id+'')" style="background:var(--bg-3);border:1px solid var(--b-1);border-radius:8px;color:var(--t-2);padding:4px 10px;font-size:11px;cursor:pointer">✏️ Edit</button>' +
+      '</div>' +
+    '</div>' +
+    // Progress bar
+    '<div style="margin-bottom:8px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
+        '<span style="font-size:11px;font-weight:700;color:var(--t-3)">Day ' + day + ' of 25 · Week ' + week + '</span>' +
+        '<span style="font-size:12px;font-weight:800;color:'+statusColor+'">' + pct + '%</span>' +
+      '</div>' +
+      '<div style="height:8px;background:var(--bg-3);border-radius:10px;overflow:hidden">' +
+        '<div style="height:100%;width:'+pct+'%;background:'+statusColor+';border-radius:10px;transition:width .4s"></div>' +
+      '</div>' +
+      // Week markers
+      '<div style="display:flex;justify-content:space-between;margin-top:4px">' +
+        ['W1','W2','W3','W4','W5'].map((w,i) => {
+          const wDay = (i+1)*5;
+          const done = day >= wDay;
+          return '<span style="font-size:9px;font-weight:700;color:'+(done?statusColor:'var(--b-2)')+'">'+w+'</span>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+    // Bottom row
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--b-1)">' +
+      '<span style="font-size:11px;color:var(--t-3)">Start: <strong style="color:var(--t-1)">' + (batch.startDate||'—') + '</strong></span>' +
+      '<span style="font-size:11px;color:var(--t-3)">End: <strong style="color:var(--t-1)">' + (batch.endDate||'—') + '</strong></span>' +
+      (batch.notes ? '<span style="font-size:11px;color:var(--t-3)">📝 ' + batch.notes.substring(0,60) + (batch.notes.length>60?'...':'') + '</span>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+// ── Render Batches List ───────────────────────────────────────
+function tsRenderBatchList(){
+  const container = document.getElementById('ts_batches_list');
+  if(!container) return;
+  const filtered = TS.filter === 'all' ? TS.batches : TS.batches.filter(b => tsBatchStatus(b) === TS.filter);
+  if(!filtered.length){
+    container.innerHTML = '<div class="card" style="padding:30px;text-align:center;color:var(--t-3)">No batches found</div>';
+    return;
+  }
+  container.innerHTML = filtered.map(b => {
+    const day = tsCalcDay(b.startDate);
+    const status = tsBatchStatus(b);
+    const statusColors = {active:'var(--p2)', completed:'#30D158', upcoming:'#FF9F0A'};
+    const bm = getRosterMember(b.bmCode);
+    const bmName = bm ? bm.name.split(' ').slice(0,2).join(' ') : (b.bmCode||'—');
+    return '<div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
+      '<div>' +
+        '<div style="font-size:14px;font-weight:700;color:var(--t-1)">' + b.name + '</div>' +
+        '<div style="font-size:11px;color:var(--t-3);margin-top:2px">' + (b.bl||'') + ' · ' + (b.type||'') + ' · BM: ' + bmName + ' · ' + (b.traineeCount||0) + ' trainees</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:11px;color:var(--t-3)">Day ' + day + '/25</span>' +
+        '<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,0,0,0.2);color:'+statusColors[status]+'">' + status.charAt(0).toUpperCase()+status.slice(1) + '</span>' +
+        '<button onclick="tsEditBatch(''+b.id+'')" style="background:var(--bg-3);border:1px solid var(--b-1);border-radius:8px;color:var(--t-2);padding:3px 10px;font-size:11px;cursor:pointer">Edit</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function tsFilterBatches(f){
+  TS.filter = f;
+  ['all','active','completed','upcoming'].forEach(x => {
+    const btn = document.getElementById('tsF_'+x);
+    if(btn){ btn.style.background = x===f ? 'var(--p2)' : ''; btn.style.color = x===f ? '#fff' : ''; }
+  });
+  tsRenderBatchList();
+}
+
+// ── Render Notifications ──────────────────────────────────────
+function tsRenderNotifs(){
+  const container = document.getElementById('ts_notif_list');
+  if(!container) return;
+  if(!TS.notifs.length){
+    container.innerHTML = '<div class="card" style="padding:30px;text-align:center;color:var(--t-3)">No notifications yet</div>';
+    return;
+  }
+  container.innerHTML = TS.notifs.map(n => {
+    const milestoneColors = { day11:'#FF9F0A', day15:'#30D158', day25:'var(--p2)' };
+    const c = milestoneColors[n.milestoneKey] || 'var(--p2)';
+    const ts = n.firedAt ? new Date(n.firedAt).toLocaleDateString('en-EG',{day:'2-digit',month:'short',year:'numeric'}) : '';
+    return '<div class="card notif" style="padding:14px 16px;border-left:3px solid '+c+'">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start">' +
+        '<div>' +
+          '<div style="font-size:13px;font-weight:700;color:var(--t-1);margin-bottom:3px">' + (n.title||'') + '</div>' +
+          '<div style="font-size:12px;color:var(--t-2)">' + (n.body||'') + '</div>' +
+        '</div>' +
+        '<span style="font-size:10px;color:var(--t-3);white-space:nowrap;margin-left:12px">' + ts + '</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Create / Edit Batch ───────────────────────────────────────
+function tsResetForm(){
+  document.getElementById('ts_edit_id').value = '';
+  document.getElementById('ts_f_name').value = '';
+  document.getElementById('ts_f_count').value = '';
+  document.getElementById('ts_f_bm').value = '';
+  document.getElementById('ts_f_bl').value = '';
+  document.getElementById('ts_f_type').value = '';
+  document.getElementById('ts_f_start').value = '';
+  document.getElementById('ts_f_end').value = '';
+  document.getElementById('ts_f_notes').value = '';
+  document.getElementById('ts_form_title').textContent = 'Create New Batch';
+  document.getElementById('ts_save_btn').textContent = '✅ Create Batch';
+  const errEl = document.getElementById('ts_form_err');
+  if(errEl) errEl.style.display = 'none';
+}
+
+function tsEditBatch(id){
+  const batch = TS.batches.find(b => b.id === id);
+  if(!batch) return;
+  document.getElementById('ts_edit_id').value = id;
+  document.getElementById('ts_f_name').value = batch.name||'';
+  document.getElementById('ts_f_count').value = batch.traineeCount||'';
+  document.getElementById('ts_f_bm').value = batch.bmCode||'';
+  document.getElementById('ts_f_bl').value = batch.bl||'';
+  document.getElementById('ts_f_type').value = batch.type||'';
+  document.getElementById('ts_f_start').value = batch.startDate||'';
+  document.getElementById('ts_f_end').value = batch.endDate||'';
+  document.getElementById('ts_f_notes').value = batch.notes||'';
+  document.getElementById('ts_form_title').textContent = 'Edit Batch — ' + batch.name;
+  document.getElementById('ts_save_btn').textContent = '✅ Save Changes';
+  showTsTab('tsCreate');
+  // Re-sync nx selects
+  setTimeout(()=>{
+    ['ts_f_bm','ts_f_bl','ts_f_type'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(sel && sel.dataset.nxWrapped){
+        const wrap = sel.closest('.nx-select-wrap');
+        if(wrap){ const lbl=wrap.querySelector('.nx-label'); const o=sel.options[sel.selectedIndex]; if(lbl&&o) lbl.textContent=o.text; }
+      }
+    });
+  }, 100);
+}
+
+async function tsSaveBatch(){
+  const btn = document.getElementById('ts_save_btn');
+  const errEl = document.getElementById('ts_form_err');
+  errEl.style.display = 'none';
+
+  const name = document.getElementById('ts_f_name').value.trim();
+  const count = document.getElementById('ts_f_count').value.trim();
+  const bmCode = nxSelectValue('ts_f_bm') || document.getElementById('ts_f_bm').value;
+  const bl = nxSelectValue('ts_f_bl') || document.getElementById('ts_f_bl').value;
+  const type = nxSelectValue('ts_f_type') || document.getElementById('ts_f_type').value;
+  const startDate = document.getElementById('ts_f_start').value;
+  const endDate = document.getElementById('ts_f_end').value;
+  const notes = document.getElementById('ts_f_notes').value.trim();
+  const editId = document.getElementById('ts_edit_id').value;
+
+  // Validate
+  if(!name){ errEl.textContent='Batch name is required'; errEl.style.display='block'; return; }
+  if(!count || isNaN(count)){ errEl.textContent='Trainee count must be a number'; errEl.style.display='block'; return; }
+  if(!bmCode){ errEl.textContent='Please assign a Batch Manager'; errEl.style.display='block'; return; }
+  if(!bl){ errEl.textContent='Please select Batch BL'; errEl.style.display='block'; return; }
+  if(!type){ errEl.textContent='Please select Batch Type'; errEl.style.display='block'; return; }
+  if(!startDate){ errEl.textContent='Start date is required'; errEl.style.display='block'; return; }
+  if(!endDate){ errEl.textContent='End date is required'; errEl.style.display='block'; return; }
+  if(new Date(endDate) <= new Date(startDate)){ errEl.textContent='End date must be after start date'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  const batchData = {
+    name, traineeCount: parseInt(count), bmCode, bl, type,
+    startDate, endDate, notes: notes||null,
+    updatedAt: new Date().toISOString(),
+    createdBy: A.user ? A.user.email : 'training_supervisor'
+  };
+
+  try {
+    if(fbDb){
+      if(editId){
+        await fbDb.collection('ts_batches').doc(editId).update(batchData);
+      } else {
+        batchData.createdAt = new Date().toISOString();
+        batchData.status = 'active';
+        batchData.leavers = 0;
+        await fbDb.collection('ts_batches').add(batchData);
+      }
+    }
+    btn.textContent = '✅ Saved!';
+    tsResetForm();
+    await tsLoadBatches();
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = '✅ Create Batch';
+      showTsTab('tsOverview');
+    }, 1200);
+  } catch(e){
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '✅ Create Batch';
+  }
+}
+
+// ── Tab navigation ────────────────────────────────────────────
+function showTsTab(tab){
+  ['tsOverview','tsBatches','tsCreate','tsNotifs'].forEach(t => {
+    const el = document.getElementById(t);
+    if(el){ el.style.display = t===tab ? 'block' : 'none'; if(t===tab) animateTabIn(el); }
+    const nav = document.getElementById('tsNav_'+t.replace('ts','').toLowerCase());
+    if(nav) nav.classList.toggle('active', t===tab);
+  });
+  if(tab === 'tsNotifs'){
+    TS.notifN = 0; tsUpdateBadge();
+    // Mark all as read in Firestore
+    if(fbDb) TS.notifs.filter(n=>n.status==='unread').forEach(n=>{
+      fbDb.collection('batch_notifications').doc(n.id).update({status:'read'}).catch(()=>{});
+    });
+  }
+  if(tab === 'tsCreate') setTimeout(initNxSelects, 80);
+}
+
+// ── Add TS notification listener for BM milestone alerts ──────
+function listenTsMilestoneAlerts(){
+  if(!fbDb || !A.user) return;
+  fbDb.collection('batch_notifications')
+    .where('type','==','milestone')
+    .where('roles','array-contains', A.user.role)
+    .onSnapshot(snap => {
+      const unread = snap.docs.filter(d => d.data().status === 'unread').length;
+      if(A.user.role === 'trainsup'){
+        TS.notifN = unread;
+        tsUpdateBadge();
+      }
+      // Show alert banner for BM milestone notifications
+      if(A.user.role === 'batchmanager' && unread > 0){
+        const latest = snap.docs.find(d => d.data().status === 'unread');
+        if(latest){
+          const d = latest.data();
+          addBMNotifBanner(d.title, d.body);
+        }
+      }
+    });
+}
+
+function addBMNotifBanner(title, body){
+  const existing = document.getElementById('bm_milestone_banner');
+  if(existing) existing.remove();
+  const banner = document.createElement('div');
+  banner.id = 'bm_milestone_banner';
+  banner.style.cssText = 'position:sticky;top:52px;z-index:888;background:rgba(255,159,10,0.9);color:#fff;padding:8px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600';
+  banner.innerHTML = '<span>🔔 ' + title + ' — ' + body + '</span>' +
+    '<button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:11px">✕</button>';
+  const bmContent = document.querySelector('#bmScreen .app-shell > main');
+  if(bmContent) bmContent.prepend(banner);
+}
+
+// ── Add TS notification listener call in initTSDashboard ──────
+
 // ── Add Setup button to Training Manager gate ─────────────────
 function addSetupBtn(){
   // Ensure role switcher is visible for Training Manager
@@ -5570,6 +6024,12 @@ function switchRole(role){
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
       setTimeout(()=>{ initBMDashboard(); }, 100);
+    } else if(role === 'trainsup'){
+      injectLogos();
+      showScreen('tsScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      setTimeout(()=>{ initTSDashboard(); listenTsMilestoneAlerts(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -9608,7 +10068,7 @@ function btQuickAssignAll(){
       </div>
     </div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('batchmanager')" style="justify-content:flex-start">📋 Batch Manager</button>
-    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🎓 Training Supervisor <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('trainsup')" style="justify-content:flex-start">🎓 Training Supervisor</button>
     <div style="position:relative">
       <button class="btn btn-secondary btn-sm" onclick="toggleViewAsTrainer()" style="justify-content:space-between;width:100%">
         <span>🏋 Batch Trainer</span>
@@ -9627,6 +10087,119 @@ function btQuickAssignAll(){
 </div>
 
 <!-- Auto-Setup Screen (Training Manager only) -->
+<div id="tsScreen" class="screen">
+  <div class="app-shell">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left"><button class="btn btn-ghost btn-sm" onclick="showTsTab('tsNotifs')" style="position:relative"><svg width="18" height="18" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5A4 4 0 0 0 3.5 5.5V9L2 11h11l-1.5-2V5.5A4 4 0 0 0 7.5 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 11.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span class="sidebar-badge" id="tsNBadge" style="position:absolute;top:-4px;right:-4px">0</span></button></div>
+      <span class="badge badge-orange" id="tsPill">Training Supervisor</span>
+      <div class="topbar-right"><button class="btn btn-ghost btn-sm theme-toggle" onclick="toggleTheme()">🌙</button><button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN/ع</button><button class="btn btn-primary btn-sm" onclick="doSignout()">Sign out</button></div>
+    </header>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-section-label">TRAINING SUPERVISOR</div>
+      <div class="sidebar-item active" onclick="showTsTab('tsOverview')" id="tsNav_overview"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".75"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg></span>Overview</div>
+      <div class="sidebar-item" onclick="showTsTab('tsBatches')" id="tsNav_batches"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><line x1="1.5" y1="6" x2="13.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".4"/></svg></span>Batches</div>
+      <div class="sidebar-item" onclick="showTsTab('tsCreate')" id="tsNav_create"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.2" opacity=".5"/><line x1="7.5" y1="4.5" x2="7.5" y2="10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="4.5" y1="7.5" x2="10.5" y2="7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>Create Batch</div>
+      <div class="sidebar-item" onclick="showTsTab('tsNotifs')" id="tsNav_notifs"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5A4 4 0 0 0 3.5 5.5V9L2 11h11l-1.5-2V5.5A4 4 0 0 0 7.5 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 11.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>Notifications<span class="sidebar-badge" id="tsNSide">0</span></div>
+    </aside>
+    <!-- CONTENT -->
+    <main class="content">
+
+      <!-- OVERVIEW TAB -->
+      <div id="tsOverview" class="container">
+        <div class="page-hdr"><h2>Overview</h2><p>All active batches — progress and performance at a glance</p></div>
+        <!-- Stats row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px">
+          <div class="card card-stat"><div class="card-stat-label">Active Batches</div><div class="card-stat-value" id="ts_stat_active" style="color:var(--p2)">0</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Total Trainees</div><div class="card-stat-value" id="ts_stat_trainees">0</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Leavers</div><div class="card-stat-value" id="ts_stat_leavers" style="color:#FF453A">0</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Completed</div><div class="card-stat-value" id="ts_stat_completed" style="color:#30D158">0</div></div>
+        </div>
+        <!-- Batch cards -->
+        <div id="ts_batch_cards" style="display:flex;flex-direction:column;gap:16px"></div>
+      </div>
+
+      <!-- BATCHES TAB -->
+      <div id="tsBatches" class="container" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div class="page-hdr" style="margin:0"><h2>Batches</h2><p>All batches — active, upcoming and completed</p></div>
+          <button onclick="showTsTab('tsCreate')" class="btn btn-primary btn-sm">+ New Batch</button>
+        </div>
+        <!-- Filter -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button onclick="tsFilterBatches('all')" id="tsF_all" class="btn btn-secondary btn-sm" style="background:var(--p2);color:#fff">All</button>
+          <button onclick="tsFilterBatches('active')" id="tsF_active" class="btn btn-secondary btn-sm">Active</button>
+          <button onclick="tsFilterBatches('completed')" id="tsF_completed" class="btn btn-secondary btn-sm">Completed</button>
+          <button onclick="tsFilterBatches('upcoming')" id="tsF_upcoming" class="btn btn-secondary btn-sm">Upcoming</button>
+        </div>
+        <div id="ts_batches_list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+
+      <!-- CREATE BATCH TAB -->
+      <div id="tsCreate" class="container" style="display:none">
+        <div class="page-hdr"><h2 id="ts_form_title">Create New Batch</h2><p>Fill in the batch details to create the batch ticket</p></div>
+        <div class="card" style="max-width:600px;padding:28px">
+          <input type="hidden" id="ts_edit_id"/>
+          <div style="display:grid;gap:16px">
+
+            <div><label class="input-label">Batch Name *</label><input class="input" id="ts_f_name" placeholder="e.g. Batch 86" type="text"/></div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div><label class="input-label">Trainee Count *</label><input class="input" id="ts_f_count" placeholder="e.g. 80" type="number" min="1"/></div>
+              <div><label class="input-label">Batch Manager *</label>
+                <select id="ts_f_bm" class="input" style="cursor:pointer">
+                  <option value="">— Select BM —</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div><label class="input-label">Batch BL *</label>
+                <select id="ts_f_bl">
+                  <option value="">— Select —</option>
+                  <option value="Offline">Offline</option>
+                  <option value="Live">Live</option>
+                  <option value="AMF">AMF</option>
+                </select>
+              </div>
+              <div><label class="input-label">Batch Type *</label>
+                <select id="ts_f_type">
+                  <option value="">— Select —</option>
+                  <option value="Full-Time">Full-Time</option>
+                  <option value="Part-Time">Part-Time</option>
+                  <option value="Mixed">Mixed</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div><label class="input-label">Start Date *</label><input class="input" id="ts_f_start" type="date"/></div>
+              <div><label class="input-label">End Date *</label><input class="input" id="ts_f_end" type="date"/></div>
+            </div>
+
+            <div><label class="input-label">Notes</label><textarea class="input" id="ts_f_notes" placeholder="Any additional notes..." rows="3" style="resize:vertical"></textarea></div>
+
+            <div id="ts_form_err" style="display:none;color:#FF453A;font-size:12px;padding:8px 12px;background:rgba(255,69,58,0.1);border-radius:8px"></div>
+
+            <div style="display:flex;gap:10px">
+              <button onclick="tsSaveBatch()" class="btn btn-primary" style="flex:2" id="ts_save_btn">✅ Create Batch</button>
+              <button onclick="tsResetForm()" class="btn btn-secondary" style="flex:1">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NOTIFICATIONS TAB -->
+      <div id="tsNotifs" class="container" style="display:none">
+        <div class="page-hdr"><h2>Notifications</h2><p>Milestone alerts and system notifications</p></div>
+        <div id="ts_notif_list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
 <div id="setupScreen" class="screen" style="background:var(--bg);min-height:100vh;padding:40px 20px">
   <div style="max-width:640px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
