@@ -1640,7 +1640,7 @@ function initFirebaseAuth(){
         const isManager = role === 'manager';
         const isBsup = role === 'batchsup';
         const isBatchManager = role === 'batchmanager';
-        const isCoord = role === 'coordinator' || role === 'trainer' || role === 'trainee';
+        const isCoord = role === 'coordinator' || role === 'trainer';
 
         if(isBatchManager || (isManager && A.requestedRole === 'batchmanager')){
           document.getElementById('bmUserPill').textContent = name + ' · Batch Manager';
@@ -1660,6 +1660,10 @@ function initFirebaseAuth(){
           document.getElementById('userPill').textContent = name + ' · Training Manager';
           showScreen('coordScreen');
           setTimeout(()=>{ loadData(); bmLoadTaskNotificationsForRole('coordinator'); addSetupBtn(); }, 300);
+        } else if(role === 'trainee'){
+          injectLogos();
+          showScreen('traineeScreen');
+          setTimeout(()=>{ initTraineeDashboard(); }, 300);
         } else {
           document.getElementById('userPill').textContent = name+' · '+roleLabel(role);
           showScreen('coordScreen');
@@ -5371,6 +5375,235 @@ function bsupReviewCard(s){
       +'</div>'
     +'</div>'
   +'</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRAINEE GATE
+// ═══════════════════════════════════════════════════════════════
+const TN = {
+  profile: null,
+  sessions: [],
+  trainingStatus: null,
+  batchStartDate: null,
+};
+
+function showTraineeTab(tab){
+  ['tnOverview','tnQuality','tnProgress'].forEach(function(t){
+    var el = document.getElementById(t);
+    if(el){ el.style.display = t===tab?'block':'none'; if(t===tab) animateTabIn(el); }
+    var nav = document.getElementById('tnNav_'+t.replace('tn','').toLowerCase());
+    if(nav) nav.classList.toggle('active', t===tab);
+  });
+  if(tab==='tnQuality') tnLoadQualitySessions();
+  if(tab==='tnProgress') tnRenderProgress();
+}
+
+async function initTraineeDashboard(){
+  if(!A.user) return;
+
+  // Update pill
+  var pill = document.getElementById('traineePill');
+  if(pill) pill.textContent = (A.user.name||'Trainee').split(' ').slice(0,2).join(' ') + ' · Trainee';
+
+  // Load trainee profile from Firestore training_status
+  await tnLoadProfile();
+  await tnLoadQualityStats();
+  showTraineeTab('tnOverview');
+}
+
+async function tnLoadProfile(){
+  if(!fbDb || !A.user) return;
+  try {
+    // Find trainee by email/uid in accepted_trainees
+    var uid = A.user.uid;
+    var email = A.user.email;
+
+    // Try to find their training code from users collection
+    var userDoc = await fbDb.collection('users').doc(uid).get();
+    if(userDoc.exists){
+      var data = userDoc.data();
+      TN.profile = {...data, uid};
+    }
+
+    // Update identity card
+    var codeEl = document.getElementById('tn_id_code');
+    var nameEl = document.getElementById('tn_id_name');
+    var batchEl = document.getElementById('tn_id_batch');
+    var code = TN.profile && TN.profile.trainingCode ? TN.profile.trainingCode : (TN.profile && TN.profile.supervisorCode ? TN.profile.supervisorCode : '—');
+    if(codeEl) codeEl.textContent = code;
+    if(nameEl) nameEl.textContent = A.user.name || email.split('@')[0];
+    if(batchEl) batchEl.textContent = TN.profile && TN.profile.batchName ? TN.profile.batchName : 'Trainee';
+
+    // Load training status if we have a training code
+    if(TN.profile && TN.profile.trainingCode){
+      var tsDoc = await fbDb.collection('training_status').doc(TN.profile.trainingCode).get();
+      if(tsDoc.exists) TN.trainingStatus = tsDoc.data();
+    }
+
+    // Try to get batch start date from ts_batches
+    if(TN.profile && TN.profile.batchId){
+      var batchDoc = await fbDb.collection('ts_batches').doc(TN.profile.batchId).get();
+      if(batchDoc.exists) TN.batchStartDate = batchDoc.data().startDate;
+    }
+
+    tnUpdateStats();
+  } catch(e){ console.warn('tnLoadProfile:', e); }
+}
+
+function tnUpdateStats(){
+  var dayEl = document.getElementById('tn_stat_day');
+  var weekEl = document.getElementById('tn_stat_week');
+  if(TN.batchStartDate && dayEl && weekEl){
+    var day = tsCalcDay(TN.batchStartDate);
+    var week = tsGetWeek(day);
+    dayEl.textContent = day > 0 ? 'Day '+day : '—';
+    weekEl.textContent = week > 0 ? 'Week '+week : '—';
+  }
+}
+
+async function tnLoadQualityStats(){
+  if(!fbDb || !A.user) return;
+  try {
+    // Load MARK sessions where this trainee is the collector
+    // Match by uid OR by trainingCode
+    var uid = A.user.uid;
+    var snap = await fbDb.collection('mark_sessions')
+      .where('collectorId','==', uid)
+      .where('status','==','completed')
+      .orderBy('completedAt','desc')
+      .limit(50)
+      .get();
+
+    TN.sessions = [];
+    snap.forEach(function(doc){ TN.sessions.push({...doc.data(), id:doc.id}); });
+
+    // Stats
+    var scores = TN.sessions.filter(function(s){ return s.qualityScore != null; }).map(function(s){ return s.qualityScore; });
+    var avg = scores.length ? Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length) : null;
+
+    var qualEl = document.getElementById('tn_stat_quality');
+    var sessEl = document.getElementById('tn_stat_sessions');
+    if(qualEl) qualEl.textContent = avg !== null ? avg+'%' : '—';
+    if(sessEl) sessEl.textContent = TN.sessions.length;
+
+    // Render latest
+    tnRenderLatest();
+  } catch(e){ console.warn('tnLoadQualityStats:', e); }
+}
+
+function tnRenderLatest(){
+  var el = document.getElementById('tn_latest_review');
+  if(!el) return;
+  if(!TN.sessions.length){
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No review sessions yet — your reviewer will assess your work in MARK</div>';
+    return;
+  }
+  el.innerHTML = tnSessionCard(TN.sessions[0], true);
+}
+
+function tnLoadQualitySessions(){
+  var el = document.getElementById('tn_quality_list');
+  if(!el) return;
+  if(!TN.sessions.length){
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No review sessions yet</div>';
+    return;
+  }
+  el.innerHTML = TN.sessions.map(function(s){ return tnSessionCard(s, false); }).join('');
+}
+
+function tnSessionCard(s, showErrors){
+  var quality = s.qualityScore != null ? s.qualityScore+'%' : '—';
+  var qualityColor = s.qualityScore >= 80 ? '#30D158' : s.qualityScore >= 60 ? '#FF9F0A' : s.qualityScore != null ? '#FF453A' : 'var(--t-3)';
+  var date = s.completedAt ? (s.completedAt.toDate ? s.completedAt.toDate().toLocaleDateString('en-EG') : new Date(s.completedAt).toLocaleDateString('en-EG')) : '';
+  var html = '<div class="card" style="padding:16px 20px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">'
+      +'<div>'
+        +'<div style="font-size:14px;font-weight:700;color:var(--t-1)">'+(s.matchName||s.matchId||'Match')+'</div>'
+        +'<div style="font-size:11px;color:var(--t-3);margin-top:3px">'+(s.half||'')+' · '+date+'</div>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:20px">'
+        +'<div style="text-align:center">'
+          +'<div style="font-size:24px;font-weight:900;color:'+qualityColor+'">'+quality+'</div>'
+          +'<div style="font-size:10px;color:var(--t-3)">Quality Score</div>'
+        +'</div>'
+        +'<div style="text-align:center">'
+          +'<div style="font-size:18px;font-weight:700;color:var(--t-2)">'+(s.totalTaggedErrors||0)+'</div>'
+          +'<div style="font-size:10px;color:var(--t-3)">Errors Found</div>'
+        +'</div>'
+        +'<div style="text-align:center">'
+          +'<div style="font-size:18px;font-weight:700;color:var(--t-2)">'+(s.totalReviewedEvents||0)+'</div>'
+          +'<div style="font-size:10px;color:var(--t-3)">Events Reviewed</div>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  // Quality bar
+  if(s.qualityScore != null){
+    html += '<div style="margin-top:14px">'
+      +'<div style="height:6px;background:var(--bg-3);border-radius:10px;overflow:hidden">'
+        +'<div style="height:100%;width:'+Math.min(100,s.qualityScore)+'%;background:'+qualityColor+';border-radius:10px;transition:width .5s"></div>'
+      +'</div>'
+      +'<div style="display:flex;justify-content:space-between;margin-top:4px">'
+        +'<span style="font-size:10px;color:var(--t-3)">0%</span>'
+        +'<span style="font-size:10px;color:var(--t-3)">100% — Perfect</span>'
+      +'</div>'
+    +'</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function tnRenderProgress(){
+  var el = document.getElementById('tn_progress_content');
+  if(!el) return;
+  if(!TN.batchStartDate){
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Batch not started yet</div>';
+    return;
+  }
+  var day  = tsCalcDay(TN.batchStartDate);
+  var week = tsGetWeek(day);
+  var pct  = Math.round((Math.min(day,25)/25)*100);
+
+  var weekLabels = ['Knowledge','Base + Players','Pressure + Freeze Frame','Validation','Full Task'];
+  var weekColors = ['#0A84FF','#30D158','#FF9F0A','#BF5AF2','var(--p2)'];
+
+  var html = '<div style="margin-bottom:24px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+      +'<span style="font-size:14px;font-weight:700;color:var(--t-1)">Day '+day+' of 25</span>'
+      +'<span style="font-size:14px;font-weight:800;color:var(--p2)">'+pct+'%</span>'
+    +'</div>'
+    +'<div style="height:10px;background:var(--bg-3);border-radius:10px;overflow:hidden">'
+      +'<div style="height:100%;width:'+pct+'%;background:var(--p2);border-radius:10px;transition:width .5s"></div>'
+    +'</div>'
+    +'<div style="display:flex;justify-content:space-between;margin-top:6px">'
+      +['W1','W2','W3','W4','W5'].map(function(w,i){
+        var done = day >= (i+1)*5;
+        return '<span style="font-size:10px;font-weight:700;color:'+(done?'var(--p2)':'var(--b-2)')+'">'+w+'</span>';
+      }).join('')
+    +'</div>'
+  +'</div>';
+
+  // Week cards
+  html += '<div style="display:flex;flex-direction:column;gap:10px">';
+  for(var i=0;i<5;i++){
+    var wNum = i+1;
+    var wStart = i*5+1, wEnd = (i+1)*5;
+    var isActive = day >= wStart && day <= wEnd;
+    var isDone   = day > wEnd;
+    var isPending = day < wStart;
+    var statusColor = isDone ? '#30D158' : isActive ? 'var(--p2)' : 'var(--t-3)';
+    var statusLabel = isDone ? '✓ Completed' : isActive ? '▶ Current' : 'Upcoming';
+    html += '<div class="card" style="padding:14px 18px;border-left:3px solid '+(isDone?'#30D158':isActive?'var(--p2)':'var(--b-1)')+'">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between">'
+        +'<div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--t-1)">Week '+wNum+' — '+weekLabels[i]+'</div>'
+          +'<div style="font-size:11px;color:var(--t-3);margin-top:2px">Days '+wStart+'–'+wEnd+'</div>'
+        +'</div>'
+        +'<span style="font-size:11px;font-weight:700;color:'+statusColor+'">'+statusLabel+'</span>'
+      +'</div>'
+    +'</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 // ── Add Setup button to Training Manager gate ─────────────────
@@ -10493,6 +10726,83 @@ function btQuickAssignAll(){
       <div id="tsNotifs" class="container" style="display:none">
         <div class="page-hdr"><h2>Notifications</h2><p>Milestone alerts and system notifications</p></div>
         <div id="ts_notif_list" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<div id="traineeScreen" class="screen">
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-left"></div>
+      <span class="badge badge-orange" id="traineePill">Trainee</span>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm theme-toggle" onclick="toggleTheme()">🌙</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleLang()">EN/ع</button>
+        <button class="btn btn-primary btn-sm" onclick="doSignout()">Sign out</button>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <div class="sidebar-section-label">MY PROFILE</div>
+      <div class="sidebar-item active" onclick="showTraineeTab('tnOverview')" id="tnNav_overview">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="3" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M1.5 13.5c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg></span>
+        Overview
+      </div>
+      <div class="sidebar-item" onclick="showTraineeTab('tnQuality')" id="tnNav_quality">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        Quality Scores
+      </div>
+      <div class="sidebar-item" onclick="showTraineeTab('tnProgress')" id="tnNav_progress">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".7"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg></span>
+        Training Progress
+      </div>
+    </aside>
+    <main class="content">
+
+      <!-- OVERVIEW -->
+      <div id="tnOverview" class="container">
+        <!-- Identity card -->
+        <div id="tn_identity_card" style="display:flex;align-items:center;gap:14px;padding:16px 20px;background:rgba(232,89,12,0.06);border:1px solid rgba(232,89,12,0.2);border-radius:14px;margin-bottom:24px">
+          <div style="width:44px;height:44px;border-radius:12px;background:var(--p2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="3" fill="white" opacity=".9"/><path d="M1.5 13.5c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:800;color:var(--p2)" id="tn_id_code">—</div>
+            <div style="font-size:15px;font-weight:700;color:var(--t-1);margin-top:2px" id="tn_id_name">Loading...</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:1px" id="tn_id_batch">—</div>
+          </div>
+        </div>
+
+        <!-- Stats row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px">
+          <div class="card card-stat"><div class="card-stat-label">Training Day</div><div class="card-stat-value" id="tn_stat_day" style="color:var(--p2)">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Avg Quality</div><div class="card-stat-value" id="tn_stat_quality" style="color:#30D158">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Sessions Reviewed</div><div class="card-stat-value" id="tn_stat_sessions">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Week</div><div class="card-stat-value" id="tn_stat_week">—</div></div>
+        </div>
+
+        <!-- Latest review -->
+        <div class="page-hdr"><h2>Latest Review</h2><p>Most recent review session for your work</p></div>
+        <div id="tn_latest_review">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No review sessions yet</div>
+        </div>
+      </div>
+
+      <!-- QUALITY SCORES -->
+      <div id="tnQuality" class="container" style="display:none">
+        <div class="page-hdr"><h2>Quality Scores</h2><p>All review sessions for your work — errors and scores</p></div>
+        <div id="tn_quality_list" style="display:flex;flex-direction:column;gap:10px">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading...</div>
+        </div>
+      </div>
+
+      <!-- TRAINING PROGRESS -->
+      <div id="tnProgress" class="container" style="display:none">
+        <div class="page-hdr"><h2>Training Progress</h2><p>Your 25-day training journey</p></div>
+        <div id="tn_progress_content">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading...</div>
+        </div>
       </div>
 
     </main>
