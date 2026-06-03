@@ -5174,6 +5174,205 @@ function addBMNotifBanner(title, body){
 
 // ── Add TS notification listener call in initTSDashboard ──────
 
+// ═══════════════════════════════════════════════════════════════
+// MARK INTEGRATION — Review results in FIELD
+// ═══════════════════════════════════════════════════════════════
+
+const MARK_APP_URL = 'mark://open'; // deep link protocol for MARK desktop app
+
+// ── Open MARK from Trainer gate ──────────────────────────────
+function btOpenMARK(){
+  // Try deep link first (if MARK is installed)
+  try {
+    window.location.href = MARK_APP_URL;
+  } catch(e) {}
+  // Show fallback toast after 1.5s if app didn't open
+  setTimeout(() => {
+    showToast('MARK not detected — make sure the app is installed and running');
+  }, 1500);
+}
+
+// ── Load Trainer's own review sessions ───────────────────────
+async function btLoadReviewSessions(){
+  if(!fbDb || !A.user) return;
+  const el = document.getElementById('bt_review_list');
+  const countEl = document.getElementById('bt_review_count');
+  const avgEl = document.getElementById('bt_review_avg');
+  const errEl = document.getElementById('bt_review_errors');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading...</div>';
+  try {
+    const snap = await fbDb.collection('mark_sessions')
+      .where('reviewerId','==', A.user.uid)
+      .orderBy('startedAt','desc')
+      .limit(50)
+      .get();
+    const sessions = [];
+    snap.forEach(doc => sessions.push({...doc.data(), id:doc.id}));
+
+    // Stats
+    const completed = sessions.filter(s => s.status === 'completed');
+    const scores = completed.filter(s => s.qualityScore != null).map(s => s.qualityScore);
+    const avg = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+    const totalErrors = completed.reduce((s,ses)=>s+(ses.totalTaggedErrors||0),0);
+
+    if(countEl) countEl.textContent = sessions.length;
+    if(avgEl) avgEl.textContent = avg !== null ? avg+'%' : '—';
+    if(errEl) errEl.textContent = totalErrors;
+
+    if(!sessions.length){
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No review sessions yet — open MARK to start reviewing</div>';
+      return;
+    }
+    el.innerHTML = sessions.map(function(s){
+      return btReviewSessionCard(s);
+    }).join('');
+  } catch(e){ el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Could not load sessions</div>'; }
+}
+
+function btReviewSessionCard(s){
+  var statusColor = s.status === 'completed' ? '#30D158' : 'var(--p2)';
+  var statusLabel = s.status === 'completed' ? 'Completed' : 'In Progress';
+  var quality = s.qualityScore != null ? s.qualityScore+'%' : '—';
+  var qualityColor = s.qualityScore >= 80 ? '#30D158' : s.qualityScore >= 60 ? '#FF9F0A' : '#FF453A';
+  var date = s.startedAt ? (s.startedAt.toDate ? s.startedAt.toDate().toLocaleDateString('en-EG') : new Date(s.startedAt).toLocaleDateString('en-EG')) : '';
+  return '<div class="card" style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'
+    +'<div>'
+      +'<div style="font-size:13px;font-weight:700;color:var(--t-1)">'+(s.matchName||s.matchId||'Match')+'</div>'
+      +'<div style="font-size:11px;color:var(--t-3);margin-top:2px">'+(s.half||'')+' · '+date+'</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:12px">'
+      +'<div style="text-align:center">'
+        +'<div style="font-size:16px;font-weight:800;color:'+qualityColor+'">'+quality+'</div>'
+        +'<div style="font-size:10px;color:var(--t-3)">Quality</div>'
+      +'</div>'
+      +'<div style="text-align:center">'
+        +'<div style="font-size:14px;font-weight:700;color:var(--t-2)">'+(s.totalTaggedErrors||0)+'</div>'
+        +'<div style="font-size:10px;color:var(--t-3)">Errors</div>'
+      +'</div>'
+      +'<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,0,0,0.2);color:'+statusColor+'">'+statusLabel+'</span>'
+    +'</div>'
+  +'</div>';
+}
+
+// ── BSup Review Dashboard ─────────────────────────────────────
+var _bsupReviewFilter = 'all';
+var _bsupReviewSessions = [];
+
+async function bsupLoadReviewDashboard(){
+  if(!fbDb || !A.user) return;
+  const listEl = document.getElementById('bsup_review_list');
+  if(!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading...</div>';
+  try {
+    // Get all trainers in this BSup's batches
+    var myCode = A.user.supervisorCode || '';
+    // Load sessions from trainers in this supervisor's groups
+    var snap = await fbDb.collection('mark_sessions')
+      .orderBy('startedAt','desc')
+      .limit(100)
+      .get();
+    _bsupReviewSessions = [];
+    snap.forEach(function(doc){ _bsupReviewSessions.push({...doc.data(), id:doc.id}); });
+    bsupRenderReviewDashboard();
+    // Start real-time listener
+    bsupListenReviewSessions();
+  } catch(e){
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Could not load sessions</div>';
+  }
+}
+
+function bsupListenReviewSessions(){
+  if(!fbDb) return;
+  fbDb.collection('mark_sessions')
+    .where('status','==','in_progress')
+    .onSnapshot(function(snap){
+      snap.docChanges().forEach(function(change){
+        var s = {...change.doc.data(), id:change.doc.id};
+        if(change.type === 'added'){
+          var existing = _bsupReviewSessions.findIndex(function(x){ return x.id === s.id; });
+          if(existing === -1) _bsupReviewSessions.unshift(s);
+        } else if(change.type === 'modified'){
+          var idx = _bsupReviewSessions.findIndex(function(x){ return x.id === s.id; });
+          if(idx > -1) _bsupReviewSessions[idx] = s; else _bsupReviewSessions.unshift(s);
+        }
+      });
+      bsupRenderReviewDashboard();
+    });
+}
+
+function bsupFilterReview(f){
+  _bsupReviewFilter = f;
+  ['all','in_progress','completed'].forEach(function(x){
+    var btn = document.getElementById('bsupRF_'+x.replace('_progress','').replace('in','active'));
+    if(x==='in_progress') btn = document.getElementById('bsupRF_active');
+    if(x==='completed') btn = document.getElementById('bsupRF_done');
+    if(x==='all') btn = document.getElementById('bsupRF_all');
+    if(btn){ btn.style.background = x===f?'var(--p2)':''; btn.style.color = x===f?'#fff':''; }
+  });
+  bsupRenderReviewDashboard();
+}
+
+function bsupRenderReviewDashboard(){
+  var activeEl  = document.getElementById('bsup_review_active');
+  var doneEl    = document.getElementById('bsup_review_done');
+  var avgEl     = document.getElementById('bsup_review_avg');
+  var flagEl    = document.getElementById('bsup_review_flagged');
+  var listEl    = document.getElementById('bsup_review_list');
+  if(!listEl) return;
+
+  var active    = _bsupReviewSessions.filter(function(s){ return s.status === 'in_progress'; });
+  var completed = _bsupReviewSessions.filter(function(s){ return s.status === 'completed'; });
+  var today     = new Date().toDateString();
+  var doneToday = completed.filter(function(s){
+    var d = s.completedAt ? (s.completedAt.toDate ? s.completedAt.toDate() : new Date(s.completedAt)) : null;
+    return d && d.toDateString() === today;
+  });
+  var scores    = completed.filter(function(s){ return s.qualityScore != null; }).map(function(s){ return s.qualityScore; });
+  var avg       = scores.length ? Math.round(scores.reduce(function(a,b){return a+b;},0)/scores.length) : null;
+  var flagged   = completed.filter(function(s){ return s.qualityScore != null && s.qualityScore < 60; });
+
+  if(activeEl) activeEl.textContent = active.length;
+  if(doneEl)   doneEl.textContent   = doneToday.length;
+  if(avgEl)    avgEl.textContent    = avg !== null ? avg+'%' : '—';
+  if(flagEl)   flagEl.textContent   = flagged.length;
+
+  var filtered = _bsupReviewFilter === 'all' ? _bsupReviewSessions
+    : _bsupReviewSessions.filter(function(s){ return s.status === _bsupReviewFilter; });
+
+  if(!filtered.length){
+    listEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No sessions found</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(function(s){ return bsupReviewCard(s); }).join('');
+}
+
+function bsupReviewCard(s){
+  var isActive = s.status === 'in_progress';
+  var statusColor = isActive ? 'var(--p2)' : '#30D158';
+  var quality = s.qualityScore != null ? s.qualityScore+'%' : '—';
+  var qualityColor = s.qualityScore >= 80 ? '#30D158' : s.qualityScore >= 60 ? '#FF9F0A' : s.qualityScore != null ? '#FF453A' : 'var(--t-3)';
+  var flagged = s.qualityScore != null && s.qualityScore < 60;
+  var date = s.startedAt ? (s.startedAt.toDate ? s.startedAt.toDate().toLocaleDateString('en-EG') : new Date(s.startedAt).toLocaleDateString('en-EG')) : '';
+  return '<div class="card" style="padding:14px 16px;border-left:3px solid '+(flagged?'#FF453A':statusColor)+'">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'
+      +'<div>'
+        +'<div style="font-size:13px;font-weight:700;color:var(--t-1)">'
+          +(s.reviewerName||s.reviewerEmail||'Reviewer')
+          +(flagged?'&nbsp;<span style="font-size:10px;color:#FF453A;font-weight:700">⚠ Low Quality</span>':'')
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--t-3);margin-top:2px">'+(s.matchName||s.matchId||'Match')+' · '+(s.half||'')+' · '+date+'</div>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:14px">'
+        +(isActive?'<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--p2);font-weight:700"><span style="width:7px;height:7px;border-radius:50%;background:var(--p2);display:inline-block;animation:pulse-ring 1.5s infinite"></span>Live</div>':'')
+        +'<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:'+qualityColor+'">'+quality+'</div><div style="font-size:10px;color:var(--t-3)">Quality</div></div>'
+        +'<div style="text-align:center"><div style="font-size:14px;font-weight:700;color:var(--t-2)">'+(s.totalTaggedErrors||0)+'</div><div style="font-size:10px;color:var(--t-3)">Errors</div></div>'
+        +'<span style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(0,0,0,0.2);color:'+statusColor+'">'+(isActive?'In Progress':'Completed')+'</span>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+}
+
 // ── Add Setup button to Training Manager gate ─────────────────
 function addSetupBtn(){
   // Ensure role switcher is visible for Training Manager
@@ -5912,7 +6111,7 @@ async function saveGroupAssignments(){
 // BSUP NAVIGATION & NOTIFICATIONS
 // ============================================================
 function showBsupTab(tab){
-  ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupMatches','bsupNotifs'].forEach(t => {
+  ['bsupTrainees','bsupGroups','bsupAttendance','bsupStatus','bsupMatches','bsupReview','bsupNotifs'].forEach(t => {
     const el = document.getElementById(t);
     if(el){ el.style.display = t===tab ? 'block' : 'none'; if(t===tab) animateTabIn(el); }
     const nav = document.getElementById('bsupNav_'+t.replace('bsup','').toLowerCase());
@@ -5924,6 +6123,7 @@ function showBsupTab(tab){
     bsupAttendance:'bsupNav_attendance',
     bsupStatus:'bsupNav_status',
     bsupMatches:'bsupNav_matches',
+    bsupReview:'bsupNav_review',
     bsupNotifs:'bsupNav_notifs'
   };
   Object.entries(navMap).forEach(([k,v]) => {
@@ -5932,6 +6132,7 @@ function showBsupTab(tab){
   });
   if(tab === 'bsupGroups'){ updateBsupGroupsAvailability(); setTimeout(initNxSelects,50); }
   if(tab === 'bsupAttendance'){ initAttendance(); setTimeout(initNxSelects,50); }
+  if(tab === 'bsupReview') bsupLoadReviewDashboard();
   if(tab === 'bsupStatus'){ initTrainingStatus(); setTimeout(initNxSelects,50); }
   if(tab === 'bsupMatches'){ initNxSelects(); initMatchAssignment(); }
   if(tab === 'bsupNotifs'){ BSUP.notifN=0; updateBsupBadge(); }
@@ -8275,15 +8476,15 @@ function btLoadAttendanceData(){
 function btShowPage(page){
   closeAllDropdowns();
   BT.currentPage = page;
-  ['group','attendance','matches'].forEach(p=>{
+  ['group','attendance','matches','review'].forEach(p=>{
     const btEl = document.getElementById('bt_page_'+p);
-    btEl.style.display = p===page?'block':'none';
-    if(p===page) animateTabIn(btEl);
+    if(btEl){ btEl.style.display = p===page?'block':'none'; if(p===page) animateTabIn(btEl); }
     const nav = document.getElementById('bt_nav_'+p);
     if(nav){ nav.classList.toggle('active', p===page); nav.classList.toggle('sidebar-item', true); }
   });
   if(page==='attendance') btAttLoadDay();
   if(page==='matches') btRenderMatches();
+  if(page==='review') btLoadReviewSessions();
 }
 
 // ── Render group table ──
@@ -8832,6 +9033,7 @@ function btQuickAssignAll(){
       <div class="sidebar-item" onclick="showBsupTab('bsupAttendance')" id="bsupNav_attendance"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><line x1="1.5" y1="6" x2="13.5" y2="6" stroke="currentColor" stroke-width="1.2" opacity=".4"/><line x1="5" y1="1" x2="5" y2="4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><line x1="10" y1="1" x2="10" y2="4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><rect x="4" y="8.5" width="2" height="2" rx=".5" fill="currentColor" opacity=".6"/><rect x="7" y="8.5" width="2" height="2" rx=".5" fill="currentColor" opacity=".6"/></svg></span>Attendance</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupStatus')" id="bsupNav_status"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M7.5 2v5.5l3.5 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Training Status</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupMatches')" id="bsupNav_matches"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M7.5 1.5L5 5l2.5 2L10 5z" fill="currentColor" opacity=".6"/><path d="M5 5L1.5 7l1 3.5L5 12l2.5-3-2.5-4z" fill="currentColor" opacity=".3"/><path d="M10 5l3.5 2-1 3.5L10 12l-2.5-3L10 5z" fill="currentColor" opacity=".3"/></svg></span>Match Assignment</div>
+      <div class="sidebar-item" onclick="showBsupTab('bsupReview')" id="bsupNav_review"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Review Dashboard</div>
       <div class="sidebar-item" onclick="showBsupTab('bsupNotifs')" id="bsupNav_notifs"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1.5A4 4 0 0 0 3.5 5.5V9L2 11h11l-1.5-2V5.5A4 4 0 0 0 7.5 1.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 11.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>Notifications<span class="sidebar-badge" id="bsupNSide">0</span></div>
     </div>
     <div class="content">
@@ -9485,6 +9687,28 @@ function btQuickAssignAll(){
       </div>
 
       <!-- NOTIFICATIONS -->
+      <!-- REVIEW DASHBOARD (MARK) -->
+      <div id="bsupReview" class="container" style="display:none">
+        <div class="page-hdr"><h2>Review Dashboard</h2><p>Real-time review sessions from your trainers</p></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px">
+          <div class="card card-stat"><div class="card-stat-label">Active Sessions</div><div class="card-stat-value" id="bsup_review_active" style="color:var(--p2)">0</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Completed Today</div><div class="card-stat-value" id="bsup_review_done" style="color:#30D158">0</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Avg Quality</div><div class="card-stat-value" id="bsup_review_avg">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Flagged</div><div class="card-stat-value" id="bsup_review_flagged" style="color:#FF453A">0</div></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <h3 style="font-size:14px;font-weight:700;color:var(--t-1)">Sessions</h3>
+          <div style="display:flex;gap:8px">
+            <button onclick="bsupFilterReview('all')" id="bsupRF_all" class="btn btn-secondary btn-sm" style="background:var(--p2);color:#fff;font-size:11px">All</button>
+            <button onclick="bsupFilterReview('in_progress')" id="bsupRF_active" class="btn btn-secondary btn-sm" style="font-size:11px">Active</button>
+            <button onclick="bsupFilterReview('completed')" id="bsupRF_done" class="btn btn-secondary btn-sm" style="font-size:11px">Completed</button>
+          </div>
+        </div>
+        <div id="bsup_review_list" style="display:flex;flex-direction:column;gap:10px">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading review sessions...</div>
+        </div>
+      </div>
+
       <div id="bsupNotifs" class="container" style="display:none">
         <div class="page-hdr"><h2>Notifications</h2><p>Batch updates and system alerts</p></div>
         <div id="bsupNotifList">
@@ -9539,6 +9763,7 @@ function btQuickAssignAll(){
       <div class="sidebar-item active" id="bt_nav_group" onclick="btShowPage('group')"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="5" cy="5" r="2.5" fill="currentColor" opacity=".6"/><circle cx="10" cy="4" r="2" fill="currentColor" opacity=".4"/><path d="M0.5 13c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M10 9c1.657 0 3 1.343 3 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".5"/></svg></span>My Group</div>
       <div class="sidebar-item" id="bt_nav_attendance" onclick="btShowPage('attendance')"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M5 1v3M10 1v3M1.5 6.5h12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M4.5 9.5l1.5 1.5 3-3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Attendance</div>
       <div class="sidebar-item" id="bt_nav_matches" onclick="btShowPage('matches')"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M7.5 1v13M1 7.5h13" stroke="currentColor" stroke-width="1.2" opacity=".4"/><path d="M7.5 1a9 9 0 0 1 0 13M7.5 1a9 9 0 0 0 0 13" stroke="currentColor" stroke-width="1.2"/></svg></span>Match Assignment</div>
+      <div class="sidebar-item" id="bt_nav_review" onclick="btShowPage('review')"><span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M5 7.5l2 2 3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Review (MARK)</div>
     </div>
 
     <div style="overflow-y:auto;padding:28px 32px;min-width:0">
@@ -9622,6 +9847,35 @@ function btQuickAssignAll(){
           <p id="bt_matchSubtitle">Matches assigned to your group</p>
         </div>
         <div id="bt_matchesContent"><div style="text-align:center;padding:60px;color:var(--t-3)">Loading matches...</div></div>
+      </div>
+
+      <!-- REVIEW PAGE (MARK) -->
+      <div id="bt_page_review" style="display:none">
+        <div class="page-hdr">
+          <h2>Review Sessions (MARK)</h2>
+          <p>Your review sessions and quality scores</p>
+        </div>
+        <!-- Open MARK button -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;padding:16px 20px;background:rgba(232,89,12,0.06);border:1px solid rgba(232,89,12,0.2);border-radius:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:14px;font-weight:700;color:var(--t-1)">MARK Review App</div>
+            <div style="font-size:12px;color:var(--t-3);margin-top:3px">Open the desktop review app to start a session</div>
+          </div>
+          <button onclick="btOpenMARK()" class="btn btn-primary btn-sm" style="flex-shrink:0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right:6px"><path d="M12 2L3 7l9 5 9-5-9-5z" fill="currentColor"/><path d="M3 12l9 5 9-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Open MARK
+          </button>
+        </div>
+        <!-- Session stats -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px" id="bt_review_stats">
+          <div class="card card-stat"><div class="card-stat-label">Sessions</div><div class="card-stat-value" id="bt_review_count" style="color:var(--p2)">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Avg Quality</div><div class="card-stat-value" id="bt_review_avg" style="color:#30D158">—</div></div>
+          <div class="card card-stat"><div class="card-stat-label">Errors Tagged</div><div class="card-stat-value" id="bt_review_errors">—</div></div>
+        </div>
+        <!-- Sessions list -->
+        <div id="bt_review_list" style="display:flex;flex-direction:column;gap:10px">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading review sessions...</div>
+        </div>
       </div>
 
     </div><!-- end container -->
