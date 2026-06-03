@@ -529,3 +529,127 @@ He will never upgrade to Firebase Blaze paid plan — all solutions must work wi
 See `CALCULATOR.md` in this repo for the interactive usage calculator.
 Run it to estimate daily/monthly reads whenever a new role or feature is added.
 
+
+---
+
+## 20. MARK — Review Application
+
+**Status:** Fully designed, not yet built. Build starts after current FIELD session.
+
+**Name origin:** Reviewers mark errors, mark moments, their marks define collector quality. Companion product to FIELD.
+
+**GitHub:** Separate repo from FIELD (different audience, different deployment)
+
+### What MARK Is
+A Windows desktop app (Tauri) for Batch Trainers/Reviewers. Sits alongside the Statsbomb Tag Once collection app on the same machine. Reviewer watches match video in MARK, tags errors using tornado event shortcuts, and the collection app mirrors every navigation keystroke automatically via Windows `ControlSend`.
+
+### Sync Mechanism — CONFIRMED WORKING
+Tested on the actual collection app machine using AutoHotkey:
+- Method: `ControlSend` via `ahk_exe Statsbomb Tag Once collection app.exe`  
+- Collection app window class: `Chrome_WidgetWin_1`
+- Sync delay: < 5ms (well within 200ms requirement)
+- No focus required on collection app
+- Works even when collection app is behind ReviewApp window
+- In Tauri: implement via `tauri-plugin-shell` calling a bundled AHK script, OR via Rust `windows` crate calling `PostMessage`/`SendInput` directly
+
+### Tech Stack
+| Layer | Choice |
+|-------|--------|
+| Desktop shell | Tauri (Windows only) — lighter than Electron, same capabilities |
+| UI | React + FIELD design tokens (dark theme, #E8590C, Inter + DM Sans) |
+| Auth | Firebase Auth — same trainer accounts as FIELD, no second login |
+| Database | Firebase Firestore — same project as FIELD |
+| Sync | ControlSend → `ahk_exe Statsbomb Tag Once collection app.exe` |
+| Match data | Google Sheets API (same key as FIELD) |
+| Real-time | Firestore onSnapshot (same as FIELD) |
+
+### How MARK Connects To FIELD
+- Trainer gate: "Open MARK" button (deep link) + Review Results tab
+- BSup gate: real-time review dashboard + notification on session complete
+- BM gate: aggregate review scores across all batches
+- Trainee profile: their own quality scores and error history
+- Detection system: session opened = passive review signal, session complete = daily task signal
+
+### Session Flow
+1. Open MARK → Firebase reads trainer identity from existing FIELD session (no re-login)
+2. Select Match ID from Google Sheet → collector auto-detected from FIELD match assignment data (trainee code + match ID + half + date)
+3. Select Half → half-level lock check → blocks if already claimed by another reviewer
+4. Drag-and-drop local video file → video loads
+5. Navigate with keyboard shortcuts → same keystroke sent to collection app via ControlSend
+6. Tag errors using tornado event shortcuts (same keys collectors use)
+7. Each error tag has extras:
+   - Wrong Event
+   - Wrong Player
+   - Confused With → dropdown of all tornado events
+   - **Y key = Missing Event** → dropdown of all tornado events
+8. Timeline track shows tagged errors as colored markers, click to jump to timestamp
+9. Press Done → enter Total Reviewed Events → quality score calculated → session locked
+10. Results appear in FIELD instantly via Firestore
+
+### Navigation Shortcuts (identical to collection app)
+- `→` Right arrow: forward 600ms
+- `←` Left arrow: backward 600ms
+- `Shift + →`: forward 200ms
+- `Shift + ←`: backward 200ms
+- `Space`: play / pause
+
+### Quality Score Formula
+```
+Quality Score (%) = 100 - ((Tagged Errors / Total Reviewed Events) × 100)
+```
+Higher = better. 100 = perfect. Inverted from the original document (which had lower = better — confusing).
+
+### Half-Level Locking
+- Match + Half combination can only be claimed by one reviewer at a time
+- Same match, different half = allowed (no blocking)
+- Supervisor can override lock if needed
+
+### Reviewed Time Tracking
+- Tracks maximum video timestamp reached during FIRST review session only
+- Re-watches do not add to reviewed time (flagged as `re_watch`)
+- Stored as `reviewed_time_seconds` in Firestore
+
+### Attitude Tracking (stored silently, used in detection later)
+- Session duration vs video length ratio
+- Pause frequency and pattern
+- Navigation direction (forward vs backward ratio)
+- Error tag distribution across timeline
+- Backtrack rate
+- Session abandonment flag
+
+### Firestore Collections (new, in same Firebase project)
+| Collection | Purpose |
+|-----------|---------|
+| `mark_sessions` | Review sessions — match, half, reviewer, collector, status, scores |
+| `mark_error_tags` | Individual error tags — timestamp, type, extras, session ref |
+| `mark_locks` | Half-level locks — match+half → reviewer, timestamp |
+| `mark_attitude` | Behavioral signals per session |
+
+### Firebase Usage at Maximum Capacity
+70 reviewers, all active same shift, 8 sessions each:
+- MARK daily reads: ~9,360
+- FIELD existing (optimized): ~2,680
+- **Combined total: ~12,040/day** — well under 50,000 ✅
+- Monthly (25 days): ~301,000 = 20% of monthly limit ✅
+
+### Build Order
+1. Tauri setup + Firebase auth (reads existing FIELD session token)
+2. Video player + navigation shortcuts
+3. Sync mechanism (ControlSend to collection app)
+4. Error tagging (tornado shortcuts + extras dropdowns + timeline)
+5. Session management (match selection, half locking, Done flow)
+6. FIELD integration (results tabs in trainer/BSup/BM gates, trainee profile)
+7. Attitude tracking (silent behavioral signals)
+8. Detection integration (session = daily task signal in FIELD)
+
+### Open Items
+| # | Item | Status |
+|---|------|--------|
+| 1 | Exact tornado event shortcut list | Need to confirm from tornado app documentation |
+| 2 | Match assignment sheet structure | Comes from FIELD trainer gate match assignment page |
+| 3 | Collector assignment logic | Who assigns which collector to which reviewer |
+| 4 | Error extras list finalization | Wrong Event, Wrong Player, Confused With, Missing Event — may expand |
+| 5 | Tauri vs AHK sync implementation | Tauri Rust `windows` crate preferred over bundled AHK |
+| 6 | Supervisor override for half locks | Needs UI design in FIELD BSup gate |
+| 7 | FIELD deep link protocol | `mark://session?match=X&half=Y` format to define |
+
