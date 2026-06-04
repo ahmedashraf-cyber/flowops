@@ -293,6 +293,7 @@ Updated in `initBsupDashboard()` and `btLoginWithCode()`.
 - **Live trainer fetch** — always from Google Sheet, never hardcoded
 - **Smooth transitions** — gate transitions cinematic, inner tabs subtle (all fixed)
 - **CONTEXT.md** — this file, in repo for session handover
+- **MARK review app (v2.1.0)** — BUILT & LIVE. Video review + tornado error tagging + quality scores, integrated with FIELD via shared Firebase. Sync between MARK and the Statsbomb collection app SOLVED via the Firestore bridge (see Section 20 + `SYNC_PROBLEM_CONTEXT.md` in the MARK repo).
 
 ---
 
@@ -532,124 +533,102 @@ Run it to estimate daily/monthly reads whenever a new role or feature is added.
 
 ---
 
-## 20. MARK — Review Application
+## 20. MARK — Review Application (BUILT & LIVE ✅)
 
-**Status:** Fully designed, not yet built. Build starts after current FIELD session.
+**Status:** Built, shipping, in use. Current version **v2.1.0**. Companion product to FIELD.
 
-**Name origin:** Reviewers mark errors, mark moments, their marks define collector quality. Companion product to FIELD.
+**Name origin:** Reviewers mark errors, mark moments; their marks define collector quality.
 
-**GitHub:** Separate repo from FIELD (different audience, different deployment)
+**GitHub:** `https://github.com/ahmedashraf-cyber/mark-app` (separate repo from FIELD)
+**Releases:** auto-built Windows `.msi`/`.exe` via GitHub Actions on push to main
+**Full sync history & architecture:** see `SYNC_PROBLEM_CONTEXT.md` in the MARK repo
 
 ### What MARK Is
-A Windows desktop app (Tauri) for Batch Trainers/Reviewers. Sits alongside the Statsbomb Tag Once collection app on the same machine. Reviewer watches match video in MARK, tags errors using tornado event shortcuts, and the collection app mirrors every navigation keystroke automatically via Windows `ControlSend`.
+A Windows desktop app (**Tauri 2** = Rust backend + React 19 in a WebView2 webview) for
+Batch Trainers/Reviewers. It runs alongside the **Statsbomb Tag Once collection app**
+(Electron, closed source) on the same machine. The reviewer watches match video in MARK,
+tags errors using tornado event shortcuts, and — critically — **both videos stay in sync**
+so the reviewer navigates once and sees the same frame in both apps.
 
-### Sync Mechanism — CONFIRMED WORKING
-Tested on the actual collection app machine using AutoHotkey:
-- Method: `ControlSend` via `ahk_exe Statsbomb Tag Once collection app.exe`  
-- Collection app window class: `Chrome_WidgetWin_1`
-- Sync delay: < 5ms (well within 200ms requirement)
-- No focus required on collection app
-- Works even when collection app is behind ReviewApp window
-- In Tauri: implement via `tauri-plugin-shell` calling a bundled AHK script, OR via Rust `windows` crate calling `PostMessage`/`SendInput` directly
+### THE SYNC SOLUTION (the hard-won core — v2.1.0)
+Syncing two independent Chromium apps where one is closed-source was the single hardest
+problem of the whole project. ~20 approaches failed (all keystroke/focus injection methods
+hit a wall: stealing focus to drive the collection app put MARK's own webview keyboard to
+sleep, needing a physical mouse click every cycle). The collection app's remote-debugging
+port is **disabled at build time**, killing all standard automation (CDP, electron-inject, etc.).
+
+**The winning architecture — a Firestore bridge:**
+```
+Reviewer presses arrow in MARK
+   → MARK writes navCommand to Firestore: mark_sessions/{sessionId}.navCommand = {action, shift, ts}
+   → a "bridge script" running INSIDE the collection app listens via onSnapshot
+   → bridge moves the collection app's video natively: document.querySelector('video').currentTime += step
+```
+Because the bridge runs *inside* the collection app, it controls the video with **zero focus
+stealing and zero clicks.** MARK never touches the collection app's focus.
+
+**Getting the bridge in:** MARK's ⚡ **Inject Bridge** button (Rust `inject_bridge_script`)
+focuses the collection app, opens its DevTools (Alt+Ctrl+I), types `allow pasting` via
+**Unicode key injection** (Chromium treats Unicode-injected chars as *typed*, bypassing the
+self-XSS paste guard), then pastes + runs the bridge script from the clipboard. Reviewer
+clicks Inject Bridge once per session, signs into the bridge panel with their FIELD account
+(Firebase caches it → later sessions skip login), green "Connected" panel appears, done.
 
 ### Tech Stack
 | Layer | Choice |
 |-------|--------|
-| Desktop shell | Tauri (Windows only) — lighter than Electron, same capabilities |
-| UI | React + FIELD design tokens (dark theme, #E8590C, Inter + DM Sans) |
-| Auth | Firebase Auth — same trainer accounts as FIELD, no second login |
-| Database | Firebase Firestore — same project as FIELD |
-| Sync | ControlSend → `ahk_exe Statsbomb Tag Once collection app.exe` |
-| Match data | Google Sheets API (same key as FIELD) |
+| Desktop shell | Tauri 2 (Windows), Rust backend |
+| UI | React 19 + FIELD design tokens (dark, #E8590C, Inter + DM Sans + JetBrains Mono) |
+| Auth | Firebase Auth — same accounts as FIELD, no second login |
+| Database | Firebase Firestore — **same project as FIELD** (`hudl-training-ops`) |
+| Sync | **Firestore bridge** (navCommand doc → injected listener in collection app) |
 | Real-time | Firestore onSnapshot (same as FIELD) |
 
-### How MARK Connects To FIELD
-- Trainer gate: "Open MARK" button (deep link) + Review Results tab
-- BSup gate: real-time review dashboard + notification on session complete
-- BM gate: aggregate review scores across all batches
-- Trainee profile: their own quality scores and error history
-- Detection system: session opened = passive review signal, session complete = daily task signal
+### Navigation Shortcuts (matched to the collection app — CORRECTED)
+- `→` / `←`  : seek **400ms** forward/back
+- `Shift + →` / `Shift + ←` : seek **40ms** forward/back
+- `Space` : play / pause
+(These exact values match the collection app's own steps so the two videos stay aligned.)
 
-### Session Flow
-1. Open MARK → Firebase reads trainer identity from existing FIELD session (no re-login)
-2. Select Match ID from Google Sheet → collector auto-detected from FIELD match assignment data (trainee code + match ID + half + date)
-3. Select Half → half-level lock check → blocks if already claimed by another reviewer
-4. Drag-and-drop local video file → video loads
-5. Navigate with keyboard shortcuts → same keystroke sent to collection app via ControlSend
-6. Tag errors using tornado event shortcuts (same keys collectors use)
-7. Each error tag has extras:
-   - Wrong Event
-   - Wrong Player
-   - Confused With → dropdown of all tornado events
-   - **Y key = Missing Event** → dropdown of all tornado events
-8. Timeline track shows tagged errors as colored markers, click to jump to timestamp
-9. Press Done → enter Total Reviewed Events → quality score calculated → session locked
-10. Results appear in FIELD instantly via Firestore
-
-### Navigation Shortcuts (identical to collection app)
-- `→` Right arrow: forward 600ms
-- `←` Left arrow: backward 600ms
-- `Shift + →`: forward 200ms
-- `Shift + ←`: backward 200ms
-- `Space`: play / pause
+### Error Tagging (stays in MARK's own window)
+Tornado event shortcut keys open a tag modal; `Y` = Missing Event. Each tag → `mark_error_tags`.
+Tagging, timeline, and quality score all live in MARK's window (writing to Firebase → FIELD).
+Deliberately NOT moved into the bridge panel — tagging always worked; only sync was broken.
 
 ### Quality Score Formula
 ```
 Quality Score (%) = 100 - ((Tagged Errors / Total Reviewed Events) × 100)
 ```
-Higher = better. 100 = perfect. Inverted from the original document (which had lower = better — confusing).
+Higher = better. 100 = perfect.
 
-### Half-Level Locking
-- Match + Half combination can only be claimed by one reviewer at a time
-- Same match, different half = allowed (no blocking)
-- Supervisor can override lock if needed
+### How MARK Connects To FIELD (the integration)
+FIELD and MARK share one Firebase project, so data flows live between them:
+- **Trainer gate:** Review Results tab + real-time session dashboard
+- **Batch Supervisor gate:** live review dashboard, quality scores per reviewer
+- **Batch Manager gate:** aggregate review scores across batches
+- **Trainee profile:** their own quality scores and error history
+- A MARK session opening/completing is a signal FIELD can use for daily-task detection
 
-### Reviewed Time Tracking
-- Tracks maximum video timestamp reached during FIRST review session only
-- Re-watches do not add to reviewed time (flagged as `re_watch`)
-- Stored as `reviewed_time_seconds` in Firestore
-
-### Attitude Tracking (stored silently, used in detection later)
-- Session duration vs video length ratio
-- Pause frequency and pattern
-- Navigation direction (forward vs backward ratio)
-- Error tag distribution across timeline
-- Backtrack rate
-- Session abandonment flag
-
-### Firestore Collections (new, in same Firebase project)
+### Shared Firestore Collections (same Firebase project as FIELD)
 | Collection | Purpose |
 |-----------|---------|
-| `mark_sessions` | Review sessions — match, half, reviewer, collector, status, scores |
+| `mark_sessions` | Review sessions — match, half, reviewer, collector, status, scores. **Also carries `navCommand` for the sync bridge.** |
 | `mark_error_tags` | Individual error tags — timestamp, type, extras, session ref |
-| `mark_locks` | Half-level locks — match+half → reviewer, timestamp |
-| `mark_attitude` | Behavioral signals per session |
+| `mark_locks` | Half-level locks — `{matchId}_{half}` → reviewer |
+| `mark_match_assignments` | Reviewer ↔ match/collector assignments |
 
-### Firebase Usage at Maximum Capacity
-70 reviewers, all active same shift, 8 sessions each:
-- MARK daily reads: ~9,360
-- FIELD existing (optimized): ~2,680
-- **Combined total: ~12,040/day** — well under 50,000 ✅
-- Monthly (25 days): ~301,000 = 20% of monthly limit ✅
+### Session Flow
+1. Open collection app, log in, load video
+2. Open MARK → Firebase reads identity from existing FIELD session → start session, load same video
+3. Click ⚡ **Inject Bridge** → bridge panel appears in collection app → sign in (first time only)
+4. Navigate with arrows in MARK → **both videos seek together, no clicks**
+5. Tag errors with tornado shortcuts (in MARK's window) → saved to `mark_error_tags`
+6. Press Done → enter Total Reviewed Events → quality score → results appear in FIELD instantly
 
-### Build Order
-1. Tauri setup + Firebase auth (reads existing FIELD session token)
-2. Video player + navigation shortcuts
-3. Sync mechanism (ControlSend to collection app)
-4. Error tagging (tornado shortcuts + extras dropdowns + timeline)
-5. Session management (match selection, half locking, Done flow)
-6. FIELD integration (results tabs in trainer/BSup/BM gates, trainee profile)
-7. Attitude tracking (silent behavioral signals)
-8. Detection integration (session = daily task signal in FIELD)
-
-### Open Items
-| # | Item | Status |
-|---|------|--------|
-| 1 | Exact tornado event shortcut list | Need to confirm from tornado app documentation |
-| 2 | Match assignment sheet structure | Comes from FIELD trainer gate match assignment page |
-| 3 | Collector assignment logic | Who assigns which collector to which reviewer |
-| 4 | Error extras list finalization | Wrong Event, Wrong Player, Confused With, Missing Event — may expand |
-| 5 | Tauri vs AHK sync implementation | Tauri Rust `windows` crate preferred over bundled AHK |
-| 6 | Supervisor override for half locks | Needs UI design in FIELD BSup gate |
-| 7 | FIELD deep link protocol | `mark://session?match=X&half=Y` format to define |
-
+### Known Caveats (for future maintainers)
+- The Inject Bridge auto-injection uses timed `SendInput` steps; on a slow machine the sleeps
+  in `inject_bridge_windows` may need tuning. Fallback: paste `bridge_script.js` manually.
+- Antivirus on locked-down corporate machines may flag the auto-DevTools-typing behavior.
+- Collection app requires login each launch; cannot be auto-relaunched.
+- Hard constraints (unchanged): do not modify the collection app's files; do not depend on
+  the collection app dev team.
