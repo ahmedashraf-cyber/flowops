@@ -2,6 +2,22 @@
 **Last updated:** June 2026  
 **Purpose:** Full handover document for any new chat session. Read this top to bottom and you will know everything — what was built, why, every decision made, all access credentials, current state, and what comes next.
 
+> ### 🚩 SESSION HANDOFF — READ FIRST
+> **FIELD** is a 7-role training-ops platform (single `index.html`, Firebase, ~600KB) —
+> all role gates are built and live. **MARK** (its companion Windows review app) is also
+> built and shipping at **v2.2.0**, integrated with FIELD through the same Firebase project.
+>
+> The defining technical win of this project: **MARK ↔ collection-app video sync is SOLVED**
+> (see Section 20, and `SYNC_PROBLEM_CONTEXT.md` in the MARK repo). ~20 approaches failed before
+> the breakthrough — a Firestore bridge injected into the collection app — eliminated the
+> mouse-click problem entirely. Zero clicks, both videos move together, error tagging flows
+> live into FIELD.
+>
+> **Tokens:** the GitHub tokens shared in past chats were regenerated and are dead. Use fresh
+> tokens; never commit a token into these docs. **Treat every credential in a chat as temporary.**
+>
+> Everything below is the full record. The project is in a strong, working state.
+
 ---
 
 ## 1. What Is This Project?
@@ -293,7 +309,7 @@ Updated in `initBsupDashboard()` and `btLoginWithCode()`.
 - **Live trainer fetch** — always from Google Sheet, never hardcoded
 - **Smooth transitions** — gate transitions cinematic, inner tabs subtle (all fixed)
 - **CONTEXT.md** — this file, in repo for session handover
-- **MARK review app (v2.1.0)** — BUILT & LIVE. Video review + tornado error tagging + quality scores, integrated with FIELD via shared Firebase. Sync between MARK and the Statsbomb collection app SOLVED via the Firestore bridge (see Section 20 + `SYNC_PROBLEM_CONTEXT.md` in the MARK repo).
+- **MARK review app (v2.2.0)** — BUILT & LIVE. Video review + tornado error tagging + quality scores, integrated with FIELD via shared Firebase. Sync between MARK and the Statsbomb collection app SOLVED via the Firestore bridge (see Section 20 + `SYNC_PROBLEM_CONTEXT.md` in the MARK repo).
 
 ---
 
@@ -535,7 +551,7 @@ Run it to estimate daily/monthly reads whenever a new role or feature is added.
 
 ## 20. MARK — Review Application (BUILT & LIVE ✅)
 
-**Status:** Built, shipping, in use. Current version **v2.1.0**. Companion product to FIELD.
+**Status:** Built, shipping, in use. Current version **v2.2.0**. Companion product to FIELD.
 
 **Name origin:** Reviewers mark errors, mark moments; their marks define collector quality.
 
@@ -573,6 +589,12 @@ focuses the collection app, opens its DevTools (Alt+Ctrl+I), types `allow pastin
 self-XSS paste guard), then pastes + runs the bridge script from the clipboard. Reviewer
 clicks Inject Bridge once per session, signs into the bridge panel with their FIELD account
 (Firebase caches it → later sessions skip login), green "Connected" panel appears, done.
+
+### Reviewer experience polish (v2.1.1 / v2.2.0)
+- After injecting, MARK auto-closes the collection app's DevTools — clean screen, just the video.
+- The MARK Bridge panel is hidden by default; it only appears if sign-in is needed, then
+  disappears once connected. Returning reviewers (cached login) never see it. Sync runs silently.
+- MARK's top bar shows the live version: `MARK · Review App · vX.Y.Z`.
 
 ### Tech Stack
 | Layer | Choice |
