@@ -1,15 +1,103 @@
-# FIELD — Project Context File
-**Last updated:** June 2026  
-**Purpose:** Full handover document for any new chat session. Read this top to bottom and you will know everything — what was built, why, every decision made, all access credentials, current state, and what comes next.
+<!-- ============================================================= -->
+<!-- SESSION 2026-06-09 - FIREBASE QUOTA + INFRASTRUCTURE DECISIONS -->
+<!-- ============================================================= -->
 
-> ### 🚩 SESSION HANDOFF — READ FIRST
-> **FIELD** is a 7-role training-ops platform (single `index.html`, Firebase, ~600KB) —
+## Latest Session: 2026-06-09 - Firebase Quota Wall + Big Picture Architecture
+
+### TL;DR (FIELD-relevant)
+
+- Firebase Firestore quota EXHAUSTED today across the project shared with MARK
+  - 125K reads (2.5x over 50K/day free limit)
+  - 20K writes (at the 20K/day limit, cap hit)
+- Reviewers were blocked from working when quota ran out
+- Root cause is mostly in MARK (bridge self-amplifying loop) - not FIELD
+- FIELD dashboards still contribute meaningfully to read load
+- Major architectural changes planned in MARK (5.0.0) that drop usage ~99%
+- Bigger conversation pending about whether to leave Firebase entirely
+
+### What Happened Today (FIELD perspective)
+
+1. Reviewer complained that MARK would not let them start a review session
+2. Firebase console showed "Quota Exceeded" error from Firestore
+3. Investigation showed the 125K read / 20K write usage on the chart
+4. FIELD dashboard reads identified as a meaningful contributor:
+   - Training Manager dashboard loads all batches + sessions + users on each open
+   - Each role page (Coordinator, Supervisor, Trainer) reads from its collections
+   - No client-side caching means every navigation = fresh reads
+5. MARK bridge identified as the primary culprit (~60% of waste)
+
+### Solution Path
+
+#### Phase 1 - Ship MARK 5.0.0 (next session)
+- Drops Firestore usage ~99% by eliminating bridge writes/reads entirely
+- After this, free tier comfortably handles ~100 reviewers
+- See ahmedashraf-cyber/mark-app/SYNC_PROBLEM_CONTEXT.md for full details
+
+#### Phase 2 - Optimize FIELD reads (later, when needed)
+- Cache user/batch/match lists client-side
+- Move static reference data to Google Sheets (matches already there, can extend to users/batches)
+- Reduce snapshot listeners on large collections
+
+#### Phase 3 - Bigger Decision Pending (no commitment yet)
+- Whether to migrate FIELD off Firebase entirely
+- Options discussed in MARK's SYNC_PROBLEM_CONTEXT.md (Infrastructure Discussion section)
+- User position: $0 budget, framed as personal experiment helping the team
+
+### Decisions Made
+
+OK Ship MARK 5.0.0 - reduces Firestore load 99% - PRIORITY
+PENDING Keep Firebase Auth for now (cheap, handles infinite users on free tier)
+PENDING Optimize FIELD dashboards in a later release (5.1.0?)
+PENDING Whether to migrate off Firebase (PocketBase / Supabase / Oracle Free Tier all considered)
+
+### Infrastructure Options Discussed (see MARK docs for full detail)
+
+- Supabase free tier - drop-in Firebase replacement, generous limits, pauses on inactivity
+- PocketBase self-hosted - single binary, full ownership, needs always-on server
+- Google Sheets + Apps Script - already works (proven today for MARK session results), too slow for realtime
+- Oracle Cloud Free Tier - 2 free VMs forever, painful signup
+- Hetzner / DigitalOcean / Vultr - paid VPS rental, EUR 4-6/mo
+- Stay on Firebase + MARK 5.0.0 - the path of least change, currently recommended
+
+### Files in This Repo (current state, unchanged today)
+
+- README.md
+- CONTEXT.md (this file)
+- CALCULATOR.md (Firebase usage calculator)
+- index.html (the FIELD app itself)
+
+### Files Modified Today
+
+- None directly in this repo (bash environment was broken throughout the session)
+- This documentation was pushed via Claude in Chrome browser extension at session end
+
+### Reviewers' Status Right Now
+
+- Firebase quota will auto-reset at midnight Pacific time (~10am Cairo)
+- Until then, reviewers can NOT start new sessions
+- Tomorrow morning they resume normally
+- MARK 5.0.0 next session permanently eliminates this risk
+
+### Next Session
+
+Command to start: "ship MARK 5.0.0"
+
+After MARK 5.0.0 ships, FIELD itself is fine - no urgent changes needed.
+
+---
+
+# FIELD â Project Context File
+**Last updated:** June 2026  
+**Purpose:** Full handover document for any new chat session. Read this top to bottom and you will know everything â what was built, why, every decision made, all access credentials, current state, and what comes next.
+
+> ### ð© SESSION HANDOFF â READ FIRST
+> **FIELD** is a 7-role training-ops platform (single `index.html`, Firebase, ~600KB) â
 > all role gates are built and live. **MARK** (its companion Windows review app) is also
 > built and shipping at **v2.2.0**, integrated with FIELD through the same Firebase project.
 >
-> The defining technical win of this project: **MARK ↔ collection-app video sync is SOLVED**
+> The defining technical win of this project: **MARK â collection-app video sync is SOLVED**
 > (see Section 20, and `SYNC_PROBLEM_CONTEXT.md` in the MARK repo). ~20 approaches failed before
-> the breakthrough — a Firestore bridge injected into the collection app — eliminated the
+> the breakthrough â a Firestore bridge injected into the collection app â eliminated the
 > mouse-click problem entirely. Zero clicks, both videos move together, error tagging flows
 > live into FIELD.
 >
@@ -22,7 +110,7 @@
 
 ## 1. What Is This Project?
 
-**FIELD** is a Training Operations Management Platform for **Hudl Egypt's training department**. It manages the full lifecycle of training batches — from interview/acceptance through supervised training to completion.
+**FIELD** is a Training Operations Management Platform for **Hudl Egypt's training department**. It manages the full lifecycle of training batches â from interview/acceptance through supervised training to completion.
 
 It is a **single HTML file** (`index.html`) deployed via GitHub Pages. No build tools, no framework, no backend. Everything runs in the browser using Firebase Auth + Firestore, Google Sheets API, EmailJS, and Chart.js.
 
@@ -48,8 +136,8 @@ node -e "
 const html = require('fs').readFileSync('/home/claude/flowops_final.html', 'utf8');
 const scripts = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)];
 const js = scripts[scripts.length-1][1];
-try { new Function(js); console.log('✅ Clean'); }
-catch(e) { console.log('❌', e.message); const lines=js.split('\n'); for(let i=0;i<lines.length;i++){try{new Function(lines.slice(0,i+1).join('\n'));}catch(e2){if(e2.message===e.message){console.log('L'+(i+1)+':',lines[i].substring(0,100));break;}}} }
+try { new Function(js); console.log('â Clean'); }
+catch(e) { console.log('â', e.message); const lines=js.split('\n'); for(let i=0;i<lines.length;i++){try{new Function(lines.slice(0,i+1).join('\n'));}catch(e2){if(e2.message===e.message){console.log('L'+(i+1)+':',lines[i].substring(0,100));break;}}} }
 "
 ```
 
@@ -76,19 +164,19 @@ After pushing: tell user to wait for green on GitHub Pages then **Ctrl+Shift+R**
 - **API Key:** `ASK_AHMED_DIRECTLY`
 - **Interview Sheet ID:** `190Zih7R1HswY2yVxl4WanfH-QhGlt4X8bOBteFrNtiY` (tabs: Interview Score 1/2/3, batch col=r[17], status=col L includes 'accept')
 - **Matches Sheet ID:** `1dPwnYhIOiLUy_aBuVijPH3xtU6kxnEu-8FF115kXjSc`
-- **Team/Trainers Sheet ID:** `1bErhs3yQiJMl6PXRJFgH512wLgfm2dM6Cpj2owimLuw` (tab: "Trainers", columns: A=HR Code, B=Name, C=Role, D=Type, E=Mail, F=Passwords) — **must be publicly shared (Anyone with link → Viewer)**
+- **Team/Trainers Sheet ID:** `1bErhs3yQiJMl6PXRJFgH512wLgfm2dM6Cpj2owimLuw` (tab: "Trainers", columns: A=HR Code, B=Name, C=Role, D=Type, E=Mail, F=Passwords) â **must be publicly shared (Anyone with link â Viewer)**
 
 ### Design System
 - **Accent color:** `#E8590C` (orange), CSS var: `--p2`
 - **Font:** Inter (headings) + DM Sans (body) + JetBrains Mono (codes)
 - **Theme:** Dark-first Apple-style
-- **Dropdown system:** All selects use `nxWrapSelect(sel, onChangeFn)` — NEVER use plain `<select>` visible to user
+- **Dropdown system:** All selects use `nxWrapSelect(sel, onChangeFn)` â NEVER use plain `<select>` visible to user
 - **Screens:** All use `class="screen"` + `app-shell` grid layout
-- **`nxSelectValue(id)`** — reads nx-wrapped select value
-- **`nxDateInit()`** — wraps date inputs
-- **`animateTabIn(el)`** — inner page transition (0.18s fadeIn+slideUp) — call on every tab switch
-- **Gate transitions:** `switchRole()` handles cinematic fade 0.25s out → 0.35s in
-- **Inner page transitions:** `animateTabIn()` handles 0.18s fade+slide — lighter/faster than gate transitions
+- **`nxSelectValue(id)`** â reads nx-wrapped select value
+- **`nxDateInit()`** â wraps date inputs
+- **`animateTabIn(el)`** â inner page transition (0.18s fadeIn+slideUp) â call on every tab switch
+- **Gate transitions:** `switchRole()` handles cinematic fade 0.25s out â 0.35s in
+- **Inner page transitions:** `animateTabIn()` handles 0.18s fade+slide â lighter/faster than gate transitions
 
 ---
 
@@ -96,21 +184,21 @@ After pushing: tell user to wait for green on GitHub Pages then **Ctrl+Shift+R**
 
 | Role | Firestore value | Screen | Status |
 |------|----------------|--------|--------|
-| Batch Coordinator | `coordinator` | `coordScreen` | ✅ Complete |
-| Batch Supervisor | `batchsup` | `bsupScreen` | ✅ Complete |
-| Batch Trainer | `trainer` | `trainerScreen` | ✅ Complete |
-| Batch Manager | `batchmanager` | `bmScreen` | ✅ Complete |
-| Training Supervisor | `trainsup` | pending | 🔲 Not built |
-| Training Manager | `manager` | `coordScreen` + role switcher | ✅ Complete |
-| Trainee | `trainee` | pending | 🔲 Not built |
+| Batch Coordinator | `coordinator` | `coordScreen` | â Complete |
+| Batch Supervisor | `batchsup` | `bsupScreen` | â Complete |
+| Batch Trainer | `trainer` | `trainerScreen` | â Complete |
+| Batch Manager | `batchmanager` | `bmScreen` | â Complete |
+| Training Supervisor | `trainsup` | pending | ð² Not built |
+| Training Manager | `manager` | `coordScreen` + role switcher | â Complete |
+| Trainee | `trainee` | pending | ð² Not built |
 
 ### Role Switcher (Training Manager only)
 - Fixed panel bottom-right (`id="roleSwitcher"`, `position:fixed`, `z-index:99999`)
-- **Batch Supervisor** → dropdown of all BM_SUPS → `switchRoleAsSup(member)` → views as that supervisor
-- **Batch Trainer** → dropdown fetched live from Trainers sheet → `switchRoleAsTrainer(trainer)` → views as that trainer
-- **No banners** — identity card on first page of each gate is enough (removed blue/green banners)
+- **Batch Supervisor** â dropdown of all BM_SUPS â `switchRoleAsSup(member)` â views as that supervisor
+- **Batch Trainer** â dropdown fetched live from Trainers sheet â `switchRoleAsTrainer(trainer)` â views as that trainer
+- **No banners** â identity card on first page of each gate is enough (removed blue/green banners)
 - **Exit view** buttons return to Training Manager
-- **⚙️ Team Account Setup** at bottom → `showSetupScreen()`
+- **âï¸ Team Account Setup** at bottom â `showSetupScreen()`
 
 ---
 
@@ -135,9 +223,9 @@ const TEAM_ROSTER = [
 const BM_SUPS = TEAM_ROSTER.filter(m => m.role === 'batchsup').map(m => m.code);
 ```
 
-**Batch Trainers** — NOT hardcoded. Fetched live from Trainers tab of Team Sheet.
+**Batch Trainers** â NOT hardcoded. Fetched live from Trainers tab of Team Sheet.
 Sheet columns: A=HR Code, B=Name, C=Role, D=Type, E=Mail (index 4), F=Password (index 5).
-Function: `fetchTrainersFromSheet()` — cached per session in `_trainersCache`.
+Function: `fetchTrainersFromSheet()` â cached per session in `_trainersCache`.
 Cache cleared by setting `_trainersCache = null`.
 
 **Helper functions:** `getRosterMember(code)`, `getSupName(code)`, `getSupByEmail(email)`
@@ -151,7 +239,7 @@ Cache cleared by setting `_trainersCache = null`.
 | `batch_notifications` | Coordinator end-of-batch events + task alerts. `type:'end_of_batch'` or `type:'task'` |
 | `accepted_trainees/sup_{code}` | BM-assigned trainees per supervisor with trainingCodes. Doc ID = `sup_A_551` etc. |
 | `training_status/{trainingCode}` | Training status per trainee code |
-| `group_assignments/batch_{label}` | BSup group assignments (trainees → trainer groups) |
+| `group_assignments/batch_{label}` | BSup group assignments (trainees â trainer groups) |
 | `batch_trainer_assignments/{batchName}` | BM trainer assignments. Field: `assignments: {supCode: [trainers]}` |
 | `bm_tasks` | BM task tickets |
 | `bm_sup_assignments` | BM supervisor assignments history |
@@ -163,30 +251,30 @@ Cache cleared by setting `_trainersCache = null`.
 
 ```
 1. Coordinator "End of Batch"
-   → saves to batch_notifications (type:'end_of_batch', acceptedCandidates[])
-   → reads from Interview Sheet (Google Sheets API)
+   â saves to batch_notifications (type:'end_of_batch', acceptedCandidates[])
+   â reads from Interview Sheet (Google Sheets API)
 
 2. BM Batches page
-   → bmLoadAllData() reads batch_notifications
-   → overlays supervisor + trainingCode from accepted_trainees
-   → BM clicks "Generate Training Codes" → saves to training_status + accepted_trainees
+   â bmLoadAllData() reads batch_notifications
+   â overlays supervisor + trainingCode from accepted_trainees
+   â BM clicks "Generate Training Codes" â saves to training_status + accepted_trainees
 
 3. BM Assign Supervisors (4-step flow)
    Step 1: Select batch
-   Step 2: Drag supervisors from right panel → drop zone pills
+   Step 2: Drag supervisors from right panel â drop zone pills
    Step 3: Slider for trainees per supervisor + preview per sup
-   Step 4: Auto-distribute trainers (5-6 trainees each) → editable pills + add dropdown (nx-wrapped)
-   Confirm → saves to: accepted_trainees/sup_{code}, batch_trainer_assignments/{batch}, bm_sup_assignments
+   Step 4: Auto-distribute trainers (5-6 trainees each) â editable pills + add dropdown (nx-wrapped)
+   Confirm â saves to: accepted_trainees/sup_{code}, batch_trainer_assignments/{batch}, bm_sup_assignments
 
 4. BSup gate
-   → loadBsupTrainees() reads ONLY accepted_trainees WHERE supervisorCode === A.user.supervisorCode
-   → loadMyTrainersFromBM() reads batch_trainer_assignments for his trainers only
-   → Group Assignment: auto-split trainees across his trainers, BSup adjusts
+   â loadBsupTrainees() reads ONLY accepted_trainees WHERE supervisorCode === A.user.supervisorCode
+   â loadMyTrainersFromBM() reads batch_trainer_assignments for his trainers only
+   â Group Assignment: auto-split trainees across his trainers, BSup adjusts
 
 5. Trainer gate
-   → btLoginWithCode(code) reads group_assignments
-   → Shows only their assigned trainees
-   → Auto-login if trainer signs in with their account (uses A.user.trainerCode from Firestore profile)
+   â btLoginWithCode(code) reads group_assignments
+   â Shows only their assigned trainees
+   â Auto-login if trainer signs in with their account (uses A.user.trainerCode from Firestore profile)
 ```
 
 ---
@@ -206,28 +294,28 @@ let _trainersCache = null; // session cache for trainer list
 ```
 
 ### Critical Functions
-- `fetchTrainersFromSheet()` — fetches live trainer list, cached per session
-- `bmLoadAllData()` — loads all trainees for BM from Firestore
-- `bmGenerateTrainingCodes()` — generates sequential codes, saves to Firestore
-- `bmPreviewAssignment()` — previews sup distribution + triggers trainer Step 4
-- `bmConfirmAssignment()` — saves everything to Firestore
-- `bmLoadTrainerAssignment(sups, total)` — auto-distributes trainers, renders editable cards
-- `bmRenderTrainerAssignment()` — renders trainer pills (uses DOM events NOT onclick attrs)
-- `loadBsupTrainees()` — BSup reads their trainees from accepted_trainees
-- `loadMyTrainersFromBM()` — BSup reads their assigned trainers from batch_trainer_assignments
-- `initBsupDashboard()` — initializes full BSup gate + updates identity card
-- `initTrainerDashboard()` — fetches trainers from sheet, populates picker
-- `btLoginWithCode(code)` — logs trainer in, loads group, updates identity card
-- `switchRoleAsSup(member)` — TM views as supervisor (no banner, identity card updates)
-- `switchRoleAsTrainer(trainer)` — TM views as trainer (no banner, identity card updates)
-- `renderSetupRoster()` — async, shows TEAM_ROSTER + fetches sheet trainers
-- `runSetup()` — creates Firebase accounts for TEAM_ROSTER + sheet trainers
-- `animateTabIn(el)` — smooth 0.18s page-in animation for inner tab switches
-- `showScreen(id)` — navigates between screens
-- `showTab(t)` — Coordinator inner tabs (calls animateTabIn)
-- `bmShowTab(tab)` — BM inner tabs (calls animateTabIn)
-- `showBsupTab(tab)` — BSup inner tabs (calls animateTabIn)
-- `btShowPage(page)` — Trainer inner pages (calls animateTabIn)
+- `fetchTrainersFromSheet()` â fetches live trainer list, cached per session
+- `bmLoadAllData()` â loads all trainees for BM from Firestore
+- `bmGenerateTrainingCodes()` â generates sequential codes, saves to Firestore
+- `bmPreviewAssignment()` â previews sup distribution + triggers trainer Step 4
+- `bmConfirmAssignment()` â saves everything to Firestore
+- `bmLoadTrainerAssignment(sups, total)` â auto-distributes trainers, renders editable cards
+- `bmRenderTrainerAssignment()` â renders trainer pills (uses DOM events NOT onclick attrs)
+- `loadBsupTrainees()` â BSup reads their trainees from accepted_trainees
+- `loadMyTrainersFromBM()` â BSup reads their assigned trainers from batch_trainer_assignments
+- `initBsupDashboard()` â initializes full BSup gate + updates identity card
+- `initTrainerDashboard()` â fetches trainers from sheet, populates picker
+- `btLoginWithCode(code)` â logs trainer in, loads group, updates identity card
+- `switchRoleAsSup(member)` â TM views as supervisor (no banner, identity card updates)
+- `switchRoleAsTrainer(trainer)` â TM views as trainer (no banner, identity card updates)
+- `renderSetupRoster()` â async, shows TEAM_ROSTER + fetches sheet trainers
+- `runSetup()` â creates Firebase accounts for TEAM_ROSTER + sheet trainers
+- `animateTabIn(el)` â smooth 0.18s page-in animation for inner tab switches
+- `showScreen(id)` â navigates between screens
+- `showTab(t)` â Coordinator inner tabs (calls animateTabIn)
+- `bmShowTab(tab)` â BM inner tabs (calls animateTabIn)
+- `showBsupTab(tab)` â BSup inner tabs (calls animateTabIn)
+- `btShowPage(page)` â Trainer inner pages (calls animateTabIn)
 
 ### nxWrapSelect System (CRITICAL)
 ```javascript
@@ -242,8 +330,8 @@ All dropdowns MUST use this. Exception: dynamically-rendered selects use DOM add
 ## 9. Identity Cards
 
 Both BSup and Trainer first pages have an orange identity card:
-- **BSup** (`id="bsup_identity_card"`) — code from `A.user.supervisorCode`, name from `getRosterMember(code).name` (NOT A.user.name which is TM's name when viewing as)
-- **Trainer** (`id="bt_identity_card"`) — code + name from `BT._allTrainers` sheet data
+- **BSup** (`id="bsup_identity_card"`) â code from `A.user.supervisorCode`, name from `getRosterMember(code).name` (NOT A.user.name which is TM's name when viewing as)
+- **Trainer** (`id="bt_identity_card"`) â code + name from `BT._allTrainers` sheet data
 
 Updated in `initBsupDashboard()` and `btLoginWithCode()`.
 
@@ -253,12 +341,12 @@ Updated in `initBsupDashboard()` and `btLoginWithCode()`.
 
 | Transition Type | Implementation | Duration | Status |
 |----------------|---------------|----------|--------|
-| Gate-to-gate (between roles) | `switchRole()` — opacity fade out then fade in | 0.25s out + 0.35s in | ✅ |
-| Inner tab switch (all gates) | `animateTabIn()` — @keyframes pageIn (opacity+translateY) | 0.18s | ✅ Fixed |
-| Coordinator tabs (`showTab`) | `animateTabIn()` | 0.18s | ✅ Fixed |
-| BM tabs (`bmShowTab`) | `animateTabIn()` | 0.18s | ✅ Fixed |
-| BSup tabs (`showBsupTab`) | `animateTabIn()` | 0.18s | ✅ Fixed |
-| Trainer pages (`btShowPage`) | `animateTabIn()` | 0.18s | ✅ Fixed |
+| Gate-to-gate (between roles) | `switchRole()` â opacity fade out then fade in | 0.25s out + 0.35s in | â |
+| Inner tab switch (all gates) | `animateTabIn()` â @keyframes pageIn (opacity+translateY) | 0.18s | â Fixed |
+| Coordinator tabs (`showTab`) | `animateTabIn()` | 0.18s | â Fixed |
+| BM tabs (`bmShowTab`) | `animateTabIn()` | 0.18s | â Fixed |
+| BSup tabs (`showBsupTab`) | `animateTabIn()` | 0.18s | â Fixed |
+| Trainer pages (`btShowPage`) | `animateTabIn()` | 0.18s | â Fixed |
 
 **Before the fix:** all inner tab switches were instant (display:none/block, no animation).
 **Design principle:** gate transitions are cinematic and slower; inner page transitions are subtle and fast.
@@ -267,62 +355,62 @@ Updated in `initBsupDashboard()` and `btLoginWithCode()`.
 
 ## 11. Recurring Bug Patterns (Always Check)
 
-1. **`''+var+''` in onclick strings** → SyntaxError. Fix: use `data-*` attributes + `addEventListener`
-2. **`btn.outerHTML`** → event listeners lost. Fix: use `appendChild`
-3. **Duplicate `function` definitions** — last wins, earlier are dead
-4. **`display:none` twice in inline style** → JS `.style.display='flex'` overridden
-5. **Top-level access before `const` declaration** → ReferenceError
-6. **`transform` on `.screen.active`** → traps `position:fixed` role switcher
-7. **Black screen after navigation** — force `opacity:1` after `showScreen()`
-8. **Regex in Python string replacements** — `\s` needs `\\s`, `\.` needs `\\.`
-9. **`_trainersCache`** — clear with `_trainersCache = null` if column mapping changes
-10. **Escaped quotes in JS template strings** — `'JetBrains Mono'` inside JS string = SyntaxError. Use `JetBrains Mono` without quotes inside JS-built HTML strings
+1. **`''+var+''` in onclick strings** â SyntaxError. Fix: use `data-*` attributes + `addEventListener`
+2. **`btn.outerHTML`** â event listeners lost. Fix: use `appendChild`
+3. **Duplicate `function` definitions** â last wins, earlier are dead
+4. **`display:none` twice in inline style** â JS `.style.display='flex'` overridden
+5. **Top-level access before `const` declaration** â ReferenceError
+6. **`transform` on `.screen.active`** â traps `position:fixed` role switcher
+7. **Black screen after navigation** â force `opacity:1` after `showScreen()`
+8. **Regex in Python string replacements** â `\s` needs `\\s`, `\.` needs `\\.`
+9. **`_trainersCache`** â clear with `_trainersCache = null` if column mapping changes
+10. **Escaped quotes in JS template strings** â `'JetBrains Mono'` inside JS string = SyntaxError. Use `JetBrains Mono` without quotes inside JS-built HTML strings
 
 ---
 
 ## 12. Team Account Setup
 
-- Accessible: Training Manager → Role Switcher → ⚙️ Team Account Setup
+- Accessible: Training Manager â Role Switcher â âï¸ Team Account Setup
 - Renders TEAM_ROSTER immediately, fetches Trainers sheet asynchronously
 - Trainers show with blue **TRAINER** badge
 - `runSetup()` creates Firebase Auth for everyone (TEAM_ROSTER + sheet trainers)
 - Trainer profiles: `trainerCode` field. Others: `supervisorCode` field
-- Safe to run multiple times — skips existing accounts
+- Safe to run multiple times â skips existing accounts
 - `_trainersCache = null` called before fetch to ensure fresh column data
-- "Fix my role" on sign-in page → `applyRoleFix()` → updates Firestore role + code
+- "Fix my role" on sign-in page â `applyRoleFix()` â updates Firestore role + code
 
 ---
 
-## 13. What Is Complete ✅
+## 13. What Is Complete â
 
-- **Batch Coordinator gate** — full flow, end-of-batch, email notifications
-- **Batch Manager gate** — 4 tabs:
+- **Batch Coordinator gate** â full flow, end-of-batch, email notifications
+- **Batch Manager gate** â 4 tabs:
   - Batches: view all trainees, edit status/supervisor/notes, generate training codes, prevent re-assign
   - Assign Supervisors: 4-step drag-drop with editable trainer assignment (nx-wrapped dropdowns)
   - Attendance: read-only
   - Tasks: create/edit/delete with real-time alerts
-- **Batch Supervisor gate** — accepted trainees, group assignment, attendance, training status, match assignment, notifications. Identity card on first page.
-- **Batch Trainer gate** — auto-login with trainerCode, sees only assigned group. Identity card on first page.
-- **Training Manager gate** — coordinator view + role switcher (view as any sup or trainer from sheet)
-- **Team Account Setup** — creates all accounts including trainers from sheet
-- **Identity cards** — BSup and Trainer first pages show code + correct name
-- **Live trainer fetch** — always from Google Sheet, never hardcoded
-- **Smooth transitions** — gate transitions cinematic, inner tabs subtle (all fixed)
-- **CONTEXT.md** — this file, in repo for session handover
-- **MARK review app (v2.2.0)** — BUILT & LIVE. Video review + tornado error tagging + quality scores, integrated with FIELD via shared Firebase. Sync between MARK and the Statsbomb collection app SOLVED via the Firestore bridge (see Section 20 + `SYNC_PROBLEM_CONTEXT.md` in the MARK repo).
+- **Batch Supervisor gate** â accepted trainees, group assignment, attendance, training status, match assignment, notifications. Identity card on first page.
+- **Batch Trainer gate** â auto-login with trainerCode, sees only assigned group. Identity card on first page.
+- **Training Manager gate** â coordinator view + role switcher (view as any sup or trainer from sheet)
+- **Team Account Setup** â creates all accounts including trainers from sheet
+- **Identity cards** â BSup and Trainer first pages show code + correct name
+- **Live trainer fetch** â always from Google Sheet, never hardcoded
+- **Smooth transitions** â gate transitions cinematic, inner tabs subtle (all fixed)
+- **CONTEXT.md** â this file, in repo for session handover
+- **MARK review app (v2.2.0)** â BUILT & LIVE. Video review + tornado error tagging + quality scores, integrated with FIELD via shared Firebase. Sync between MARK and the Statsbomb collection app SOLVED via the Firestore bridge (see Section 20 + `SYNC_PROBLEM_CONTEXT.md` in the MARK repo).
 
 ---
 
-## 14. What Is Pending 🔲
+## 14. What Is Pending ð²
 
 ### Roles not yet built:
-- **Training Supervisor** — "Soon" in role switcher
-- **Trainee** — "Soon" in role switcher
+- **Training Supervisor** â "Soon" in role switcher
+- **Trainee** â "Soon" in role switcher
 
-### Firebase Optimization (DO THIS LAST — after all features are complete)
+### Firebase Optimization (DO THIS LAST â after all features are complete)
 See Section 16 for full technical specification.
 
-### ASHRAF (separate project — future)
+### ASHRAF (separate project â future)
 See Section 17.
 
 ---
@@ -343,9 +431,9 @@ See Section 17.
 
 ---
 
-## 16. Firebase Optimization — Full Technical Specification
+## 16. Firebase Optimization â Full Technical Specification
 
-### ⚠️ DO THIS LAST — only after all roles and features are complete
+### â ï¸ DO THIS LAST â only after all roles and features are complete
 
 ### Why It's Needed
 Firebase free tier: 50,000 reads/day. Without optimization, worst-case day (batch transition, everyone active) = ~52,000 reads. With optimization = ~24,500 reads. Safely under limit for up to 10 simultaneous batches.
@@ -354,9 +442,9 @@ Firebase free tier: 50,000 reads/day. Without optimization, worst-case day (batc
 
 | Scale | Normal Day | Worst Day | Status |
 |-------|-----------|-----------|--------|
-| 5 batches (200 trainees, 70 trainers, 20 sups) | ~6,800 | ~24,500 | ✅ Safe |
-| 10 batches | ~13,600 | ~49,000 | ✅ Safe |
-| 11 batches | ~14,960 | ~53,900 | 🔴 Over daily |
+| 5 batches (200 trainees, 70 trainers, 20 sups) | ~6,800 | ~24,500 | â Safe |
+| 10 batches | ~13,600 | ~49,000 | â Safe |
+| 11 batches | ~14,960 | ~53,900 | ð´ Over daily |
 
 **Reality check:** Batches are staggered, not simultaneous. 10 batches/quarter staggered = only 3-4 overlap at any time = ~19,600 worst day. Effectively unlimited headroom.
 
@@ -461,7 +549,7 @@ async function initTrainingStatus(){
 
 #### Change 7: Replace collection onSnapshot with targeted listeners
 ```javascript
-// BEFORE (listens to entire collection — fires for ALL users):
+// BEFORE (listens to entire collection â fires for ALL users):
 fbDb.collection('batch_notifications').onSnapshot(snap => { ... });
 
 // AFTER (listen only to docs relevant to this user):
@@ -478,7 +566,7 @@ function forceRefresh(){
   CACHE.clear(); // wipe all cache
   bmLoadAllData(); // or initBsupDashboard()
 }
-// HTML: <button onclick="forceRefresh()">🔄 Refresh</button>
+// HTML: <button onclick="forceRefresh()">ð Refresh</button>
 ```
 
 #### Change 9: Lazy setup status check
@@ -510,15 +598,15 @@ document.querySelectorAll('[data-code]').forEach(el => observer.observe(el));
 
 ---
 
-## 17. ASHRAF — Future Separate Project
+## 17. ASHRAF â Future Separate Project
 
 **What:** AI training coach that plays the Supporter role for Tornado Batches. Separate from FIELD.
 **Status:** Planned, not started. Full spec exists (shared as docx in conversation).
 **Key decisions made:**
-- Separate GitHub repo (different audience — external trainees vs internal staff)
+- Separate GitHub repo (different audience â external trainees vs internal staff)
 - Single HTML file approach (same as FIELD)
 - Free at launch: Groq API (Llama) for brain, browser Web Speech for voice
-- Upgrade path: Claude/GPT brain + ElevenLabs voice — config-only swap, no rewrite
+- Upgrade path: Claude/GPT brain + ElevenLabs voice â config-only swap, no rewrite
 - Hosted on GitHub Pages, public (no company account for trainees)
 - Trainee access: public link + batch code
 - Ahmed needs Groq API key (free at console.groq.com) before building
@@ -534,10 +622,10 @@ document.querySelectorAll('[data-code]').forEach(el => observer.observe(el));
 
 ## 18. The Product Owner
 
-**Ahmed Ashraf** — Training Manager at Hudl Egypt. Non-developer, Product Director.
+**Ahmed Ashraf** â Training Manager at Hudl Egypt. Non-developer, Product Director.
 Email: `ahmed.ashraf@hudl.com`
 All decisions go through him. He tests on the live app after every push.
-He will never upgrade to Firebase Blaze paid plan — all solutions must work within free tier.
+He will never upgrade to Firebase Blaze paid plan â all solutions must work within free tier.
 
 ---
 
@@ -549,7 +637,7 @@ Run it to estimate daily/monthly reads whenever a new role or feature is added.
 
 ---
 
-## 20. MARK — Review Application (BUILT & LIVE ✅)
+## 20. MARK â Review Application (BUILT & LIVE â)
 
 **Status:** Built, shipping, in use. Current version **v2.2.0**. Companion product to FIELD.
 
@@ -563,63 +651,63 @@ Run it to estimate daily/monthly reads whenever a new role or feature is added.
 A Windows desktop app (**Tauri 2** = Rust backend + React 19 in a WebView2 webview) for
 Batch Trainers/Reviewers. It runs alongside the **Statsbomb Tag Once collection app**
 (Electron, closed source) on the same machine. The reviewer watches match video in MARK,
-tags errors using tornado event shortcuts, and — critically — **both videos stay in sync**
+tags errors using tornado event shortcuts, and â critically â **both videos stay in sync**
 so the reviewer navigates once and sees the same frame in both apps.
 
-### THE SYNC SOLUTION (the hard-won core — v2.1.0)
+### THE SYNC SOLUTION (the hard-won core â v2.1.0)
 Syncing two independent Chromium apps where one is closed-source was the single hardest
 problem of the whole project. ~20 approaches failed (all keystroke/focus injection methods
 hit a wall: stealing focus to drive the collection app put MARK's own webview keyboard to
 sleep, needing a physical mouse click every cycle). The collection app's remote-debugging
 port is **disabled at build time**, killing all standard automation (CDP, electron-inject, etc.).
 
-**The winning architecture — a Firestore bridge:**
+**The winning architecture â a Firestore bridge:**
 ```
 Reviewer presses arrow in MARK
-   → MARK writes navCommand to Firestore: mark_sessions/{sessionId}.navCommand = {action, shift, ts}
-   → a "bridge script" running INSIDE the collection app listens via onSnapshot
-   → bridge moves the collection app's video natively: document.querySelector('video').currentTime += step
+   â MARK writes navCommand to Firestore: mark_sessions/{sessionId}.navCommand = {action, shift, ts}
+   â a "bridge script" running INSIDE the collection app listens via onSnapshot
+   â bridge moves the collection app's video natively: document.querySelector('video').currentTime += step
 ```
 Because the bridge runs *inside* the collection app, it controls the video with **zero focus
 stealing and zero clicks.** MARK never touches the collection app's focus.
 
-**Getting the bridge in:** MARK's ⚡ **Inject Bridge** button (Rust `inject_bridge_script`)
+**Getting the bridge in:** MARK's â¡ **Inject Bridge** button (Rust `inject_bridge_script`)
 focuses the collection app, opens its DevTools (Alt+Ctrl+I), types `allow pasting` via
 **Unicode key injection** (Chromium treats Unicode-injected chars as *typed*, bypassing the
 self-XSS paste guard), then pastes + runs the bridge script from the clipboard. Reviewer
 clicks Inject Bridge once per session, signs into the bridge panel with their FIELD account
-(Firebase caches it → later sessions skip login), green "Connected" panel appears, done.
+(Firebase caches it â later sessions skip login), green "Connected" panel appears, done.
 
 ### Reviewer experience polish (v2.1.1 / v2.2.0)
-- After injecting, MARK auto-closes the collection app's DevTools — clean screen, just the video.
+- After injecting, MARK auto-closes the collection app's DevTools â clean screen, just the video.
 - The MARK Bridge panel is hidden by default; it only appears if sign-in is needed, then
   disappears once connected. Returning reviewers (cached login) never see it. Sync runs silently.
-- MARK's top bar shows the live version: `MARK · Review App · vX.Y.Z`.
+- MARK's top bar shows the live version: `MARK Â· Review App Â· vX.Y.Z`.
 
 ### Tech Stack
 | Layer | Choice |
 |-------|--------|
 | Desktop shell | Tauri 2 (Windows), Rust backend |
 | UI | React 19 + FIELD design tokens (dark, #E8590C, Inter + DM Sans + JetBrains Mono) |
-| Auth | Firebase Auth — same accounts as FIELD, no second login |
-| Database | Firebase Firestore — **same project as FIELD** (`hudl-training-ops`) |
-| Sync | **Firestore bridge** (navCommand doc → injected listener in collection app) |
+| Auth | Firebase Auth â same accounts as FIELD, no second login |
+| Database | Firebase Firestore â **same project as FIELD** (`hudl-training-ops`) |
+| Sync | **Firestore bridge** (navCommand doc â injected listener in collection app) |
 | Real-time | Firestore onSnapshot (same as FIELD) |
 
-### Navigation Shortcuts (matched to the collection app — CORRECTED)
-- `→` / `←`  : seek **400ms** forward/back
-- `Shift + →` / `Shift + ←` : seek **40ms** forward/back
+### Navigation Shortcuts (matched to the collection app â CORRECTED)
+- `â` / `â`  : seek **400ms** forward/back
+- `Shift + â` / `Shift + â` : seek **40ms** forward/back
 - `Space` : play / pause
 (These exact values match the collection app's own steps so the two videos stay aligned.)
 
 ### Error Tagging (stays in MARK's own window)
-Tornado event shortcut keys open a tag modal; `Y` = Missing Event. Each tag → `mark_error_tags`.
-Tagging, timeline, and quality score all live in MARK's window (writing to Firebase → FIELD).
-Deliberately NOT moved into the bridge panel — tagging always worked; only sync was broken.
+Tornado event shortcut keys open a tag modal; `Y` = Missing Event. Each tag â `mark_error_tags`.
+Tagging, timeline, and quality score all live in MARK's window (writing to Firebase â FIELD).
+Deliberately NOT moved into the bridge panel â tagging always worked; only sync was broken.
 
 ### Quality Score Formula
 ```
-Quality Score (%) = 100 - ((Tagged Errors / Total Reviewed Events) × 100)
+Quality Score (%) = 100 - ((Tagged Errors / Total Reviewed Events) Ã 100)
 ```
 Higher = better. 100 = perfect.
 
@@ -634,18 +722,18 @@ FIELD and MARK share one Firebase project, so data flows live between them:
 ### Shared Firestore Collections (same Firebase project as FIELD)
 | Collection | Purpose |
 |-----------|---------|
-| `mark_sessions` | Review sessions — match, half, reviewer, collector, status, scores. **Also carries `navCommand` for the sync bridge.** |
-| `mark_error_tags` | Individual error tags — timestamp, type, extras, session ref |
-| `mark_locks` | Half-level locks — `{matchId}_{half}` → reviewer |
-| `mark_match_assignments` | Reviewer ↔ match/collector assignments |
+| `mark_sessions` | Review sessions â match, half, reviewer, collector, status, scores. **Also carries `navCommand` for the sync bridge.** |
+| `mark_error_tags` | Individual error tags â timestamp, type, extras, session ref |
+| `mark_locks` | Half-level locks â `{matchId}_{half}` â reviewer |
+| `mark_match_assignments` | Reviewer â match/collector assignments |
 
 ### Session Flow
 1. Open collection app, log in, load video
-2. Open MARK → Firebase reads identity from existing FIELD session → start session, load same video
-3. Click ⚡ **Inject Bridge** → bridge panel appears in collection app → sign in (first time only)
-4. Navigate with arrows in MARK → **both videos seek together, no clicks**
-5. Tag errors with tornado shortcuts (in MARK's window) → saved to `mark_error_tags`
-6. Press Done → enter Total Reviewed Events → quality score → results appear in FIELD instantly
+2. Open MARK â Firebase reads identity from existing FIELD session â start session, load same video
+3. Click â¡ **Inject Bridge** â bridge panel appears in collection app â sign in (first time only)
+4. Navigate with arrows in MARK â **both videos seek together, no clicks**
+5. Tag errors with tornado shortcuts (in MARK's window) â saved to `mark_error_tags`
+6. Press Done â enter Total Reviewed Events â quality score â results appear in FIELD instantly
 
 ### Known Caveats (for future maintainers)
 - The Inject Bridge auto-injection uses timed `SendInput` steps; on a slow machine the sleeps
