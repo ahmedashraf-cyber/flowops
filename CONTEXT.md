@@ -1,4 +1,33 @@
 <!-- ============================================================= -->
+<!-- SESSION 2026-06-11 — FOCUS NARROWED · MARK 4.x + FIELD ONLY -->
+<!-- ============================================================= -->
+
+## Latest Session: 2026-06-11 — Scope Decisions
+
+### TL;DR for FIELD
+
+1. **Fady (PocketBase experiment) — archived.** The `fady-app` repo (https://github.com/ahmedashraf-cyber/fady-app) is read-only as of 2026-06-11. Did not impact FIELD directly.
+2. **MARK 5.0.0 architecture migration — cancelled.** This DOES affect the Firebase-quota strategy that was outlined in the 2026-06-09 session below. The "MARK 5.0.0 drops Firestore usage ~99%" assumption no longer holds. If quota becomes a problem, the path is now Firebase Blaze upgrade rather than re-architecting MARK.
+3. **MARK has been brought to version 4.1.0** (2026-06-11). New errors-taxonomy data file added (`src/data/tagging_scenarios.js`), two new events added (Pass Interception, Card). See MARK_CONTEXT.md in the mark-app repo for full details.
+4. **Going forward: only two repos, both stay.** mark-app and flowops. No experiments. No third repo.
+5. **FIELD pending work, unchanged:** Training Supervisor role, Trainee role (per system prompt for the project).
+
+### Quota strategy update
+
+Without MARK 5.0.0's quota cuts, the assumed cushion in the 2026-06-09 session is smaller. Practically:
+
+- **If reviewers get blocked again by quota:** upgrade Firebase to Blaze (pay-as-you-go) — costs are small for a small team. See the Firebase upgrade guidance that was discussed on 2026-06-11 (process documented in conversation; not in MD form).
+- **FIELD-side optimizations remain on the table** when convenient (cache batch/session lists, reduce dashboard listeners, push static reference data to Google Sheets) — see CALCULATOR.md for usage estimation.
+
+### Hard scope rules (set 2026-06-11)
+
+- Don't change the current MARK structure unless explicitly approved.
+- Don't introduce a third repo or third backend.
+- Sheet-style data sources are the source of truth (matches in Google Sheets, error taxonomy in `src/data/tagging_scenarios.js` from `Untitled_spreadsheet (1).xlsx`).
+
+---
+
+<!-- ============================================================= -->
 <!-- SESSION 2026-06-09 - FIREBASE QUOTA + INFRASTRUCTURE DECISIONS -->
 <!-- ============================================================= -->
 
