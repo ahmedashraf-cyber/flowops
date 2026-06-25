@@ -5647,8 +5647,13 @@ async function colLoadSheetData(){
   const data = await res.json();
   if(data.error) throw new Error(data.error.message);
   const rows = data.values||[];
+  const allSessions = rows.map(colParseSession).filter(s=>s.session_id);
+  // Super admin sees all collectors — no filter
+  const isSuperAdmin = A.user && A.user.email === 'ahmed.ashraf@hudl.com';
+  if(isSuperAdmin) return allSessions;
+  // Regular collector sees only their own sessions
   const hrCode = (A.user.hrCode||'').trim();
-  return rows.map(colParseSession).filter(s=>{
+  return allSessions.filter(s=>{
     if(!s.hr_code) return false;
     return s.hr_code===hrCode || s.hr_code.split(',').map(c=>c.trim()).includes(hrCode);
   });
@@ -5765,14 +5770,19 @@ function colRenderErrorBars(sessions){
 
 async function initCollectorDashboard(){
   if(!A.user) return;
+  const isSuperAdmin = A.user.email === 'ahmed.ashraf@hudl.com';
   const pill=document.getElementById('colUserPill');
-  if(pill) pill.textContent=(A.user.hrCode||A.user.name)+' · Collector';
+  if(pill) pill.textContent = isSuperAdmin
+    ? 'Super Admin · All Collectors'
+    : (A.user.hrCode||A.user.name)+' · Collector';
   const welcome=document.getElementById('colWelcome');
-  if(welcome) welcome.textContent='Good day, '+(A.user.name||'Collector').split(' ')[0];
+  if(welcome) welcome.textContent = isSuperAdmin
+    ? 'All Collectors Overview'
+    : 'Good day, '+(A.user.name||'Collector').split(' ')[0];
   showColTab('overview');
   const sub=document.getElementById('colSubtitle');
   try {
-    if(sub) sub.textContent='Loading your review data...';
+    if(sub) sub.textContent='Loading review data...';
     COL_STATE.sessions=await colLoadSheetData();
     colFilterAndRender();
   } catch(e){
