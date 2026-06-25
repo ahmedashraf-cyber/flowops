@@ -6647,6 +6647,21 @@ function switchRole(role){
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
       setTimeout(()=>{ initTSDashboard(); listenTsMilestoneAlerts(); }, 100);
+    } else if(role === 'collector'){
+      // Super admin collector test mode — no Firestore write, no real profile needed
+      const prevRole  = A.user.role;
+      const prevHrCode = A.user.hrCode;
+      A.user.role   = 'collector';
+      A.user.hrCode = A.user.hrCode || 'ADMIN-TEST';
+      A._superAdminPrevRole = prevRole;
+      A._superAdminPrevHrCode = prevHrCode;
+      showScreen('collectorScreen');
+      const sw = document.getElementById('roleSwitcher');
+      if(sw) sw.style.display = 'block';
+      // Add exit button to collector screen topbar
+      const pill = document.getElementById('colUserPill');
+      if(pill) pill.innerHTML = (A.user.hrCode) + ' · Collector <span style="font-size:10px;background:rgba(232,89,12,0.2);color:#E8590C;padding:1px 6px;border-radius:4px;margin-left:4px">ADMIN TEST</span>';
+      setTimeout(()=>{ initCollectorDashboard(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -10805,6 +10820,8 @@ function btQuickAssignAll(){
     </div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('manager')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">⚙️ Training Manager <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Current</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainee')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🏃 Trainee <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
+    <div style="height:0.5px;background:var(--border);margin:4px 0"></div>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('collector')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">📡 Collector View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
   </div>
 </div>
 
