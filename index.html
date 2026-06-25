@@ -5594,6 +5594,7 @@ function showColTab(tab){
     const nav = document.getElementById('colNav_'+t);
     if(nav) nav.classList.toggle('active', t===tab);
   });
+  if(tab==='analysis') colInitAnalysis();
 }
 
 function colSetTimeframe(tf, btn){
@@ -5766,6 +5767,272 @@ function colRenderErrorBars(sessions){
       <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;color:var(--t-3)">${e.total}</div>
     </div>`;
   }).join('');
+}
+
+// ── Event Analysis page ──────────────────────────────────────────
+const EVT = { HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,EVENT_NAME:6,ERROR_TYPE:7,AMENDMENT_ID:8,VIDEO_TS:9,MARK_VERSION:10 };
+const COL_EVT_STATE = { events:[], sessions:[], tf:'week', sortCol:2, sortDir:-1, expanded:null, sparkChart:null, ringChart:null, matchChart:null };
+
+function colSetTimeframe2(tf, btn){
+  COL_EVT_STATE.tf = tf;
+  document.querySelectorAll('.col-tf-btn2').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  colRenderAnalysis();
+}
+
+function colParseEvent(row){
+  return {
+    hr_code:      row[EVT.HR_CODE]      ||'',
+    session_id:   row[EVT.SESSION_ID]   ||'',
+    match_id:     row[EVT.MATCH_ID]     ||'',
+    match_name:   row[EVT.MATCH_NAME]   ||'',
+    half:         row[EVT.HALF]         ||'',
+    completed_at: row[EVT.COMPLETED_AT] ||'',
+    event_name:   row[EVT.EVENT_NAME]   ||'',
+    error_type:   row[EVT.ERROR_TYPE]   ||'',
+    amendment_id: row[EVT.AMENDMENT_ID] ||'',
+    video_ts:     row[EVT.VIDEO_TS]     ||'',
+  };
+}
+
+async function colLoadEventsData(){
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:K?key=${COLLECTOR_SHEET_KEY}`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message);
+  const rows = data.values||[];
+  const allEvts = rows.map(colParseEvent).filter(e=>e.event_name);
+  const isSuperAdmin = A.user && A.user.email === 'ahmed.ashraf@hudl.com';
+  if(isSuperAdmin) return allEvts;
+  const hrCode = (A.user.hrCode||'').trim();
+  return allEvts.filter(e => e.hr_code===hrCode || e.hr_code.split(',').map(c=>c.trim()).includes(hrCode));
+}
+
+function colFilterEvents(events, tf){
+  if(tf==='all') return events;
+  const now=new Date(); const cutoff=new Date();
+  if(tf==='week')    cutoff.setDate(now.getDate()-7);
+  if(tf==='month')   cutoff.setMonth(now.getMonth()-1);
+  if(tf==='quarter') cutoff.setMonth(now.getMonth()-3);
+  return events.filter(e=>e.completed_at && new Date(e.completed_at)>=cutoff);
+}
+
+function colRenderAnalysis(){
+  const filtered = colFilterEvents(COL_EVT_STATE.events, COL_EVT_STATE.tf);
+  const filtSess = colFilterSessions(COL_EVT_STATE.sessions, COL_EVT_STATE.tf);
+  const sub = document.getElementById('colAnalysisSub');
+  const empty = document.getElementById('colAnalysisEmpty');
+
+  if(!filtered.length){
+    if(sub) sub.textContent='No event data for this period.';
+    if(empty) empty.style.display='block';
+    return;
+  }
+  if(empty) empty.style.display='none';
+
+  const tf=COL_EVT_STATE.tf;
+  const label=tf==='week'?'last 7 days':tf==='month'?'last 30 days':tf==='quarter'?'last 3 months':'all time';
+  if(sub) sub.textContent=`${filtered.length} errors across ${filtSess.length} sessions · ${label}`;
+
+  // Scorecard ring
+  const withScore=filtSess.filter(s=>s.score_overall!==null);
+  const avgScore=withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score_overall,0)/withScore.length):null;
+  const ringEl=document.getElementById('colRingScore'); if(ringEl) ringEl.textContent=avgScore!==null?avgScore+'%':'—';
+  const ringTrend=document.getElementById('colRingTrend'); if(ringTrend) ringTrend.textContent=withScore.length+' sessions';
+  colDrawRing(avgScore);
+
+  // Module bars in analysis header
+  const modKeys=['score_base','score_pressure','score_players','score_location','score_extras','score_freeze'];
+  const modLabels={score_base:'Base',score_pressure:'Pressure',score_players:'Players',score_location:'Location',score_extras:'Extras',score_freeze:'Freeze'};
+  colRenderModuleBars(filtSess,modKeys,modLabels,'colAnalysisModuleBars');
+
+  // Match cards
+  colRenderMatchCards(filtSess);
+
+  // Stat bar
+  const evtCounts={};
+  filtered.forEach(e=>{ evtCounts[e.event_name]=(evtCounts[e.event_name]||0)+1; });
+  const sorted=Object.entries(evtCounts).sort((a,b)=>b[1]-a[1]);
+  const worst=sorted[0]?sorted[0][0]:'—';
+  const worstCount=sorted[0]?sorted[0][1]:0;
+  const best=sorted.length>1?sorted[sorted.length-1][0]:'—';
+  const matchSet=new Set(filtered.map(e=>e.session_id));
+
+  const su=document.getElementById('colStatUnique'); if(su) su.textContent=sorted.length;
+  const sus=document.getElementById('colStatUniqueSub'); if(sus) sus.textContent=filtered.length+' total errors';
+  const sw=document.getElementById('colStatWorst'); if(sw) sw.textContent=worst;
+  const sws=document.getElementById('colStatWorstSub'); if(sws) sws.textContent=worstCount+' errors';
+  const sb=document.getElementById('colStatBest'); if(sb) sb.textContent=best;
+  const sm=document.getElementById('colStatMatches'); if(sm) sm.textContent=matchSet.size;
+
+  // Event table
+  colRenderEvtTable(filtered, filtSess);
+}
+
+function colDrawRing(score){
+  const canvas=document.getElementById('colScoreRing'); if(!canvas) return;
+  const ctx=canvas.getContext('2d');
+  if(COL_EVT_STATE.ringChart){COL_EVT_STATE.ringChart.destroy();COL_EVT_STATE.ringChart=null;}
+  const val=score!=null?score:0;
+  COL_EVT_STATE.ringChart=new Chart(ctx,{
+    type:'doughnut',
+    data:{datasets:[{data:[val,100-val],backgroundColor:['#E8590C','rgba(255,255,255,0.05)'],borderWidth:0,borderRadius:3}]},
+    options:{responsive:false,cutout:'75%',plugins:{legend:{display:false},tooltip:{enabled:false}}}
+  });
+}
+
+function colRenderMatchCards(sessions){
+  const sorted=[...sessions].filter(s=>s.score_overall!==null&&s.completed_at)
+    .sort((a,b)=>new Date(a.completed_at)-new Date(b.completed_at));
+  const wrap=document.getElementById('colMatchCards'); if(!wrap) return;
+
+  const scoreClass=s=>s>=90?'color:var(--green)':s>=80?'color:var(--warn)':'color:var(--red)';
+  wrap.innerHTML=sorted.map((s,i)=>`
+    <div style="background:var(--bg-2);border:0.5px solid var(--b-1);border-radius:10px;padding:11px 13px;min-width:130px;flex-shrink:0;cursor:default">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--t-3);padding:1px 5px;border-radius:3px">${s.half}</span>
+        <span style="font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;${scoreClass(s.score_overall)}">${Math.round(s.score_overall)}%</span>
+      </div>
+      <div style="font-size:10px;color:var(--t-3);line-height:1.3;margin-bottom:3px">${(s.match_name||'').replace(' vs ',' vs\n')}</div>
+      <div style="font-size:10px;color:var(--t-3);opacity:.6">${s.completed_at?new Date(s.completed_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):''}</div>
+    </div>`).join('');
+
+  // Sparkline under cards
+  const ctx=document.getElementById('colMatchSparkline'); if(!ctx) return;
+  if(COL_EVT_STATE.sparkChart){COL_EVT_STATE.sparkChart.destroy();COL_EVT_STATE.sparkChart=null;}
+  COL_EVT_STATE.sparkChart=new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:sorted.map(s=>s.half),
+      datasets:[{data:sorted.map(s=>s.score_overall),
+        backgroundColor:sorted.map(s=>s.score_overall>=90?'rgba(29,158,117,0.7)':s.score_overall>=80?'rgba(186,117,23,0.7)':'rgba(226,75,74,0.7)'),
+        borderRadius:3,borderSkipped:false}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y}%`}}},
+      scales:{x:{display:false},y:{min:0,max:100,display:false}}}
+  });
+}
+
+function colRenderModuleBars(sessions,modKeys,modLabels,targetId){
+  const wrap=document.getElementById(targetId||'colModuleBars'); if(!wrap) return;
+  const avgs=modKeys.map(k=>{
+    const vals=sessions.map(s=>s[k]).filter(v=>v!==null);
+    return {label:modLabels[k],avg:vals.length?Math.round(vals.reduce((a,v)=>a+v,0)/vals.length):null};
+  });
+  const hasData=avgs.some(a=>a.avg!==null);
+  if(!hasData){wrap.innerHTML='<div style="font-size:12px;color:var(--t-3)">Module scores from MARK v7.5.8+</div>';return;}
+  wrap.innerHTML=avgs.map(a=>{
+    if(a.avg===null) return '';
+    const color=a.avg>=95?'var(--green)':a.avg>=85?'var(--warn)':'var(--red)';
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+      <div style="font-size:11px;color:var(--t-3);min-width:68px">${a.label}</div>
+      <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+        <div style="height:100%;border-radius:3px;background:${color};width:${a.avg}%"></div>
+      </div>
+      <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:36px;text-align:right;color:${color}">${a.avg}%</div>
+    </div>`;
+  }).join('');
+}
+
+function colRenderEvtTable(events, sessions){
+  // Build event summary
+  const evtMap={};
+  events.forEach(e=>{
+    if(!evtMap[e.event_name]) evtMap[e.event_name]={name:e.event_name,errors:0,sessions:new Set(),topType:{},detail:[]};
+    const em=evtMap[e.event_name];
+    em.errors++;
+    em.sessions.add(e.session_id);
+    em.topType[e.error_type]=(em.topType[e.error_type]||0)+1;
+    em.detail.push(e);
+  });
+  const totalSessions=sessions.length||1;
+  let rows=Object.values(evtMap).map(e=>{
+    const rate=Math.round((e.errors/totalSessions)*100)/10;
+    const topType=Object.entries(e.topType).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—';
+    return {name:e.name,errors:e.errors,rate,matches:e.sessions.size,topType,detail:e.detail};
+  });
+
+  // Sort
+  const sc=COL_EVT_STATE.sortCol, sd=COL_EVT_STATE.sortDir;
+  const keys=['name','errors','rate','matches','topType'];
+  rows.sort((a,b)=>{
+    const av=a[keys[sc]], bv=b[keys[sc]];
+    if(typeof av==='string') return sd*av.localeCompare(bv);
+    return sd*(av-bv);
+  });
+
+  // Update sort headers
+  ['colEvtTh0','colEvtTh1','colEvtTh2','colEvtTh3','colEvtTh4'].forEach((id,i)=>{
+    const el=document.getElementById(id); if(!el) return;
+    const base=['Event','Errors','Error rate','Matches','Top error type'][i];
+    el.textContent = i===sc ? base+(sd>0?' ↑':' ↓') : base+' ↕';
+    el.style.color = i===sc ? 'var(--p2)' : 'var(--t-3)';
+  });
+
+  const tbody=document.getElementById('colEvtBody'); if(!tbody) return;
+  const exp=COL_EVT_STATE.expanded;
+  tbody.innerHTML=rows.map(r=>{
+    const isExp=exp===r.name;
+    const rateColor=r.rate>5?'color:var(--red)':r.rate>2?'color:var(--warn)':'color:var(--t-2)';
+    let html=`<tr onclick="colToggleDrilldown('${r.name.replace(/'/g,"\\'")}','${encodeURIComponent(JSON.stringify(r.detail.slice(0,20)))}')" style="cursor:pointer;${isExp?'background:var(--bg-2)':''}">
+      <td style="padding:9px 16px;font-weight:500;color:var(--t-1)">${r.name}</td>
+      <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace">${r.errors}</td>
+      <td style="padding:9px 10px;${rateColor};font-family:'JetBrains Mono',monospace">${r.rate}%</td>
+      <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;color:var(--t-3)">${r.matches}</td>
+      <td style="padding:9px 10px"><span style="background:var(--bg-2);color:var(--t-3);font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--b-1)">${r.topType}</span></td>
+      <td style="padding:9px 10px;color:var(--t-3);font-size:12px">${isExp?'▲':'▼'}</td>
+    </tr>`;
+    if(isExp){
+      const det=r.detail.slice(0,10);
+      html+=`<tr><td colspan="6" style="padding:0 0 8px 0">
+        <div style="background:var(--bg);border-radius:8px;margin:0 8px;overflow:hidden">
+          <div style="display:flex;padding:6px 14px;font-size:10px;color:var(--t-3);letter-spacing:0.5px;text-transform:uppercase;border-bottom:0.5px solid var(--b-1)">
+            <div style="flex:2">Match</div><div style="flex:0.5">Half</div><div style="flex:0.8">Timestamp</div><div style="flex:1">Error type</div>
+          </div>
+          ${det.map(d=>`
+            <div style="display:flex;align-items:center;padding:8px 14px;border-bottom:0.5px solid var(--b-1);font-size:11px;color:var(--t-3)">
+              <div style="flex:2">${d.match_name||'—'}</div>
+              <div style="flex:0.5;font-family:'JetBrains Mono',monospace">${d.half||'—'}</div>
+              <div style="flex:0.8;font-family:'JetBrains Mono',monospace">${d.video_ts?colFmtTs(d.video_ts):'—'}</div>
+              <div style="flex:1"><span style="background:var(--bg-2);color:var(--t-3);font-size:10px;padding:1px 7px;border-radius:4px;border:0.5px solid var(--b-1)">${d.error_type}</span></div>
+            </div>`).join('')}
+          ${r.detail.length>10?`<div style="padding:8px 14px;font-size:11px;color:var(--t-3)">${r.detail.length-10} more rows not shown</div>`:''}
+        </div>
+      </td></tr>`;
+    }
+    return html;
+  }).join('');
+}
+
+function colFmtTs(ts){
+  const s=parseInt(ts)||0;
+  const m=Math.floor(s/60), sec=s%60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function colToggleDrilldown(name){
+  COL_EVT_STATE.expanded = COL_EVT_STATE.expanded===name ? null : name;
+  colRenderEvtTable(colFilterEvents(COL_EVT_STATE.events,COL_EVT_STATE.tf), colFilterSessions(COL_EVT_STATE.sessions,COL_EVT_STATE.tf));
+}
+
+function colSortEvt(col){
+  if(COL_EVT_STATE.sortCol===col) COL_EVT_STATE.sortDir*=-1;
+  else{COL_EVT_STATE.sortCol=col;COL_EVT_STATE.sortDir=-1;}
+  colRenderEvtTable(colFilterEvents(COL_EVT_STATE.events,COL_EVT_STATE.tf), colFilterSessions(COL_EVT_STATE.sessions,COL_EVT_STATE.tf));
+}
+
+async function colInitAnalysis(){
+  if(COL_EVT_STATE.events.length) return; // already loaded
+  const sub=document.getElementById('colAnalysisSub');
+  try {
+    if(sub) sub.textContent='Loading event data...';
+    COL_EVT_STATE.events   = await colLoadEventsData();
+    COL_EVT_STATE.sessions = COL_STATE.sessions.length ? COL_STATE.sessions : await colLoadSheetData();
+    colRenderAnalysis();
+  } catch(e){
+    console.error('[COL] Events load failed:',e);
+    if(sub) sub.textContent='Failed to load event data. Please refresh.';
+  }
 }
 
 async function initCollectorDashboard(){
@@ -11401,8 +11668,97 @@ function btQuickAssignAll(){
 
       <!-- ── EVENT ANALYSIS PAGE ── -->
       <div id="colPage_analysis" style="display:none;padding:28px 24px">
-        <div style="font-size:20px;font-weight:700;color:var(--t-1);margin-bottom:4px">Event Analysis</div>
-        <div style="font-size:13px;color:var(--t-3);margin-bottom:24px">Coming soon — building next</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Event Analysis</div>
+          <div style="display:flex;gap:3px;background:var(--bg-2);border-radius:8px;padding:3px">
+            <button class="btn btn-ghost btn-sm col-tf-btn2 active" data-tf="week"   onclick="colSetTimeframe2('week',this)">Week</button>
+            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="month"  onclick="colSetTimeframe2('month',this)">Month</button>
+            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="quarter"onclick="colSetTimeframe2('quarter',this)">Quarter</button>
+            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="all"    onclick="colSetTimeframe2('all',this)">All time</button>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="colAnalysisSub">Loading event data...</div>
+
+        <!-- Scorecard header: ring + module bars -->
+        <div class="card" style="display:grid;grid-template-columns:180px 1fr;gap:0;overflow:hidden;margin-bottom:14px;padding:0">
+          <div style="padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:0.5px solid var(--b-1)">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:8px">Overall quality</div>
+            <div style="position:relative;width:100px;height:100px">
+              <canvas id="colScoreRing" width="100" height="100"></canvas>
+              <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                <div style="font-size:26px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="colRingScore">—</div>
+                <div style="font-size:9px;color:var(--t-3)">quality</div>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:6px" id="colRingTrend"></div>
+          </div>
+          <div style="padding:20px 24px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.8px;text-transform:uppercase;margin-bottom:12px">Module scores</div>
+            <div id="colAnalysisModuleBars"></div>
+          </div>
+        </div>
+
+        <!-- Per-match quality score cards -->
+        <div class="card" style="padding:18px 20px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+            Per-match quality scores
+            <span style="font-size:11px;color:var(--t-3);font-weight:400">scroll →</span>
+          </div>
+          <div id="colMatchCards" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin"></div>
+          <div style="margin-top:14px;height:60px;position:relative"><canvas id="colMatchSparkline"></canvas></div>
+        </div>
+
+        <!-- Stat bar -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">UNIQUE ERROR EVENTS</div>
+            <div style="font-size:22px;font-weight:700;color:#E8590C;letter-spacing:-0.5px;line-height:1" id="colStatUnique">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:4px" id="colStatUniqueSub"></div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">WORST EVENT TYPE</div>
+            <div style="font-size:15px;font-weight:700;color:var(--red);margin-top:4px;line-height:1" id="colStatWorst">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:4px" id="colStatWorstSub"></div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">MOST IMPROVED</div>
+            <div style="font-size:15px;font-weight:700;color:var(--green);margin-top:4px;line-height:1" id="colStatBest">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:4px" id="colStatBestSub"></div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">REVIEWED MATCHES</div>
+            <div style="font-size:22px;font-weight:700;color:var(--t-1);letter-spacing:-0.5px;line-height:1" id="colStatMatches">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:4px">this period</div>
+          </div>
+        </div>
+
+        <!-- Event error summary table -->
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+          <div style="padding:16px 20px 12px;font-size:13px;font-weight:600;color:var(--t-2);border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between">
+            Event error summary
+            <span style="font-size:11px;color:var(--t-3);font-weight:400">click row to expand detail</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px" id="colEvtTable">
+              <thead>
+                <tr style="border-bottom:0.5px solid var(--b-1)">
+                  <th onclick="colSortEvt(0)" style="text-align:left;padding:9px 16px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap;letter-spacing:0.3px" id="colEvtTh0">Event ↕</th>
+                  <th onclick="colSortEvt(1)" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap" id="colEvtTh1">Errors ↕</th>
+                  <th onclick="colSortEvt(2)" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--p2);cursor:pointer;user-select:none;white-space:nowrap" id="colEvtTh2">Error rate ↓</th>
+                  <th onclick="colSortEvt(3)" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap" id="colEvtTh3">Matches ↕</th>
+                  <th onclick="colSortEvt(4)" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap" id="colEvtTh4">Top error type ↕</th>
+                  <th style="padding:9px 10px;width:24px"></th>
+                </tr>
+              </thead>
+              <tbody id="colEvtBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="colAnalysisEmpty" style="display:none;padding:40px;text-align:center;color:var(--t-3)">
+          <div style="font-size:13px">No event data found for this period.</div>
+          <div style="font-size:12px;margin-top:6px">Event-level data is populated from MARK v7.5.9+ audit sessions.</div>
+        </div>
       </div>
 
       <!-- ── MATCH HISTORY PAGE ── -->
