@@ -1064,7 +1064,7 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
         <div class="auth-logo" id="si_icon" style="flex-direction:row;align-items:center;justify-content:center;gap:18px"><svg width="68" height="68" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;display:block"><defs><linearGradient id="lg11" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFAA6A"/><stop offset="55%" stop-color="#E8590C"/><stop offset="100%" stop-color="#C04000"/></linearGradient><linearGradient id="lf11" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="rgba(255,154,92,0.45)"/><stop offset="100%" stop-color="rgba(192,64,0,0.1)"/></linearGradient><filter id="fg11" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="url(#lf11)" stroke-width="1.8" stroke-linejoin="round"/><rect x="16" y="24" width="48" height="32" rx="2" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.5"/><line x1="40" y1="24" x2="40" y2="56" stroke="rgba(242,242,242,0.92)" stroke-width="1.8" stroke-linecap="round"/><path d="M29,40 A11,11 0 0 1 51,40" stroke="rgba(242,242,242,0.92)" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="40" cy="40" r="5.5" fill="url(#lg11)" filter="url(#fg11)"/><circle cx="40" cy="40" r="2.2" fill="#0A0A0A"/></svg><div style="display:flex;flex-direction:column;gap:5px"><span style="font-family:Inter,-apple-system,sans-serif;font-size:28px;font-weight:700;letter-spacing:6px;color:var(--t-1)">FIELD</span><span style="font-family:Inter,-apple-system,sans-serif;font-size:8px;font-weight:600;letter-spacing:3.5px;color:#E8590C;opacity:.85">TRAINING OPERATIONS</span></div></div>
         <div class="auth-title">Welcome back</div>
         <div class="auth-sub">Sign in to FIELD</div>
-        <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email"/></div>
+        <div class="field"><label class="input-label">Work Email</label><input class="input" type="email" id="siEmail" placeholder="yourname@hudl.com" autocomplete="email" oninput="siDetectDomain(this.value)"/></div>
         <div class="field"><label class="input-label">Password</label><input class="input" type="password" id="siPass" placeholder="••••••••" autocomplete="current-password"/></div>
         <button class="btn btn-primary btn-full" id="siBtn" onclick="doSignin()">Sign in →</button>
         <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
@@ -1076,6 +1076,36 @@ ne" stroke="rgba(232,89,12,0.18)" stroke-width="1.2"/>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
           Continue with Google (@hudl.com)
         </button>
+
+        <!-- ── Collector path — shown when @gmail detected ── -->
+        <div id="collectorPath" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin:14px 0">
+            <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+            <span style="font-size:11px;color:var(--text-muted)">collector portal</span>
+            <div style="flex:1;height:1px;background:var(--border-strong)"></div>
+          </div>
+          <div style="background:rgba(232,89,12,0.06);border:0.5px solid rgba(232,89,12,0.2);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+            <div style="font-size:11px;color:#E8590C;font-weight:600;letter-spacing:0.3px;margin-bottom:3px">COLLECTOR PORTAL DETECTED</div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">Sign in with your personal Gmail to access your review dashboard</div>
+          </div>
+          <button class="btn btn-primary btn-full" id="collectorGoogleBtn" onclick="doCollectorGoogleSignin()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            Continue with Google
+          </button>
+        </div>
+
+        <!-- ── HR code linking panel — shown on first collector login ── -->
+        <div id="collectorLinkPanel" style="display:none">
+          <div style="background:rgba(232,89,12,0.06);border:0.5px solid rgba(232,89,12,0.2);border-radius:10px;padding:14px;margin-bottom:14px">
+            <div style="font-size:12px;font-weight:600;color:#E8590C;margin-bottom:6px">One-time setup</div>
+            <div style="font-size:12px;color:var(--text-secondary);line-height:1.5">Enter your company HR code to verify your employment and link your account. You only do this once.</div>
+          </div>
+          <div class="field"><label class="input-label">Your HR code</label>
+            <input class="input" type="text" id="collectorHrInput" placeholder="A-0247" style="font-family:'JetBrains Mono',monospace;letter-spacing:1px"/>
+          </div>
+          <button class="btn btn-primary btn-full" id="collectorLinkBtn" onclick="collectorLinkHrCode()" style="margin-top:8px">Link & continue →</button>
+          <div class="alert alert-err" id="collectorLinkErr" style="margin-top:8px"></div>
+        </div>
         <div class="alert alert-err" id="siErr"></div>
         <div class="auth-switch">No account yet? <a onclick="showScreen('signupScreen')">Create one</a></div>
         <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-top:12px">Only @hudl.com addresses are permitted</p>
@@ -1609,6 +1639,120 @@ async function doSignOut(){
   showScreen('signinScreen');
 }
 
+// ── Collector auth functions ─────────────────────────────────────
+
+// Real-time email domain detection — morphs sign-in card based on domain
+function siDetectDomain(val){
+  const email  = (val||'').trim().toLowerCase();
+  const domain = email.includes('@') ? email.split('@')[1] : '';
+  const isGmail   = domain === 'gmail.com';
+  const isHudl    = domain === 'hudl.com';
+  const pwField   = document.getElementById('siPass')?.closest('.field');
+  const siBtn     = document.getElementById('siBtn');
+  const googleBtn = document.getElementById('googleBtn');
+  const collPath  = document.getElementById('collectorPath');
+  const siSwitch  = document.querySelector('#signinScreen .auth-switch');
+  const siNote    = document.querySelector('#signinScreen p[style*="Only @hudl"]');
+
+  if(isGmail){
+    // Collector path — hide training fields, show collector path
+    if(pwField)  pwField.style.display  = 'none';
+    if(siBtn)    siBtn.style.display    = 'none';
+    if(googleBtn)googleBtn.style.display= 'none';
+    if(siSwitch) siSwitch.style.display = 'none';
+    if(siNote)   siNote.style.display   = 'none';
+    if(collPath) collPath.style.display = 'block';
+  } else {
+    // Training path — restore normal fields
+    if(pwField)  pwField.style.display  = '';
+    if(siBtn)    siBtn.style.display    = '';
+    if(googleBtn)googleBtn.style.display= '';
+    if(siSwitch) siSwitch.style.display = '';
+    if(siNote)   siNote.style.display   = '';
+    if(collPath) collPath.style.display = 'none';
+  }
+}
+
+// Collector Google OAuth — no hudl.com restriction
+async function doCollectorGoogleSignin(){
+  const err = document.getElementById('siErr');
+  const btn = document.getElementById('collectorGoogleBtn');
+  if(err) err.style.display = 'none';
+  if(btn){ btn.disabled = true; btn.textContent = 'Signing in...'; }
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    // No hd restriction — collectors use personal Gmail
+    const result = await fbAuth.signInWithPopup(provider);
+    const user   = result.user;
+    // Check if already linked
+    const profileDoc = await fbDb.collection('collector_profiles').doc(user.uid).get();
+    if(profileDoc.exists){
+      // Returning collector — onAuthStateChanged handles routing
+      return;
+    }
+    // New collector — show HR code linking panel
+    if(btn){ btn.disabled = false; btn.textContent = 'Continue with Google'; }
+    document.getElementById('collectorPath').style.display    = 'none';
+    document.getElementById('collectorLinkPanel').style.display = 'block';
+    // Store user temporarily for linking step
+    A._pendingCollectorUser = user;
+  } catch(e){
+    if(e.code === 'auth/popup-closed-by-user'){ if(btn){ btn.disabled=false; btn.textContent='Continue with Google'; } return; }
+    if(err){ err.textContent = e.message; err.style.display = 'block'; }
+    if(btn){ btn.disabled=false; btn.textContent='Continue with Google'; }
+  }
+}
+
+// HR code verification + profile creation
+async function collectorLinkHrCode(){
+  const hrInput = document.getElementById('collectorHrInput');
+  const linkBtn = document.getElementById('collectorLinkBtn');
+  const linkErr = document.getElementById('collectorLinkErr');
+  const hrCode  = (hrInput?.value || '').trim().toUpperCase();
+
+  linkErr.style.display = 'none';
+  if(!hrCode){ linkErr.textContent = 'Please enter your HR code.'; linkErr.style.display = 'block'; return; }
+  if(!A._pendingCollectorUser){ linkErr.textContent = 'Session expired. Please sign in again.'; linkErr.style.display = 'block'; return; }
+
+  linkBtn.disabled = true; linkBtn.textContent = 'Verifying...';
+
+  try {
+    // Verify HR code against roster tab in collector results sheet
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Roster!A2:F?key=${COLLECTOR_SHEET_KEY}`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    const rows = data.values || [];
+    const match = rows.find(r => (r[ROS.HR_CODE]||'').trim().toUpperCase() === hrCode && (r[ROS.STATUS]||'').toLowerCase() === 'active');
+
+    if(!match){
+      linkErr.textContent = 'HR code not found or not active. Contact your team lead.';
+      linkErr.style.display = 'block';
+      linkBtn.disabled = false; linkBtn.textContent = 'Link & continue →';
+      return;
+    }
+
+    const user     = A._pendingCollectorUser;
+    const fullName = match[ROS.FULL_NAME] || user.displayName || '';
+
+    // Create collector profile in Firestore
+    await fbDb.collection('collector_profiles').doc(user.uid).set({
+      uid:       user.uid,
+      gmail:     user.email,
+      hrCode,
+      fullName,
+      linkedAt:  new Date().toISOString(),
+      status:    'active',
+    });
+
+    A._pendingCollectorUser = null;
+    // onAuthStateChanged will now detect collector_profiles doc and route correctly
+  } catch(e){
+    linkErr.textContent = 'Verification failed: ' + e.message;
+    linkErr.style.display = 'block';
+    linkBtn.disabled = false; linkBtn.textContent = 'Link & continue →';
+  }
+}
+
 // ============================================================
 // AUTH STATE OBSERVER — fires on every page load, any device
 // ============================================================
@@ -1618,6 +1762,16 @@ function initFirebaseAuth(){
     if(user){
       // Load full profile from Firestore
       try {
+        // ── Collector check — runs before all training role checks ──
+        const collectorDoc = await fbDb.collection('collector_profiles').doc(user.uid).get();
+        if(collectorDoc.exists){
+          const cp = collectorDoc.data();
+          A.user = { uid: user.uid, email: user.email, name: cp.fullName || user.displayName || user.email, role: 'collector', hrCode: cp.hrCode };
+          showScreen('collectorScreen');
+          setTimeout(()=>{ initCollectorDashboard(); }, 300);
+          return;
+        }
+
         const doc = await fbDb.collection('users').doc(user.uid).get();
         const profile = doc.exists ? doc.data() : {};
         const name = profile.displayName || user.displayName || user.email.split('@')[0];
@@ -5398,6 +5552,25 @@ function showTraineeTab(tab){
   if(tab==='tnProgress') tnRenderProgress();
 }
 
+// ── Collector Dashboard ──────────────────────────────────────────
+async function initCollectorDashboard(){
+  if(!A.user) return;
+  const pill = document.getElementById('colUserPill');
+  if(pill) pill.textContent = (A.user.hrCode || A.user.name) + ' · Collector';
+  // Full implementation coming in Phase 3
+  const content = document.getElementById('colContent');
+  if(content) content.innerHTML = `
+    <div style="padding:32px 24px">
+      <div style="font-size:20px;font-weight:700;color:var(--t-1);margin-bottom:4px">Welcome, ${A.user.name}</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">HR Code: <span style="font-family:'JetBrains Mono',monospace;color:#E8590C">${A.user.hrCode||'—'}</span></div>
+      <div style="background:var(--card-bg);border:0.5px solid var(--border);border-radius:14px;padding:24px;text-align:center;color:var(--text-secondary)">
+        <div style="font-size:28px;margin-bottom:12px">🔧</div>
+        <div style="font-size:14px;font-weight:600;color:var(--t-1);margin-bottom:6px">Dashboard coming soon</div>
+        <div style="font-size:12px">Your review overview, event analysis, and match history are being built — Phase 3</div>
+      </div>
+    </div>`;
+}
+
 async function initTraineeDashboard(){
   if(!A.user) return;
 
@@ -7781,6 +7954,23 @@ const MA = {
 };
 
 const MATCHES_SHEET_ID = '1dPwnYhIOiLUy_aBuVijPH3xtU6kxnEu-8FF115kXjSc';
+
+// ── Collector Results Sheet ──────────────────────────────────────
+const COLLECTOR_SHEET_ID  = '1-XbJFxAhR2QYxOQHdwIUVp-XSqol-3VJdHVhSoSkPmw';
+const COLLECTOR_SHEET_KEY = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
+// Column index constants — match SES.* codes in _SCHEMA tab exactly
+const SES = {
+  HR_CODE:0, SESSION_ID:1, MATCH_ID:2, MATCH_NAME:3, HALF:4, COMPLETED_AT:5,
+  SCORE_OVERALL:6, SCORE_BASE:7, SCORE_PRESSURE:8, SCORE_PLAYERS:9,
+  SCORE_LOCATION:10, SCORE_EXTRAS:11, SCORE_FREEZE:12,
+  TOTAL_EVENTS:13, TOTAL_ERRORS:14,
+  ERR_BASE:15, ERR_LOCATION:16, ERR_EXTRAS:17, ERR_PLAYERS:18,
+  ERR_DELETION:19, ERR_CAMERA:20, ERR_ADDED:21,
+  REVIEWER_EMAIL:22, COLLECTOR_DISPLAY:23, MARK_VERSION:24, COLLECTOR_NAME:25,
+};
+const ROS = {
+  HR_CODE:0, FULL_NAME:1, GMAIL:2, TEAM_CODE:3, JOIN_DATE:4, STATUS:5, LEGACY_ID:6,
+};
 const MATCHES_API_KEY  = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 const MATCHES_TAB      = 'Training Matches';
 
@@ -10868,5 +11058,34 @@ function btQuickAssignAll(){
     </div>
   </div>
 </div>
+
+<!-- ===== COLLECTOR DASHBOARD ===== -->
+<div id="collectorScreen" class="screen">
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="topbar-brand">
+        <div style="display:flex;align-items:center;gap:11px">
+          <svg width="40" height="40" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><defs><linearGradient id="lgC" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#FFAA6A"/><stop offset="55%" stop-color="#E8590C"/><stop offset="100%" stop-color="#C04000"/></linearGradient></defs><polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="rgba(232,89,12,0.4)" stroke-width="1.8"/><rect x="18" y="26" width="44" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/><line x1="40" y1="26" x2="40" y2="54" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/><path d="M31,40 A9,9 0 0 1 49,40" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="40" cy="40" r="4.5" fill="url(#lgC)"/><circle cx="40" cy="40" r="1.8" fill="#080808"/></svg>
+          <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+            <span style="font-family:Inter,sans-serif;font-size:15px;font-weight:700;letter-spacing:3.5px;color:var(--t-1)">FIELD</span>
+            <span style="font-family:Inter,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">COLLECTOR PORTAL</span>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-r">
+        <span class="badge badge-orange" id="colUserPill">Collector</span>
+        <button class="btn btn-danger btn-sm" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+    <div class="content" id="colContent">
+      <div style="padding:40px 24px;text-align:center;color:var(--text-secondary)">
+        <div style="font-size:32px;margin-bottom:12px">📊</div>
+        <div style="font-size:16px;font-weight:600;color:var(--t-1);margin-bottom:8px">Collector Dashboard</div>
+        <div style="font-size:13px">Loading your review data...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
