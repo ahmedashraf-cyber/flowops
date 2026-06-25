@@ -1600,6 +1600,12 @@ async function doSignin(){
 
 async function doGoogleSignin(){
   const err = document.getElementById('siErr') || document.getElementById('suErr');
+  // Safety guard — Gmail accounts must use the collector path, not training path
+  const emailVal = (document.getElementById('siEmail')?.value || document.getElementById('suEmail')?.value || '').toLowerCase();
+  if(emailVal.includes('@gmail.com')){
+    if(err){ err.textContent = 'Gmail accounts use the Collector Portal. Type your Gmail in the email field to access it.'; err.style.display='block'; }
+    return;
+  }
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({hd:'hudl.com'}); // restrict to @hudl.com accounts
