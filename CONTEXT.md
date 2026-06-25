@@ -1,4 +1,40 @@
 <!-- ============================================================= -->
+<!-- SESSION 2026-06-24 — MARK v7.5.x + ecosystem handoff          -->
+<!-- ============================================================= -->
+
+## Latest Session: 2026-06-24 — MARK module scores + handoff docs
+
+### TL;DR for FIELD
+- **No FIELD code changed this session** — work was on MARK (the review side that
+  feeds FIELD's scores). FIELD pending work is unchanged: **Training Supervisor**
+  and **Trainee** roles.
+- **MARK is now at v7.5.7.** Major additions feeding into FIELD's quality picture:
+  - **Collector/reviewer identity** resolved to real `Name (A-####)` + email
+    (from the collection app's `EventHistory.authorInfo.hrcode`, merged with a
+    Firestore roster seeded from `users_finalized_*.csv`).
+  - **Per-module quality scores** (Base, Pressure, Players, Location, Extras,
+    Freeze Frame) — shipped, but the denominator is being reconciled with the
+    analysis team (MARK ~375 vs reference ~350). See the MARK repo's
+    `MODULE_SCORES.md`. When this settles, FIELD may surface per-module scores
+    per collector/batch, not just an overall score.
+- **New ecosystem doc:** there is a THIRD app — the **Video Feedback Dashboard**
+  (Next.js/Supabase/Telegram/Drive/Gmail) that delivers per-collector video
+  feedback and emails collector reports. It carries the authoritative analysis-
+  team module-score CSVs. Full map in the MARK repo's `ECOSYSTEM.md`. (The
+  earlier "only two repos" rule from 2026-06-11 predates this; the dashboard is a
+  sibling app owned separately, not a backend change to MARK/FIELD.)
+- **Handoff prompt** for a fresh Claude chat: MARK repo `HANDOFF_PROMPT.md`.
+
+### Reminders for FIELD work (unchanged)
+- Single HTML file. Dark Apple-style; accent `#E8590C`; Inter/DM Sans/JetBrains
+  Mono. All dropdowns use `nx-select-wrap`; screens use `class="screen"` +
+  `app-shell` grid. Do NOT modify CSS vars or nx-select without checking existing
+  code. Clone fresh each session; brace-balance + duplicate-function check after
+  edits; after push, wait for Pages green then hard-refresh.
+
+---
+
+<!-- ============================================================= -->
 <!-- SESSION 2026-06-11 — FOCUS NARROWED · MARK 4.x + FIELD ONLY -->
 <!-- ============================================================= -->
 
