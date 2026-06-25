@@ -1778,6 +1778,31 @@ function initFirebaseAuth(){
           return;
         }
 
+        // ── Gmail guard — Gmail with no collector_profiles = incomplete collector signup ──
+        if(user.email && user.email.toLowerCase().endsWith('@gmail.com')){
+          // Store pending user and show HR code linking panel — don't route to training
+          A._pendingCollectorUser = user;
+          showScreen('signinScreen');
+          // Morph the card to show linking panel directly
+          const pwField   = document.getElementById('siPass')?.closest('.field');
+          const siBtn     = document.getElementById('siBtn');
+          const googleBtn = document.getElementById('googleBtn');
+          const siSwitch  = document.querySelector('#signinScreen .auth-switch');
+          const siNote    = document.querySelector('#signinScreen p');
+          const collPath  = document.getElementById('collectorPath');
+          const linkPanel = document.getElementById('collectorLinkPanel');
+          const siEmail   = document.getElementById('siEmail');
+          if(pwField)   pwField.style.display   = 'none';
+          if(siBtn)     siBtn.style.display      = 'none';
+          if(googleBtn) googleBtn.style.display  = 'none';
+          if(siSwitch)  siSwitch.style.display   = 'none';
+          if(siNote)    siNote.style.display      = 'none';
+          if(collPath)  collPath.style.display    = 'none';
+          if(linkPanel) linkPanel.style.display   = 'block';
+          if(siEmail)   siEmail.value             = user.email;
+          return;
+        }
+
         const doc = await fbDb.collection('users').doc(user.uid).get();
         const profile = doc.exists ? doc.data() : {};
         const name = profile.displayName || user.displayName || user.email.split('@')[0];
