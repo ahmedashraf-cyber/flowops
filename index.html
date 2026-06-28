@@ -5584,8 +5584,178 @@ function showTraineeTab(tab){
 }
 
 // ── Collector Dashboard ──────────────────────────────────────────
-// ── Collector Dashboard ──────────────────────────────────────────
-const COL_STATE = { sessions:[], filtered:[], tf:'week', chartInst:null };
+// ── Shared Collector Filter State ───────────────────────────────
+const COL_FILTERS = {
+  tf:       'week',    // timeframe quick button
+  dateFrom: null,      // custom date range from
+  dateTo:   null,      // custom date range to
+  matchId:  '',        // match ID filter
+  hrCode:   '',        // hr code filter (super admin only)
+  nameSearch:'',       // name search (super admin only)
+  errType:  '',        // error type filter (super admin only)
+};
+
+function colApplyTf(tf, btn){
+  COL_FILTERS.tf = tf;
+  COL_FILTERS.dateFrom = null;
+  COL_FILTERS.dateTo   = null;
+  // Clear date inputs
+  const df=document.getElementById('colDateFrom'); if(df) df.value='';
+  const dt=document.getElementById('colDateTo');   if(dt) dt.value='';
+  // Update button active state
+  document.querySelectorAll('.col-tf-all').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  colApplyFilters();
+}
+
+function colApplyDateRange(){
+  const df = document.getElementById('colDateFrom');
+  const dt = document.getElementById('colDateTo');
+  if(df && df.value) COL_FILTERS.dateFrom = new Date(df.value);
+  else COL_FILTERS.dateFrom = null;
+  if(dt && dt.value) COL_FILTERS.dateTo = new Date(dt.value+'T23:59:59');
+  else COL_FILTERS.dateTo = null;
+  // If custom range set, deactivate tf buttons
+  if(COL_FILTERS.dateFrom || COL_FILTERS.dateTo){
+    document.querySelectorAll('.col-tf-all').forEach(b=>b.classList.remove('active'));
+    COL_FILTERS.tf = 'custom';
+  }
+  colApplyFilters();
+}
+
+function colResetFilters(){
+  COL_FILTERS.tf='week'; COL_FILTERS.dateFrom=null; COL_FILTERS.dateTo=null;
+  COL_FILTERS.matchId=''; COL_FILTERS.hrCode=''; COL_FILTERS.nameSearch=''; COL_FILTERS.errType='';
+  // Reset UI
+  const df=document.getElementById('colDateFrom'); if(df) df.value='';
+  const dt=document.getElementById('colDateTo');   if(dt) dt.value='';
+  const ns=document.getElementById('colNameSearch'); if(ns) ns.value='';
+  // Reset nx-selects
+  ['colMatchFilter','colHRFilter','colErrTypeFilter'].forEach(id=>{
+    const s=document.getElementById(id); if(s){s.value=''; const l=s.closest('.nx-select-wrap')?.querySelector('.nx-label'); if(l) l.textContent=s.options[0]?.text||'';}
+  });
+  // Reset tf buttons
+  document.querySelectorAll('.col-tf-all').forEach((b,i)=>b.classList.toggle('active',i===0));
+  colApplyFilters();
+}
+
+function colApplyFilters(){
+  // Read filter values from DOM
+  const mf = document.getElementById('colMatchFilter'); if(mf) COL_FILTERS.matchId = mf.value;
+  const hf = document.getElementById('colHRFilter');    if(hf) COL_FILTERS.hrCode  = hf.value;
+  const ns = document.getElementById('colNameSearch');  if(ns) COL_FILTERS.nameSearch = ns.value.toLowerCase().trim();
+  const ef = document.getElementById('colErrTypeFilter'); if(ef) COL_FILTERS.errType = ef.value;
+  // Re-render current page
+  colFilterAndRender();
+  if(COL_EVT_STATE.events.length) colRenderAnalysis();
+  colRenderHistory();
+}
+
+// Override colFilterSessions to use shared filter state
+function colFilterSessions(sessions, tf){
+  return sessions.filter(s=>{
+    if(!s.completed_at) return false;
+    const d = new Date(s.completed_at);
+    // Date range
+    if(COL_FILTERS.dateFrom && d < COL_FILTERS.dateFrom) return false;
+    if(COL_FILTERS.dateTo   && d > COL_FILTERS.dateTo)   return false;
+    // Timeframe (only if no custom range)
+    if(!COL_FILTERS.dateFrom && !COL_FILTERS.dateTo && COL_FILTERS.tf !== 'all' && COL_FILTERS.tf !== 'custom'){
+      const cutoff = new Date();
+      if(COL_FILTERS.tf==='week')    cutoff.setDate(cutoff.getDate()-7);
+      if(COL_FILTERS.tf==='month')   cutoff.setMonth(cutoff.getMonth()-1);
+      if(COL_FILTERS.tf==='quarter') cutoff.setMonth(cutoff.getMonth()-3);
+      if(d < cutoff) return false;
+    }
+    // Match filter
+    if(COL_FILTERS.matchId && s.match_id !== COL_FILTERS.matchId) return false;
+    // HR code filter (super admin)
+    if(COL_FILTERS.hrCode && s.hr_code !== COL_FILTERS.hrCode) return false;
+    // Name search (super admin)
+    if(COL_FILTERS.nameSearch && !(s.collector_name||'').toLowerCase().includes(COL_FILTERS.nameSearch)) return false;
+    return true;
+  });
+}
+
+function colFilterEvents(events, tf){
+  return events.filter(e=>{
+    if(!e.completed_at) return false;
+    const d = new Date(e.completed_at);
+    if(COL_FILTERS.dateFrom && d < COL_FILTERS.dateFrom) return false;
+    if(COL_FILTERS.dateTo   && d > COL_FILTERS.dateTo)   return false;
+    if(!COL_FILTERS.dateFrom && !COL_FILTERS.dateTo && COL_FILTERS.tf !== 'all' && COL_FILTERS.tf !== 'custom'){
+      const cutoff = new Date();
+      if(COL_FILTERS.tf==='week')    cutoff.setDate(cutoff.getDate()-7);
+      if(COL_FILTERS.tf==='month')   cutoff.setMonth(cutoff.getMonth()-1);
+      if(COL_FILTERS.tf==='quarter') cutoff.setMonth(cutoff.getMonth()-3);
+      if(d < cutoff) return false;
+    }
+    if(COL_FILTERS.matchId && e.match_id !== COL_FILTERS.matchId) return false;
+    if(COL_FILTERS.hrCode  && e.hr_code  !== COL_FILTERS.hrCode)  return false;
+    if(COL_FILTERS.errType && e.error_type !== COL_FILTERS.errType) return false;
+    if(COL_FILTERS.nameSearch){
+      const sessMatch = COL_EVT_STATE.sessions.find(s=>s.session_id===e.session_id);
+      if(sessMatch && !(sessMatch.collector_name||'').toLowerCase().includes(COL_FILTERS.nameSearch)) return false;
+    }
+    return true;
+  });
+}
+
+function colBuildFilterOptions(sessions, events){
+  // Build match dropdown options
+  const matches = {};
+  sessions.forEach(s=>{ if(s.match_id&&s.match_name) matches[s.match_id]=s.match_name; });
+  const mSel = document.getElementById('colMatchFilter');
+  if(mSel){
+    const cur = mSel.value;
+    mSel.innerHTML = '<option value="">All Matches</option>';
+    Object.entries(matches).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([id,name])=>{
+      const o=document.createElement('option'); o.value=id; o.textContent=name; mSel.appendChild(o);
+    });
+    mSel.value = cur;
+    const lbl = mSel.closest('.nx-select-wrap')?.querySelector('.nx-label');
+    if(lbl) lbl.textContent = cur ? (matches[cur]||cur) : 'All Matches';
+  }
+
+  const isSuperAdmin = A.user && A.user.email==='ahmed.ashraf@hudl.com';
+  if(!isSuperAdmin) return;
+
+  // Show super admin filters
+  const hrWrap  = document.getElementById('nx_colHR');
+  const nsWrap  = document.getElementById('colNameSearchWrap');
+  const etWrap  = document.getElementById('nx_colErrType');
+  if(hrWrap)  hrWrap.style.display  = '';
+  if(nsWrap)  nsWrap.style.display  = '';
+  if(etWrap)  etWrap.style.display  = '';
+
+  // Build HR code dropdown
+  const hrs = {};
+  sessions.forEach(s=>{
+    if(!s.hr_code) return;
+    s.hr_code.split(',').forEach(c=>{
+      c=c.trim(); if(c) hrs[c]=(s.collector_name||c);
+    });
+  });
+  const hSel = document.getElementById('colHRFilter');
+  if(hSel){
+    const cur = hSel.value;
+    hSel.innerHTML = '<option value="">All Collectors</option>';
+    Object.entries(hrs).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([code,name])=>{
+      const o=document.createElement('option'); o.value=code; o.textContent=`${name} (${code})`; hSel.appendChild(o);
+    });
+    hSel.value = cur;
+    const lbl = hSel.closest('.nx-select-wrap')?.querySelector('.nx-label');
+    if(lbl) lbl.textContent = cur ? (hrs[cur]?`${hrs[cur]} (${cur})`:cur) : 'All Collectors';
+  }
+
+  // Re-init nx-selects for newly populated dropdowns
+  document.querySelectorAll('#nx_colMatch,#nx_colHR,#nx_colErrType').forEach(w=>{
+    delete w.dataset.nxInit;
+  });
+  initNxSelects();
+}
+
+
 
 function showColTab(tab){
   ['overview','analysis','history'].forEach(t=>{
@@ -6028,6 +6198,7 @@ async function colInitAnalysis(){
     if(sub) sub.textContent='Loading event data...';
     COL_EVT_STATE.events   = await colLoadEventsData();
     COL_EVT_STATE.sessions = COL_STATE.sessions.length ? COL_STATE.sessions : await colLoadSheetData();
+    colBuildFilterOptions(COL_EVT_STATE.sessions, COL_EVT_STATE.events);
     colRenderAnalysis();
   } catch(e){
     console.error('[COL] Events load failed:',e);
@@ -6051,6 +6222,7 @@ async function initCollectorDashboard(){
   try {
     if(sub) sub.textContent='Loading review data...';
     COL_STATE.sessions=await colLoadSheetData();
+    colBuildFilterOptions(COL_STATE.sessions, []);
     colFilterAndRender();
   } catch(e){
     console.error('[COL] Sheet load failed:',e);
@@ -11605,16 +11777,85 @@ function btQuickAssignAll(){
     <!-- CONTENT -->
     <div class="content" id="colContent">
 
+      <!-- ── FILTER BAR (shared across all pages, super admin gets extra filters) ── -->
+      <div id="colFilterBar" style="padding:14px 24px 0;border-bottom:0.5px solid var(--b-1);background:var(--bg-1)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:14px">
+
+          <!-- Timeframe quick buttons -->
+          <div style="display:flex;gap:2px;background:var(--bg-2);border-radius:8px;padding:3px;flex-shrink:0">
+            <button class="btn btn-ghost btn-sm col-tf-all active" onclick="colApplyTf('week',this)">Week</button>
+            <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('month',this)">Month</button>
+            <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('quarter',this)">Quarter</button>
+            <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('all',this)">All time</button>
+          </div>
+
+          <!-- Custom date range -->
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+            <input type="date" id="colDateFrom" class="input" style="padding:7px 10px;font-size:12px;width:130px" onchange="colApplyDateRange()"/>
+            <span style="font-size:11px;color:var(--t-3)">to</span>
+            <input type="date" id="colDateTo" class="input" style="padding:7px 10px;font-size:12px;width:130px" onchange="colApplyDateRange()"/>
+          </div>
+
+          <!-- Match ID filter (all users) -->
+          <div class="nx-select-wrap" id="nx_colMatch" data-onchange="colApplyFilters" style="flex-shrink:0">
+            <div class="nx-trigger" style="min-width:160px">
+              <span class="nx-label">All Matches</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="colMatchFilter" onchange="colApplyFilters()">
+              <option value="">All Matches</option>
+            </select>
+          </div>
+
+          <!-- HR code filter (super admin only) -->
+          <div class="nx-select-wrap" id="nx_colHR" data-onchange="colApplyFilters" style="flex-shrink:0;display:none" id="colHRFilterWrap">
+            <div class="nx-trigger" style="min-width:160px">
+              <span class="nx-label">All Collectors</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="colHRFilter" onchange="colApplyFilters()">
+              <option value="">All Collectors</option>
+            </select>
+          </div>
+
+          <!-- Collector name search (super admin only) -->
+          <div id="colNameSearchWrap" style="display:none;flex-shrink:0">
+            <input type="text" id="colNameSearch" class="input" placeholder="Search collector name..." style="padding:7px 12px;font-size:12px;width:180px" oninput="colApplyFilters()"/>
+          </div>
+
+          <!-- Error type filter (super admin only) -->
+          <div class="nx-select-wrap" id="nx_colErrType" data-onchange="colApplyFilters" style="flex-shrink:0;display:none" id="colErrTypeWrap">
+            <div class="nx-trigger" style="min-width:140px">
+              <span class="nx-label">All Error Types</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="colErrTypeFilter" onchange="colApplyFilters()">
+              <option value="">All Error Types</option>
+              <option value="base">Base</option>
+              <option value="extras">Extras</option>
+              <option value="deletion">Deletion</option>
+              <option value="location">Location</option>
+              <option value="players">Players</option>
+              <option value="camera">Camera</option>
+              <option value="added">Added</option>
+            </select>
+          </div>
+
+          <!-- Reset button -->
+          <button class="btn btn-ghost btn-sm" onclick="colResetFilters()" style="margin-left:auto;flex-shrink:0;color:var(--t-3)">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style="margin-right:4px"><path d="M10 2L2 10M2 2l8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+
       <!-- ── OVERVIEW PAGE ── -->
       <div id="colPage_overview" style="padding:28px 24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px" id="colWelcome">Overview</div>
-          <div style="display:flex;gap:3px;background:var(--bg-2);border-radius:8px;padding:3px" id="colTimeframeBtns">
-            <button class="btn btn-ghost btn-sm col-tf-btn active" data-tf="week" onclick="colSetTimeframe('week',this)">Week</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn" data-tf="month" onclick="colSetTimeframe('month',this)">Month</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn" data-tf="quarter" onclick="colSetTimeframe('quarter',this)">Quarter</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn" data-tf="all" onclick="colSetTimeframe('all',this)">All time</button>
-          </div>
         </div>
         <div style="font-size:13px;color:var(--t-3);margin-bottom:24px" id="colSubtitle">Loading your review data...</div>
 
@@ -11668,15 +11909,7 @@ function btQuickAssignAll(){
 
       <!-- ── EVENT ANALYSIS PAGE ── -->
       <div id="colPage_analysis" style="display:none;padding:28px 24px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Event Analysis</div>
-          <div style="display:flex;gap:3px;background:var(--bg-2);border-radius:8px;padding:3px">
-            <button class="btn btn-ghost btn-sm col-tf-btn2 active" data-tf="week"   onclick="colSetTimeframe2('week',this)">Week</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="month"  onclick="colSetTimeframe2('month',this)">Month</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="quarter"onclick="colSetTimeframe2('quarter',this)">Quarter</button>
-            <button class="btn btn-ghost btn-sm col-tf-btn2"        data-tf="all"    onclick="colSetTimeframe2('all',this)">All time</button>
-          </div>
-        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">Event Analysis</div>
         <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="colAnalysisSub">Loading event data...</div>
 
         <!-- Scorecard header: ring + module bars -->
