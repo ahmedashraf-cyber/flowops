@@ -5774,15 +5774,6 @@ function colSetTimeframe(tf, btn){
   colFilterAndRender();
 }
 
-function colFilterSessions(sessions, tf){
-  if(tf==='all') return sessions;
-  const now = new Date(); const cutoff = new Date();
-  if(tf==='week')    cutoff.setDate(now.getDate()-7);
-  if(tf==='month')   cutoff.setMonth(now.getMonth()-1);
-  if(tf==='quarter') cutoff.setMonth(now.getMonth()-3);
-  return sessions.filter(s=>s.completed_at && new Date(s.completed_at)>=cutoff);
-}
-
 function colParseSession(row){
   return {
     hr_code:        row[SES.HR_CODE]        ||'',
@@ -5831,7 +5822,7 @@ async function colLoadSheetData(){
 }
 
 function colFilterAndRender(){
-  COL_STATE.filtered = colFilterSessions(COL_STATE.sessions, COL_STATE.tf);
+  COL_STATE.filtered = colFilterSessions(COL_STATE.sessions, COL_FILTERS.tf);
   colRenderOverview(COL_STATE.filtered);
 }
 
@@ -5976,15 +5967,6 @@ async function colLoadEventsData(){
   if(isSuperAdmin) return allEvts;
   const hrCode = (A.user.hrCode||'').trim();
   return allEvts.filter(e => e.hr_code===hrCode || e.hr_code.split(',').map(c=>c.trim()).includes(hrCode));
-}
-
-function colFilterEvents(events, tf){
-  if(tf==='all') return events;
-  const now=new Date(); const cutoff=new Date();
-  if(tf==='week')    cutoff.setDate(now.getDate()-7);
-  if(tf==='month')   cutoff.setMonth(now.getMonth()-1);
-  if(tf==='quarter') cutoff.setMonth(now.getMonth()-3);
-  return events.filter(e=>e.completed_at && new Date(e.completed_at)>=cutoff);
 }
 
 function colRenderAnalysis(){
@@ -11791,9 +11773,9 @@ function btQuickAssignAll(){
 
           <!-- Custom date range -->
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="date" id="colDateFrom" class="input" style="padding:7px 10px;font-size:12px;width:130px" onchange="colApplyDateRange()"/>
+            <input type="date" id="colDateFrom" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off" onchange="colApplyDateRange()"/>
             <span style="font-size:11px;color:var(--t-3)">to</span>
-            <input type="date" id="colDateTo" class="input" style="padding:7px 10px;font-size:12px;width:130px" onchange="colApplyDateRange()"/>
+            <input type="date" id="colDateTo" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off" onchange="colApplyDateRange()"/>
           </div>
 
           <!-- Match ID filter (all users) -->
