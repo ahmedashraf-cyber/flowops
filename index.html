@@ -6187,6 +6187,96 @@ async function colInitAnalysis(){
   }
 }
 
+// ── Match History page ───────────────────────────────────────────
+const COL_HIST = { sortKey:'completed_at', sortDir:-1 };
+
+function colHistSort(key){
+  if(COL_HIST.sortKey===key) COL_HIST.sortDir*=-1;
+  else { COL_HIST.sortKey=key; COL_HIST.sortDir=-1; }
+  // Update header indicators
+  ['date','match','score'].forEach(k=>{
+    const th=document.getElementById('colHistTh_'+k);
+    if(!th) return;
+    const map={date:'completed_at',match:'match_name',score:'score_overall'};
+    const isActive=map[k]===COL_HIST.sortKey;
+    th.style.color=isActive?'var(--p2)':'var(--t-3)';
+  });
+  colRenderHistory();
+}
+
+function colRenderHistory(){
+  const sessions = colFilterSessions(COL_STATE.sessions, COL_FILTERS.tf);
+  const isSuperAdmin = A.user && A.user.email==='ahmed.ashraf@hudl.com';
+  const search = (document.getElementById('colHistSearch')?.value||'').toLowerCase().trim();
+
+  // Apply search
+  const filtered = search
+    ? sessions.filter(s=>(s.match_name||'').toLowerCase().includes(search) || (s.collector_name||'').toLowerCase().includes(search) || (s.hr_code||'').toLowerCase().includes(search))
+    : sessions;
+
+  // Update subtitle
+  const sub = document.getElementById('colHistorySub');
+  if(sub) sub.textContent = `${filtered.length} session${filtered.length!==1?'s':''} · ${COL_FILTERS.tf==='all'?'all time':COL_FILTERS.tf==='week'?'last 7 days':COL_FILTERS.tf==='month'?'last 30 days':'last 3 months'}`;
+
+  // Summary stats
+  const withScore = filtered.filter(s=>s.score_overall!==null);
+  const avgScore  = withScore.length ? Math.round(withScore.reduce((a,s)=>a+s.score_overall,0)/withScore.length) : null;
+  const bestScore = withScore.length ? Math.max(...withScore.map(s=>s.score_overall)) : null;
+  const worstScore= withScore.length ? Math.min(...withScore.map(s=>s.score_overall)) : null;
+  const ht=document.getElementById('colHistTotal'); if(ht) ht.textContent=filtered.length;
+  const ha=document.getElementById('colHistAvg');   if(ha) ha.textContent=avgScore!=null?avgScore+'%':'—';
+  const hb=document.getElementById('colHistBest');  if(hb) hb.textContent=bestScore!=null?bestScore+'%':'—';
+  const hw=document.getElementById('colHistWorst'); if(hw) hw.textContent=worstScore!=null?worstScore+'%':'—';
+
+  // Show/hide collector column header based on role
+  const thCol=document.getElementById('colHistThCollector');
+  if(thCol) thCol.style.display = isSuperAdmin?'':'none';
+
+  const count=document.getElementById('colHistCount');
+  if(count) count.textContent=filtered.length?`${filtered.length} rows`:'';
+
+  const empty=document.getElementById('colHistEmpty');
+  const body=document.getElementById('colHistBody');
+  if(!filtered.length){
+    if(empty) empty.style.display='block';
+    if(body) body.innerHTML='';
+    return;
+  }
+  if(empty) empty.style.display='none';
+
+  // Sort
+  const sorted=[...filtered].sort((a,b)=>{
+    const av=a[COL_HIST.sortKey], bv=b[COL_HIST.sortKey];
+    if(av==null&&bv==null) return 0;
+    if(av==null) return 1; if(bv==null) return -1;
+    if(typeof av==='string') return COL_HIST.sortDir*av.localeCompare(bv);
+    return COL_HIST.sortDir*(av-bv);
+  });
+
+  if(!body) return;
+  body.innerHTML = sorted.map(s=>{
+    const sc = s.score_overall;
+    const scColor = sc==null?'var(--t-3)':sc>=90?'var(--green)':sc>=80?'var(--warn)':'var(--red)';
+    const scText  = sc!=null?sc+'%':'—';
+    const halfLabel = s.half==='1'?'1H':s.half==='2'?'2H':s.half||'—';
+    const dateStr = s.completed_at ? new Date(s.completed_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    const totalErr= s.total_errors||0;
+    const collectorCell = isSuperAdmin
+      ? `<td style="padding:9px 10px;color:var(--t-2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.collector_name||s.hr_code}">${s.collector_name||s.hr_code||'—'}</td>`
+      : `<td style="display:none"></td>`;
+    const reviewer = s.reviewer_email ? s.reviewer_email.split('@')[0] : '—';
+    return `<tr style="border-bottom:0.5px solid var(--b-1);transition:background .1s" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
+      <td style="padding:9px 16px;color:var(--t-3);white-space:nowrap;font-size:11px">${dateStr}</td>
+      <td style="padding:9px 10px;color:var(--t-1);font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.match_name}">${s.match_name||'—'}</td>
+      <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-2);color:var(--t-3);padding:2px 7px;border-radius:4px">${halfLabel}</span></td>
+      <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${scColor}">${scText}</span></td>
+      <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:${totalErr>20?'var(--red)':totalErr>10?'var(--warn)':'var(--t-3)'}">${totalErr}</td>
+      ${collectorCell}
+      <td style="padding:9px 10px;font-size:11px;color:var(--t-3)">${reviewer}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function initCollectorDashboard(){
   if(!A.user) return;
   const isSuperAdmin = A.user.email === 'ahmed.ashraf@hudl.com';
@@ -11977,9 +12067,60 @@ function btQuickAssignAll(){
       </div>
 
       <!-- ── MATCH HISTORY PAGE ── -->
-      <div id="colPage_history" style="display:none;padding:28px 24px">
-        <div style="font-size:20px;font-weight:700;color:var(--t-1);margin-bottom:4px">Match History</div>
-        <div style="font-size:13px;color:var(--t-3);margin-bottom:24px">Coming soon — building after Event Analysis</div>
+      <div id="colPage_history" style="padding:28px 24px;display:none">
+
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">Match History</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="colHistorySub">Loading...</div>
+
+        <!-- Summary stats -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">TOTAL SESSIONS</div>
+            <div style="font-size:24px;font-weight:700;color:var(--t-1);letter-spacing:-0.5px;line-height:1" id="colHistTotal">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">AVG QUALITY</div>
+            <div style="font-size:24px;font-weight:700;color:#E8590C;letter-spacing:-0.5px;line-height:1" id="colHistAvg">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">BEST SESSION</div>
+            <div style="font-size:24px;font-weight:700;color:var(--green);letter-spacing:-0.5px;line-height:1" id="colHistBest">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:6px">WORST SESSION</div>
+            <div style="font-size:24px;font-weight:700;color:var(--red);letter-spacing:-0.5px;line-height:1" id="colHistWorst">—</div>
+          </div>
+        </div>
+
+        <!-- Sessions table -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:0.5px solid var(--b-1);display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:13px;font-weight:600;color:var(--t-2)">All sessions</div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input type="text" id="colHistSearch" placeholder="Search match..." class="input"
+                style="padding:6px 10px;font-size:12px;width:160px" oninput="colRenderHistory()"/>
+              <div style="font-size:11px;color:var(--t-3)" id="colHistCount"></div>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead>
+                <tr style="border-bottom:0.5px solid var(--b-1)">
+                  <th onclick="colHistSort('completed_at')" style="text-align:left;padding:9px 16px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap;letter-spacing:0.3px" id="colHistTh_date">DATE ↕</th>
+                  <th onclick="colHistSort('match_name')" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);cursor:pointer;user-select:none;white-space:nowrap" id="colHistTh_match">MATCH ↕</th>
+                  <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);white-space:nowrap">HALF</th>
+                  <th onclick="colHistSort('score_overall')" style="text-align:left;padding:9px 10px;font-size:10px;color:var(--p2);cursor:pointer;user-select:none;white-space:nowrap" id="colHistTh_score">QUALITY ↓</th>
+                  <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);white-space:nowrap">ERRORS</th>
+                  <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);white-space:nowrap" id="colHistThCollector">COLLECTOR</th>
+                  <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3);white-space:nowrap">REVIEWER</th>
+                </tr>
+              </thead>
+              <tbody id="colHistBody"></tbody>
+            </table>
+          </div>
+          <div id="colHistEmpty" style="display:none;padding:40px;text-align:center;color:var(--t-3);font-size:13px">No sessions found for this period.</div>
+        </div>
+
       </div>
 
     </div><!-- /content -->
