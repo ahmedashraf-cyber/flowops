@@ -5586,13 +5586,13 @@ function showTraineeTab(tab){
 // ── Collector Dashboard ──────────────────────────────────────────
 // ── Shared Collector Filter State ───────────────────────────────
 const COL_FILTERS = {
-  tf:       'week',    // timeframe quick button
-  dateFrom: null,      // custom date range from
-  dateTo:   null,      // custom date range to
-  matchId:  '',        // match ID filter
-  hrCode:   '',        // hr code filter (super admin only)
-  nameSearch:'',       // name search (super admin only)
-  errType:  '',        // error type filter (super admin only)
+  tf:       'all',    // default: show all data on first load
+  dateFrom: null,
+  dateTo:   null,
+  matchId:  '',
+  hrCode:   '',
+  nameSearch:'',
+  errType:  '',
 };
 
 function colApplyTf(tf, btn){
@@ -5624,18 +5624,15 @@ function colApplyDateRange(){
 }
 
 function colResetFilters(){
-  COL_FILTERS.tf='week'; COL_FILTERS.dateFrom=null; COL_FILTERS.dateTo=null;
+  COL_FILTERS.tf='all'; COL_FILTERS.dateFrom=null; COL_FILTERS.dateTo=null;
   COL_FILTERS.matchId=''; COL_FILTERS.hrCode=''; COL_FILTERS.nameSearch=''; COL_FILTERS.errType='';
-  // Reset UI
   const df=document.getElementById('colDateFrom'); if(df) df.value='';
   const dt=document.getElementById('colDateTo');   if(dt) dt.value='';
   const ns=document.getElementById('colNameSearch'); if(ns) ns.value='';
-  // Reset nx-selects
   ['colMatchFilter','colHRFilter','colErrTypeFilter'].forEach(id=>{
     const s=document.getElementById(id); if(s){s.value=''; const l=s.closest('.nx-select-wrap')?.querySelector('.nx-label'); if(l) l.textContent=s.options[0]?.text||'';}
   });
-  // Reset tf buttons
-  document.querySelectorAll('.col-tf-all').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.querySelectorAll('.col-tf-all').forEach((b,i,arr)=>b.classList.toggle('active',i===arr.length-1));
   colApplyFilters();
 }
 
@@ -11765,17 +11762,18 @@ function btQuickAssignAll(){
 
           <!-- Timeframe quick buttons -->
           <div style="display:flex;gap:2px;background:var(--bg-2);border-radius:8px;padding:3px;flex-shrink:0">
-            <button class="btn btn-ghost btn-sm col-tf-all active" onclick="colApplyTf('week',this)">Week</button>
+            <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('week',this)">Week</button>
             <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('month',this)">Month</button>
             <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('quarter',this)">Quarter</button>
-            <button class="btn btn-ghost btn-sm col-tf-all" onclick="colApplyTf('all',this)">All time</button>
+            <button class="btn btn-ghost btn-sm col-tf-all active" onclick="colApplyTf('all',this)">All time</button>
           </div>
 
           <!-- Custom date range -->
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-            <input type="date" id="colDateFrom" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off" onchange="colApplyDateRange()"/>
-            <span style="font-size:11px;color:var(--t-3)">to</span>
-            <input type="date" id="colDateTo" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off" onchange="colApplyDateRange()"/>
+            <input type="date" id="colDateFrom" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off"/>
+            <span style="font-size:11px;color:var(--t-3)">→</span>
+            <input type="date" id="colDateTo" class="input" style="padding:7px 10px;font-size:12px;width:130px" autocomplete="off"/>
+            <button class="btn btn-ghost btn-sm" onclick="colApplyDateRange()" style="flex-shrink:0;font-size:11px">Apply</button>
           </div>
 
           <!-- Match ID filter (all users) -->
