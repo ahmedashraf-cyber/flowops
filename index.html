@@ -1723,15 +1723,19 @@ async function collectorLinkHrCode(){
   linkBtn.disabled = true; linkBtn.textContent = 'Verifying...';
 
   try {
-    // Verify HR code against roster tab in collector results sheet
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Roster!A2:F?key=${COLLECTOR_SHEET_KEY}`;
+    const pendingRole = A._pendingRole || 'collector';
+    const sheetTab   = pendingRole === 'reviewer' ? 'Reviewers' : 'Roster';
+    const collection = pendingRole === 'reviewer' ? 'reviewer_profiles' : 'collector_profiles';
+
+    // Verify HR code against correct Sheet tab
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/${sheetTab}!A2:F?key=${COLLECTOR_SHEET_KEY}`;
     const res  = await fetch(url);
     const data = await res.json();
     const rows = data.values || [];
     const match = rows.find(r => (r[ROS.HR_CODE]||'').trim().toUpperCase() === hrCode && (r[ROS.STATUS]||'').toLowerCase() === 'active');
 
     if(!match){
-      linkErr.textContent = 'HR code not found or not active. Contact your team lead.';
+      linkErr.textContent = `HR code not found or not active in ${sheetTab}. Contact your team lead.`;
       linkErr.style.display = 'block';
       linkBtn.disabled = false; linkBtn.textContent = 'Link & continue →';
       return;
@@ -1740,8 +1744,8 @@ async function collectorLinkHrCode(){
     const user     = A._pendingCollectorUser;
     const fullName = match[ROS.FULL_NAME] || user.displayName || '';
 
-    // Create collector profile in Firestore
-    await fbDb.collection('collector_profiles').doc(user.uid).set({
+    // Write to correct Firestore collection
+    await fbDb.collection(collection).doc(user.uid).set({
       uid:       user.uid,
       gmail:     user.email,
       hrCode,
@@ -1751,7 +1755,7 @@ async function collectorLinkHrCode(){
     });
 
     A._pendingCollectorUser = null;
-    // onAuthStateChanged will now detect collector_profiles doc and route correctly
+    A._pendingRole = null;
   } catch(e){
     linkErr.textContent = 'Verification failed: ' + e.message;
     linkErr.style.display = 'block';
@@ -1768,7 +1772,7 @@ function initFirebaseAuth(){
     if(user){
       // Load full profile from Firestore
       try {
-        // ── Collector check — runs before all training role checks ──
+        // ── Collector check ──────────────────────────────────────
         const collectorDoc = await fbDb.collection('collector_profiles').doc(user.uid).get();
         if(collectorDoc.exists){
           const cp = collectorDoc.data();
@@ -1778,12 +1782,36 @@ function initFirebaseAuth(){
           return;
         }
 
-        // ── Gmail guard — Gmail with no collector_profiles = incomplete collector signup ──
+        // ── Reviewer check ───────────────────────────────────────
+        const reviewerDoc = await fbDb.collection('reviewer_profiles').doc(user.uid).get();
+        if(reviewerDoc.exists){
+          const rp = reviewerDoc.data();
+          A.user = { uid: user.uid, email: user.email, name: rp.fullName || user.displayName || user.email, role: 'reviewer', hrCode: rp.hrCode };
+          showScreen('reviewerScreen');
+          setTimeout(()=>{ initReviewerDashboard(); }, 300);
+          return;
+        }
+
+        // ── Gmail guard — check Reviewers tab first, then Roster ──
         if(user.email && user.email.toLowerCase().endsWith('@gmail.com')){
-          // Store pending user and show HR code linking panel — don't route to training
           A._pendingCollectorUser = user;
+          // Check which tab this Gmail belongs to — determines role
+          try {
+            const revUrl = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Reviewers!A2:G?key=${COLLECTOR_SHEET_KEY}`;
+            const revRes = await fetch(revUrl);
+            const revData = await revRes.json();
+            const revRows = revData.values || [];
+            const revMatch = revRows.find(r => (r[2]||'').toLowerCase() === user.email.toLowerCase() && (r[5]||'').toLowerCase() === 'active');
+            if(revMatch) {
+              // Reviewer — show HR code linking for reviewer role
+              A._pendingRole = 'reviewer';
+            } else {
+              A._pendingRole = 'collector';
+            }
+          } catch(e) {
+            A._pendingRole = 'collector'; // fallback
+          }
           showScreen('signinScreen');
-          // Morph the card to show linking panel directly
           const pwField   = document.getElementById('siPass')?.closest('.field');
           const siBtn     = document.getElementById('siBtn');
           const googleBtn = document.getElementById('googleBtn');
@@ -1800,6 +1828,9 @@ function initFirebaseAuth(){
           if(collPath)  collPath.style.display    = 'none';
           if(linkPanel) linkPanel.style.display   = 'block';
           if(siEmail)   siEmail.value             = user.email;
+          // Update linking panel label based on role
+          const linkTitle = document.querySelector('#collectorLinkPanel .link-role-label');
+          if(linkTitle) linkTitle.textContent = A._pendingRole === 'reviewer' ? 'Reviewer' : 'Collector';
           return;
         }
 
@@ -5583,7 +5614,488 @@ function showTraineeTab(tab){
   if(tab==='tnProgress') tnRenderProgress();
 }
 
-// ── Collector Dashboard ──────────────────────────────────────────
+// ── Reviewer Dashboard ───────────────────────────────────────────
+const REV_STATE = {
+  sessions: [], events: [], reviewerEmail: '',
+  trendChart: null, selectedCollectors: [], locType: 'online', selectedBranch: null
+};
+
+function showRevTab(tab){
+  ['overview','details','feedback'].forEach(t=>{
+    const page = document.getElementById('revPage_'+t);
+    if(page) page.style.display = t===tab ? '' : 'none';
+    const nav = document.getElementById('revNav_'+t);
+    if(nav) nav.classList.toggle('active', t===tab);
+  });
+  if(tab==='details' && !document.getElementById('revCollectorSelect').options.length>1) revBuildCollectorDropdown();
+  if(tab==='feedback') revLoadFeedbackSessions();
+}
+
+function revGetMySessions(){
+  // Filter sessions to only those reviewed by this reviewer
+  const email = A.user?.email || '';
+  return REV_STATE.sessions.filter(s=>
+    (s.reviewer_email||'').toLowerCase() === email.toLowerCase()
+  );
+}
+
+function revGetMyEvents(){
+  const email = A.user?.email || '';
+  const mySessions = revGetMySessions().map(s=>s.session_id);
+  return REV_STATE.events.filter(e=> mySessions.includes(e.session_id));
+}
+
+async function initReviewerDashboard(){
+  if(!A.user) return;
+  REV_STATE.reviewerEmail = A.user.email;
+  const pill = document.getElementById('revUserPill');
+  if(pill) pill.textContent = (A.user.hrCode||A.user.name) + ' · Reviewer';
+  const welcome = document.getElementById('revWelcome');
+  if(welcome) welcome.textContent = 'Good day, '+(A.user.name||'Reviewer').split(' ')[0];
+  showRevTab('overview');
+  const sub = document.getElementById('revOverviewSub');
+  try {
+    if(sub) sub.textContent = 'Loading your collectors data...';
+    // Load sessions and events from Sheet
+    const sessUrl = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:Z?key=${COLLECTOR_SHEET_KEY}`;
+    const evtUrl  = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:K?key=${COLLECTOR_SHEET_KEY}`;
+    const [sessRes, evtRes] = await Promise.all([fetch(sessUrl), fetch(evtUrl)]);
+    const [sessData, evtData] = await Promise.all([sessRes.json(), evtRes.json()]);
+    REV_STATE.sessions = (sessData.values||[]).map(colParseSession).filter(s=>s.session_id);
+    REV_STATE.events   = (evtData.values||[]).map(colParseEvent).filter(e=>e.event_name);
+    revRenderOverview();
+    revBuildCollectorDropdown();
+  } catch(e){
+    console.error('[REV]', e);
+    if(sub) sub.textContent = 'Failed to load data. Please refresh.';
+  }
+}
+
+function revRenderOverview(){
+  const sessions = revGetMySessions();
+  const sub = document.getElementById('revOverviewSub');
+
+  // Unique collectors
+  const collectorSet = new Set();
+  sessions.forEach(s=>{ if(s.hr_code) s.hr_code.split(',').forEach(c=>collectorSet.add(c.trim())); });
+
+  const withScore = sessions.filter(s=>s.score_overall!==null);
+  const avgScore  = withScore.length ? Math.round(withScore.reduce((a,s)=>a+s.score_overall,0)/withScore.length) : null;
+  const totalErrors = sessions.reduce((a,s)=>a+s.total_errors,0);
+
+  const mc=document.getElementById('revMetricCollectors'); if(mc) mc.textContent=collectorSet.size;
+  const mcs=document.getElementById('revMetricCollectorsSub'); if(mcs) mcs.textContent='unique collectors';
+  const ms=document.getElementById('revMetricSessions'); if(ms) ms.textContent=sessions.length;
+  const mss=document.getElementById('revMetricSessionsSub'); if(mss) mss.textContent='sessions reviewed';
+  const ma=document.getElementById('revMetricAvgScore'); if(ma) ma.textContent=avgScore!=null?avgScore+'%':'—';
+  const mas=document.getElementById('revMetricAvgScoreSub'); if(mas) mas.textContent=withScore.length+' sessions';
+  const me=document.getElementById('revMetricErrors'); if(me) me.textContent=totalErrors;
+  const mes=document.getElementById('revMetricErrorsSub'); if(mes) mes.textContent='total flagged';
+  if(sub) sub.textContent=`${sessions.length} session${sessions.length!==1?'s':''} · ${collectorSet.size} collector${collectorSet.size!==1?'s':''}`;
+
+  // Trend chart
+  const sorted=[...withScore].sort((a,b)=>new Date(a.completed_at)-new Date(b.completed_at));
+  const ctx=document.getElementById('revTrendChart');
+  if(ctx){
+    if(REV_STATE.trendChart){REV_STATE.trendChart.destroy();REV_STATE.trendChart=null;}
+    const tl=document.getElementById('revTrendLabel'); if(tl) tl.textContent=sorted.length+' sessions';
+    REV_STATE.trendChart=new Chart(ctx,{
+      type:'line',
+      data:{
+        labels:sorted.map(s=>new Date(s.completed_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+s.half),
+        datasets:[{data:sorted.map(s=>s.score_overall),borderColor:'#2277DD',borderWidth:2,
+          pointBackgroundColor:'#2277DD',pointRadius:3,tension:0.3,fill:true,
+          backgroundColor:'rgba(34,119,221,0.06)'}]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y}%`}}},
+        scales:{x:{ticks:{color:'#555',font:{size:9},maxRotation:30,autoSkip:true,maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{min:0,max:100,ticks:{color:'#555',font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}
+    });
+  }
+
+  // Collector bars
+  const bars = document.getElementById('revCollectorBars');
+  if(bars){
+    if(!collectorSet.size){ bars.innerHTML='<div style="font-size:12px;color:var(--t-3)">No sessions found for your account.</div>'; return; }
+    const collData = {};
+    collectorSet.forEach(hr=>{
+      const cSess = sessions.filter(s=>s.hr_code===hr||s.hr_code.split(',').map(c=>c.trim()).includes(hr));
+      const cScores = cSess.filter(s=>s.score_overall!==null).map(s=>s.score_overall);
+      const avg = cScores.length ? Math.round(cScores.reduce((a,v)=>a+v,0)/cScores.length) : null;
+      const name = cSess[0]?.collector_name || hr;
+      collData[hr] = { name, avg, sessions: cSess.length };
+    });
+    const sorted2 = Object.entries(collData).sort((a,b)=>(b[1].avg||0)-(a[1].avg||0));
+    bars.innerHTML = sorted2.map(([hr,d])=>{
+      const color = d.avg==null?'var(--t-3)':d.avg>=90?'var(--green)':d.avg>=80?'var(--warn)':'var(--red)';
+      const avgt  = d.avg!=null?d.avg+'%':'—';
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="min-width:140px;font-size:12px;color:var(--t-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${d.name}">${d.name}</div>
+        <div style="flex:1;height:6px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;border-radius:3px;background:${color};width:${d.avg||0}%"></div>
+        </div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:36px;text-align:right;color:${color}">${avgt}</div>
+        <div style="font-size:11px;color:var(--t-3);min-width:60px">${d.sessions} session${d.sessions!==1?'s':''}</div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function revBuildCollectorDropdown(){
+  const sessions = revGetMySessions();
+  const collectors = {};
+  sessions.forEach(s=>{
+    if(!s.hr_code) return;
+    s.hr_code.split(',').forEach(hr=>{
+      hr=hr.trim(); if(hr) collectors[hr]=(s.collector_name||hr);
+    });
+  });
+  const sel = document.getElementById('revCollectorSelect');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Select collector</option>';
+  Object.entries(collectors).sort((a,b)=>a[1].localeCompare(b[1])).forEach(([hr,name])=>{
+    const o=document.createElement('option'); o.value=hr; o.textContent=`${name} (${hr})`; sel.appendChild(o);
+  });
+  // Also build the create session collector picker
+  revBuildSessionCollectorPicker(collectors);
+  // Re-init nx-select
+  const wrap = document.getElementById('nx_revCollector');
+  if(wrap) { delete wrap.dataset.nxInit; initNxSelects(); }
+}
+
+function revLoadCollectorDetail(){
+  const hr = document.getElementById('revCollectorSelect')?.value;
+  const empty = document.getElementById('revDetailEmpty');
+  const table = document.getElementById('revDetailTable');
+  if(!hr){ if(empty) empty.style.display='block'; if(table) table.innerHTML=''; return; }
+  if(empty) empty.style.display='none';
+
+  const sessions = revGetMySessions().filter(s=>s.hr_code===hr||s.hr_code.split(',').map(c=>c.trim()).includes(hr));
+  const events   = revGetMyEvents().filter(e=>e.hr_code===hr);
+  const withScore= sessions.filter(s=>s.score_overall!==null);
+  const avgScore = withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score_overall,0)/withScore.length):null;
+  const totalErr = sessions.reduce((a,s)=>a+s.total_errors,0);
+
+  // Error type breakdown
+  const errTypes={base:0,extras:0,deletion:0,location:0,players:0,camera:0,added:0};
+  sessions.forEach(s=>{errTypes.base+=s.err_base;errTypes.extras+=s.err_extras;errTypes.deletion+=s.err_deletion;
+    errTypes.location+=s.err_location;errTypes.players+=s.err_players;errTypes.camera+=s.err_camera;errTypes.added+=s.err_added;});
+  const topErr = Object.entries(errTypes).sort((a,b)=>b[1]-a[1])[0];
+  const collName = sessions[0]?.collector_name || hr;
+  const info = document.getElementById('revDetailCollectorInfo');
+  if(info) info.textContent = `${collName} · ${sessions.length} sessions`;
+
+  const ds=document.getElementById('revDetailScore'); if(ds) ds.textContent=avgScore!=null?avgScore+'%':'—';
+  const dse=document.getElementById('revDetailSessions'); if(dse) dse.textContent=sessions.length;
+  const de=document.getElementById('revDetailErrors'); if(de) de.textContent=totalErr;
+  const dte=document.getElementById('revDetailTopErr'); if(dte) dte.textContent=topErr?topErr[0]:'—';
+  const sub=document.getElementById('revDetailsSub'); if(sub) sub.textContent=`${collName} — ${sessions.length} sessions reviewed`;
+
+  // Error bars
+  const eb=document.getElementById('revDetailErrBars');
+  if(eb){
+    const max=Math.max(...Object.values(errTypes),1);
+    eb.innerHTML=Object.entries(errTypes).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>{
+      const alpha=1-(i*0.12);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--t-3);min-width:60px;text-transform:capitalize">${k}</div>
+        <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;border-radius:3px;background:rgba(232,89,12,${alpha});width:${Math.round(v/max*100)}%"></div>
+        </div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:24px;text-align:right;color:var(--t-3)">${v}</div>
+      </div>`;
+    }).join('')||'<div style="font-size:12px;color:var(--t-3)">No errors</div>';
+  }
+
+  // Top event errors
+  const evb=document.getElementById('revDetailEventBars');
+  if(evb){
+    const evtCounts={};
+    events.forEach(e=>{evtCounts[e.event_name]=(evtCounts[e.event_name]||0)+1;});
+    const top=Object.entries(evtCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const maxE=top[0]?top[0][1]:1;
+    evb.innerHTML=top.map(([name,cnt])=>`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--t-3);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;border-radius:3px;background:#2277DD;width:${Math.round(cnt/maxE*100)}%"></div>
+        </div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:24px;text-align:right;color:var(--t-3)">${cnt}</div>
+      </div>`).join('')||'<div style="font-size:12px;color:var(--t-3)">No event data</div>';
+  }
+
+  // Sessions table
+  if(table){
+    const sorted=[...sessions].sort((a,b)=>new Date(b.completed_at)-new Date(a.completed_at));
+    table.innerHTML=sorted.map(s=>{
+      const sc=s.score_overall;
+      const color=sc==null?'var(--t-3)':sc>=90?'var(--green)':sc>=80?'var(--warn)':'var(--red)';
+      const dt=s.completed_at?new Date(s.completed_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';
+      return `<tr style="border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
+        <td style="padding:9px 16px;font-size:11px;color:var(--t-3);white-space:nowrap">${dt}</td>
+        <td style="padding:9px 10px;color:var(--t-1);font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.match_name||'—'}</td>
+        <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-2);color:var(--t-3);padding:2px 7px;border-radius:4px">${s.half||'—'}</span></td>
+        <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${color}">${sc!=null?sc+'%':'—'}</span></td>
+        <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--t-3)">${s.total_errors||0}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// ── Feedback Session Creation ─────────────────────────────────────
+function revOpenCreateSession(){
+  const panel   = document.getElementById('revCreatePanel');
+  const overlay = document.getElementById('revPanelOverlay');
+  if(panel)   { panel.style.display='block'; setTimeout(()=>panel.style.transform='translateX(0)',10); }
+  if(overlay) overlay.style.display='block';
+  revSetLocType('online');
+  // Set default date to today
+  const today = new Date().toISOString().split('T')[0];
+  const dateEl = document.getElementById('revSessionDate');
+  if(dateEl) dateEl.value = today;
+}
+
+function revCloseCreateSession(){
+  const panel   = document.getElementById('revCreatePanel');
+  const overlay = document.getElementById('revPanelOverlay');
+  if(panel)   { panel.style.transform='translateX(100%)'; setTimeout(()=>panel.style.display='none',300); }
+  if(overlay) overlay.style.display='none';
+  // Reset form
+  REV_STATE.selectedCollectors=[];
+  revUpdatePills();
+  const topics=document.getElementById('revSessionTopics'); if(topics) topics.value='';
+  const meetLink=document.getElementById('revMeetLink'); if(meetLink) meetLink.value='';
+  REV_STATE.selectedBranch=null;
+  document.querySelectorAll('.rev-branch-btn').forEach(b=>b.classList.remove('active'));
+}
+
+function revSetLocType(type){
+  REV_STATE.locType=type;
+  const onBtn=document.getElementById('revLocOnline');
+  const offBtn=document.getElementById('revLocOffline');
+  const onSec=document.getElementById('revOnlineSection');
+  const offSec=document.getElementById('revOfflineSection');
+  if(onBtn)  onBtn.className  = type==='online'  ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  if(offBtn) offBtn.className = type==='offline' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  if(onSec)  onSec.style.display  = type==='online'  ? '' : 'none';
+  if(offSec) offSec.style.display = type==='offline' ? '' : 'none';
+}
+
+function revOpenGoogleMeet(){
+  window.open('https://meet.google.com/new', '_blank');
+}
+
+function revSelectBranch(id, name, mapsUrl){
+  REV_STATE.selectedBranch = { id, name, mapsUrl };
+  document.querySelectorAll('.rev-branch-btn').forEach(b=>b.className='btn btn-ghost btn-sm rev-branch-btn');
+  const btns = document.querySelectorAll('.rev-branch-btn');
+  const idx = {mahmoud:0,hassan:1,maadi:2}[id];
+  if(btns[idx]) btns[idx].className='btn btn-primary btn-sm rev-branch-btn';
+}
+
+function revBuildSessionCollectorPicker(collectors){
+  const picker = document.getElementById('revCollectorPicker');
+  if(!picker) return;
+  picker.innerHTML = Object.entries(collectors).sort((a,b)=>a[1].localeCompare(b[1])).map(([hr,name])=>`
+    <div onclick="revToggleCollector('${hr}','${name}')" data-hr="${hr}"
+      style="padding:10px 14px;font-size:13px;color:var(--t-2);cursor:pointer;border-radius:8px;margin:2px 4px;display:flex;align-items:center;gap:8px;transition:background .1s"
+      onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background=''">
+      <div class="rev-pick-dot-${hr.replace(/[^a-z0-9]/gi,'_')}" style="width:8px;height:8px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);flex-shrink:0"></div>
+      ${name} <span style="font-size:10px;color:var(--t-3);margin-left:auto;font-family:'JetBrains Mono',monospace">${hr}</span>
+    </div>
+  `).join('');
+}
+
+function revToggleCollectorPicker(){
+  const picker = document.getElementById('revCollectorPicker');
+  if(!picker) return;
+  picker.style.display = picker.style.display==='none' ? '' : 'none';
+}
+
+function revToggleCollector(hr, name){
+  const idx = REV_STATE.selectedCollectors.findIndex(c=>c.hr===hr);
+  if(idx>=0) REV_STATE.selectedCollectors.splice(idx,1);
+  else REV_STATE.selectedCollectors.push({hr,name});
+  revUpdatePills();
+  // Update dot
+  const dot = document.querySelector(`.rev-pick-dot-${hr.replace(/[^a-z0-9]/gi,'_')}`);
+  const isSelected = REV_STATE.selectedCollectors.some(c=>c.hr===hr);
+  if(dot){ dot.style.background=isSelected?'#2277DD':'transparent'; dot.style.borderColor=isSelected?'#2277DD':'rgba(255,255,255,0.2)'; }
+}
+
+function revUpdatePills(){
+  const container = document.getElementById('revCollectorPills');
+  if(!container) return;
+  if(!REV_STATE.selectedCollectors.length){
+    container.innerHTML='<span style="font-size:13px;color:var(--t-3)">Click to select collectors...</span>';
+    return;
+  }
+  container.innerHTML = REV_STATE.selectedCollectors.map(c=>`
+    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(34,119,221,0.15);color:#4499FF;border:0.5px solid rgba(34,119,221,0.3);border-radius:6px;padding:3px 8px;font-size:12px">
+      ${c.name}
+      <span onclick="revToggleCollector('${c.hr}','${c.name}')" style="cursor:pointer;opacity:.6;margin-left:2px">×</span>
+    </span>
+  `).join('');
+}
+
+async function revSubmitSession(){
+  const btn = document.getElementById('revCreateBtn');
+  const err = document.getElementById('revCreateErr');
+  err.style.display='none';
+
+  if(!REV_STATE.selectedCollectors.length){ err.textContent='Select at least one collector.'; err.style.display='block'; return; }
+  const date = document.getElementById('revSessionDate')?.value;
+  const time = document.getElementById('revSessionTime')?.value;
+  if(!date||!time){ err.textContent='Please select a date and time.'; err.style.display='block'; return; }
+  if(REV_STATE.locType==='online'){
+    const link = document.getElementById('revMeetLink')?.value.trim();
+    if(!link){ err.textContent='Please paste a Google Meet link.'; err.style.display='block'; return; }
+  } else {
+    if(!REV_STATE.selectedBranch){ err.textContent='Please select an office location.'; err.style.display='block'; return; }
+  }
+
+  btn.disabled=true; btn.textContent='Creating...';
+
+  const meetLink  = document.getElementById('revMeetLink')?.value.trim()||'';
+  const topics    = document.getElementById('revSessionTopics')?.value.trim()||'';
+  const sessionId = 'fs_'+Date.now();
+  const datetime  = `${date}T${time}:00`;
+  const location  = REV_STATE.locType==='online'
+    ? { type:'online', meetLink }
+    : { type:'offline', branchId:REV_STATE.selectedBranch.id, branchName:REV_STATE.selectedBranch.name, mapsUrl:REV_STATE.selectedBranch.mapsUrl };
+
+  const sessionData = {
+    sessionId, reviewerEmail:A.user.email, reviewerName:A.user.name, reviewerHrCode:A.user.hrCode,
+    collectors: REV_STATE.selectedCollectors,
+    datetime, location, topics,
+    createdAt: new Date().toISOString(), status:'scheduled'
+  };
+
+  try {
+    // 1. Write to Firestore feedback_sessions
+    await fbDb.collection('feedback_sessions').doc(sessionId).set(sessionData);
+
+    // 2. Write FIELD notification for each collector
+    const notifPromises = REV_STATE.selectedCollectors.map(c=>
+      fbDb.collection('collector_notifications').add({
+        type: 'feedback_session',
+        sessionId, collectorsHrCode: c.hr,
+        reviewerName: A.user.name,
+        datetime, location, topics,
+        createdAt: new Date().toISOString(),
+        read: false,
+      })
+    );
+    await Promise.all(notifPromises);
+
+    // 3. Send emails to each collector (fire and forget)
+    const calLink = revBuildCalendarLink(sessionData);
+    REV_STATE.selectedCollectors.forEach(c=>{
+      const collSess = revGetMySessions().find(s=>s.hr_code===c.hr||s.hr_code.split(',').map(x=>x.trim()).includes(c.hr));
+      const collEmail = collSess?.reviewer_email || ''; // best guess
+      // Look up collector gmail from sessions
+      const collGmail = REV_STATE.sessions.find(s=>
+        (s.hr_code===c.hr||s.hr_code.split(',').map(x=>x.trim()).includes(c.hr)) && s.collector_name
+      );
+      // For now send to reviewer email as test — real collector gmail comes from collector_profiles
+      fbDb.collection('collector_profiles').where('hrCode','==',c.hr).limit(1).get().then(snap=>{
+        if(snap.empty) return;
+        const gmail = snap.docs[0].data().gmail;
+        if(!gmail) return;
+        fieldSendEmail(gmail, c.name, `📅 Feedback Session Scheduled — FIELD`, revBuildEmailHtml(sessionData, c, calLink))
+          .then(ok=>console.log(`[EMAIL] ${c.hr}:`, ok?'sent':'failed'));
+      }).catch(()=>{});
+    });
+
+    // 4. Close panel and refresh list
+    revCloseCreateSession();
+    revLoadFeedbackSessions();
+    btn.disabled=false; btn.textContent='Create session & notify collectors';
+
+  } catch(e){
+    console.error('[REV] Create session failed:', e);
+    err.textContent='Failed to create session: '+e.message;
+    err.style.display='block';
+    btn.disabled=false; btn.textContent='Create session & notify collectors';
+  }
+}
+
+function revBuildCalendarLink(session){
+  const start = session.datetime.replace(/[-:]/g,'').replace('T','T');
+  const end   = new Date(new Date(session.datetime).getTime()+60*60*1000).toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+  const loc   = session.location.type==='online' ? session.location.meetLink : session.location.branchName;
+  const title = encodeURIComponent(`FIELD Feedback Session — ${session.reviewerName}`);
+  const details = encodeURIComponent(`Reviewer: ${session.reviewerName}\nTopics: ${session.topics||'—'}\nLocation: ${loc}`);
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${encodeURIComponent(loc)}`;
+}
+
+function revBuildEmailHtml(session, collector, calLink){
+  const dt = new Date(session.datetime).toLocaleString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const locHtml = session.location.type==='online'
+    ? `<a href="${session.location.meetLink}" style="color:#4499FF">🌐 ${session.location.meetLink}</a>`
+    : `<a href="${session.location.mapsUrl}" style="color:#4499FF">📍 ${session.location.branchName}</a>`;
+  return `
+    <div style="font-family:Inter,sans-serif;background:#0f0f0f;color:#fff;padding:32px;border-radius:16px;max-width:520px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">
+        <div style="background:#2277DD;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">⚽</div>
+        <div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:3px">FIELD</div>
+          <div style="font-size:9px;color:#4499FF;letter-spacing:2px">REVIEWER PORTAL</div>
+        </div>
+      </div>
+      <h2 style="color:#fff;font-size:20px;margin:0 0 8px">📅 Feedback Session Scheduled</h2>
+      <p style="color:#888;font-size:14px;line-height:1.6;margin:0 0 20px">Hi ${collector.name}, your reviewer <strong style="color:#fff">${session.reviewerName}</strong> has scheduled a feedback session with you.</p>
+      <div style="background:#161616;border:0.5px solid #2a2a2a;border-radius:12px;padding:20px;margin-bottom:20px">
+        <div style="margin-bottom:12px"><div style="font-size:10px;color:#555;letter-spacing:1px;margin-bottom:4px">DATE & TIME</div><div style="font-size:14px;color:#fff">${dt}</div></div>
+        <div style="margin-bottom:12px"><div style="font-size:10px;color:#555;letter-spacing:1px;margin-bottom:4px">LOCATION</div><div style="font-size:14px">${locHtml}</div></div>
+        ${session.topics?`<div><div style="font-size:10px;color:#555;letter-spacing:1px;margin-bottom:4px">TOPICS</div><div style="font-size:13px;color:#aaa;line-height:1.5">${session.topics}</div></div>`:''}
+      </div>
+      <a href="${calLink}" style="display:block;background:#2277DD;color:#fff;text-align:center;padding:14px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:16px">📆 Add to Google Calendar</a>
+      <p style="color:#333;font-size:11px;margin:0;border-top:0.5px solid #1a1a1a;padding-top:16px">FIELD · Hudl Egypt — sent from a.ashrafarqam@gmail.com</p>
+    </div>
+  `;
+}
+
+async function revLoadFeedbackSessions(){
+  const list = document.getElementById('revFeedbackList');
+  const sub  = document.getElementById('revFeedbackSub');
+  if(!list) return;
+  list.innerHTML='<div style="text-align:center;padding:24px;color:var(--t-3);font-size:13px">Loading...</div>';
+  try {
+    const snap = await fbDb.collection('feedback_sessions')
+      .where('reviewerEmail','==',A.user.email)
+      .orderBy('datetime','desc').limit(20).get();
+
+    if(snap.empty){
+      list.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No feedback sessions yet. Create one →</div>';
+      return;
+    }
+    if(sub) sub.textContent=`${snap.size} session${snap.size!==1?'s':''} scheduled`;
+    list.innerHTML=snap.docs.map(doc=>{
+      const s=doc.data();
+      const dt=new Date(s.datetime).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      const locLabel=s.location?.type==='online'?'🌐 Online':`📍 ${s.location?.branchName||'Offline'}`;
+      const colls=(s.collectors||[]).map(c=>c.name||c.hr).join(', ');
+      const isPast=new Date(s.datetime)<new Date();
+      return `<div class="card" style="padding:16px 20px;margin-bottom:10px;border-left:2px solid ${isPast?'var(--b-2)':'#2277DD'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-1)">${dt}</div>
+          <span style="font-size:10px;background:${isPast?'var(--bg-2)':'rgba(34,119,221,0.15)'};color:${isPast?'var(--t-3)':'#4499FF'};padding:2px 8px;border-radius:4px">${isPast?'Past':'Upcoming'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--t-3);margin-bottom:4px">Collectors: <span style="color:var(--t-2)">${colls||'—'}</span></div>
+        <div style="font-size:12px;color:var(--t-3);margin-bottom:4px">${locLabel}</div>
+        ${s.topics?`<div style="font-size:12px;color:var(--t-3)">Topics: ${s.topics}</div>`:''}
+      </div>`;
+    }).join('');
+  } catch(e){
+    list.innerHTML='<div style="padding:24px;color:var(--t-3);font-size:13px">Failed to load sessions.</div>';
+    console.error('[REV] Load sessions:', e);
+  }
+}
+
+// ── Role switcher: reviewer test mode ──────────────────────────────
+
 // ── Shared Collector Filter State ───────────────────────────────
 const COL_FILTERS = {
   tf:       'all',
@@ -7396,10 +7908,23 @@ function switchRole(role){
       showScreen('collectorScreen');
       const sw = document.getElementById('roleSwitcher');
       if(sw) sw.style.display = 'block';
-      // Add exit button to collector screen topbar
       const pill = document.getElementById('colUserPill');
       if(pill) pill.innerHTML = (A.user.hrCode) + ' · Collector <span style="font-size:10px;background:rgba(232,89,12,0.2);color:#E8590C;padding:1px 6px;border-radius:4px;margin-left:4px">ADMIN TEST</span>';
       setTimeout(()=>{ initCollectorDashboard(); }, 100);
+    } else if(role === 'reviewer'){
+      // Super admin reviewer test mode
+      const prevRole   = A.user.role;
+      const prevHrCode = A.user.hrCode;
+      A.user.role   = 'reviewer';
+      A.user.hrCode = A.user.hrCode || 'ADMIN-TEST';
+      A._superAdminPrevRole   = prevRole;
+      A._superAdminPrevHrCode = prevHrCode;
+      showScreen('reviewerScreen');
+      const sw2 = document.getElementById('roleSwitcher');
+      if(sw2) sw2.style.display = 'block';
+      const rpill = document.getElementById('revUserPill');
+      if(rpill) rpill.innerHTML = (A.user.hrCode) + ' · Reviewer <span style="font-size:10px;background:rgba(34,119,221,0.2);color:#4499FF;padding:1px 6px;border-radius:4px;margin-left:4px">ADMIN TEST</span>';
+      setTimeout(()=>{ initReviewerDashboard(); }, 100);
     } else {
       // Restore current screen
       if(current){ current.style.opacity='1'; current.style.transform='none'; }
@@ -8710,6 +9235,26 @@ const MATCHES_SHEET_ID = '1dPwnYhIOiLUy_aBuVijPH3xtU6kxnEu-8FF115kXjSc';
 
 // ── Collector Results Sheet ──────────────────────────────────────
 const COLLECTOR_SHEET_ID  = '1-XbJFxAhR2QYxOQHdwIUVp-XSqol-3VJdHVhSoSkPmw';
+const REVIEWER_SHEET_TAB  = 'Reviewers';
+const FIELD_EMAIL_WORKER  = 'https://hudl-field-email.hudl-field.workers.dev';
+const FIELD_EMAIL_API_KEY = '9fA4swPxMgURkTKzDYhc1Y9OamY1jWSMfDLRN2otLcQ';
+
+// Send email via our Cloudflare Worker
+async function fieldSendEmail(to, toName, subject, html) {
+  try {
+    const res = await fetch(`${FIELD_EMAIL_WORKER}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': FIELD_EMAIL_API_KEY },
+      body: JSON.stringify({ to, toName, subject, html })
+    });
+    const data = await res.json();
+    if (!data.success) console.warn('[EMAIL] Send failed:', data);
+    return data.success;
+  } catch(e) {
+    console.warn('[EMAIL] Error:', e.message);
+    return false;
+  }
+}
 const COLLECTOR_SHEET_KEY = 'AIzaSyDEO-0MZ4-LOdIJ7aIyscgmLWGN5h8MpNI';
 // Column index constants — match SES.* codes in _SCHEMA tab exactly
 const SES = {
@@ -11560,6 +12105,7 @@ function btQuickAssignAll(){
     <button class="btn btn-secondary btn-sm" onclick="switchRole('trainee')" style="justify-content:flex-start;opacity:.5;cursor:not-allowed">🏃 Trainee <span class="badge badge-neutral" style="margin-inline-start:auto;font-size:9px">Soon</span></button>
     <div style="height:0.5px;background:var(--border);margin:4px 0"></div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('collector')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">📡 Collector View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('reviewer')" style="justify-content:flex-start;border-color:rgba(34,119,221,0.4);color:#4499FF">🔍 Reviewer View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
   </div>
 </div>
 
@@ -12133,6 +12679,270 @@ function btQuickAssignAll(){
     </div><!-- /content -->
   </div><!-- /app-shell -->
 </div>
+
+<!-- ===== REVIEWER DASHBOARD ===== -->
+<div id="reviewerScreen" class="screen">
+  <div class="app-shell">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-brand">
+        <div style="display:flex;align-items:center;gap:11px">
+          <svg width="40" height="40" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0"><defs><linearGradient id="lgR" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#6AADFF"/><stop offset="55%" stop-color="#2277DD"/><stop offset="100%" stop-color="#1144AA"/></linearGradient></defs><polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="rgba(34,119,221,0.4)" stroke-width="1.8"/><rect x="18" y="26" width="44" height="28" rx="1.5" fill="none" stroke="rgba(242,242,242,0.92)" stroke-width="2.2"/><line x1="40" y1="26" x2="40" y2="54" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" stroke-linecap="round"/><path d="M31,40 A9,9 0 0 1 49,40" stroke="rgba(242,242,242,0.92)" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="40" cy="40" r="4.5" fill="url(#lgR)"/><circle cx="40" cy="40" r="1.8" fill="#080808"/></svg>
+          <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+            <span style="font-family:Inter,sans-serif;font-size:15px;font-weight:700;letter-spacing:3.5px;color:var(--t-1)">FIELD</span>
+            <span style="font-family:Inter,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#2277DD;opacity:.85">REVIEWER PORTAL</span>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-r">
+        <span class="badge" style="background:rgba(34,119,221,0.15);color:#4499FF;border:0.5px solid rgba(34,119,221,0.3);font-size:11px;padding:3px 10px;border-radius:6px" id="revUserPill">Reviewer</span>
+        <button class="btn btn-danger btn-sm" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section-label">REVIEWER PORTAL</div>
+      <div class="sidebar-item active" id="revNav_overview" onclick="showRevTab('overview')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".75"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg></span>
+        Review Overview
+      </div>
+      <div class="sidebar-item" id="revNav_details" onclick="showRevTab('details')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+        Review in Details
+      </div>
+      <div class="sidebar-item" id="revNav_feedback" onclick="showRevTab('feedback')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M4 6h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg></span>
+        Feedback Sessions
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content" id="revContent">
+
+      <!-- ── REVIEW OVERVIEW PAGE ── -->
+      <div id="revPage_overview" style="padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px" id="revWelcome">Review Overview</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:24px" id="revOverviewSub">Loading your collectors data...</div>
+
+        <!-- Metric cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">COLLECTORS REVIEWED</div>
+            <div style="font-size:28px;font-weight:700;color:#2277DD;letter-spacing:-1px;line-height:1" id="revMetricCollectors">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px" id="revMetricCollectorsSub"></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">SESSIONS REVIEWED</div>
+            <div style="font-size:28px;font-weight:700;color:var(--t-1);letter-spacing:-1px;line-height:1" id="revMetricSessions">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px" id="revMetricSessionsSub"></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">AVG QUALITY GIVEN</div>
+            <div style="font-size:28px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="revMetricAvgScore">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px" id="revMetricAvgScoreSub"></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">ERRORS FLAGGED</div>
+            <div style="font-size:28px;font-weight:700;color:var(--warn);letter-spacing:-1px;line-height:1" id="revMetricErrors">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px" id="revMetricErrorsSub"></div>
+          </div>
+        </div>
+
+        <!-- Quality trend chart -->
+        <div class="card" style="padding:20px;margin-bottom:16px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+            Quality score trend across collectors
+            <span style="font-size:11px;color:var(--t-3);font-weight:400" id="revTrendLabel"></span>
+          </div>
+          <div style="height:100px;position:relative"><canvas id="revTrendChart"></canvas></div>
+        </div>
+
+        <!-- Collectors breakdown -->
+        <div class="card" style="padding:20px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Collectors performance</div>
+          <div id="revCollectorBars"></div>
+        </div>
+      </div>
+
+      <!-- ── REVIEW IN DETAILS PAGE ── -->
+      <div id="revPage_details" style="display:none;padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">Review in Details</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="revDetailsSub">Loading event data...</div>
+
+        <!-- Collector selector -->
+        <div style="margin-bottom:16px;display:flex;align-items:center;gap:10px">
+          <div class="nx-select-wrap" id="nx_revCollector" data-onchange="revLoadCollectorDetail" style="flex-shrink:0">
+            <div class="nx-trigger" style="min-width:200px">
+              <span class="nx-label">Select collector</span>
+              <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="revCollectorSelect" onchange="revLoadCollectorDetail()">
+              <option value="">Select collector</option>
+            </select>
+          </div>
+          <span style="font-size:12px;color:var(--t-3)" id="revDetailCollectorInfo"></span>
+        </div>
+
+        <!-- Stat bar -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);margin-bottom:6px">AVG QUALITY</div>
+            <div style="font-size:22px;font-weight:700;color:#E8590C;letter-spacing:-0.5px;line-height:1" id="revDetailScore">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);margin-bottom:6px">SESSIONS</div>
+            <div style="font-size:22px;font-weight:700;color:var(--t-1);letter-spacing:-0.5px;line-height:1" id="revDetailSessions">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);margin-bottom:6px">TOTAL ERRORS</div>
+            <div style="font-size:22px;font-weight:700;color:var(--warn);letter-spacing:-0.5px;line-height:1" id="revDetailErrors">—</div>
+          </div>
+          <div class="card" style="padding:14px 16px">
+            <div style="font-size:10px;color:var(--t-3);margin-bottom:6px">TOP ERROR TYPE</div>
+            <div style="font-size:14px;font-weight:700;color:var(--red);margin-top:4px;line-height:1" id="revDetailTopErr">—</div>
+          </div>
+        </div>
+
+        <!-- Error type bars -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <div class="card" style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Error breakdown</div>
+            <div id="revDetailErrBars"></div>
+          </div>
+          <div class="card" style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Top error events</div>
+            <div id="revDetailEventBars"></div>
+          </div>
+        </div>
+
+        <!-- Sessions table -->
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:0.5px solid var(--b-1);font-size:13px;font-weight:600;color:var(--t-2)">Sessions history</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:0.5px solid var(--b-1)">
+              <th style="text-align:left;padding:9px 16px;font-size:10px;color:var(--t-3)">DATE</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">MATCH</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">HALF</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--p2)">QUALITY</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">ERRORS</th>
+            </tr></thead>
+            <tbody id="revDetailTable"></tbody>
+          </table>
+          <div id="revDetailEmpty" style="display:none;padding:32px;text-align:center;font-size:13px;color:var(--t-3)">Select a collector to view their sessions.</div>
+        </div>
+      </div>
+
+      <!-- ── FEEDBACK SESSIONS PAGE ── -->
+      <div id="revPage_feedback" style="display:none;padding:28px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Feedback Sessions</div>
+          <button class="btn btn-primary btn-sm" onclick="revOpenCreateSession()" style="gap:6px">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            New session
+          </button>
+        </div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="revFeedbackSub">Manage feedback sessions with your collectors</div>
+
+        <!-- Sessions list -->
+        <div id="revFeedbackList">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No feedback sessions yet. Create one →</div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /app-shell -->
+</div>
+
+<!-- ── FEEDBACK SESSION CREATION PANEL (slides from right) ── -->
+<div id="revCreatePanel" style="display:none;position:fixed;top:0;right:0;width:420px;height:100vh;background:var(--bg-surface);border-left:0.5px solid var(--b-2);z-index:9999;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,0.5);transform:translateX(100%);transition:transform .3s cubic-bezier(0.4,0,0.2,1)">
+  <div style="padding:24px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--t-1)">New Feedback Session</div>
+        <div style="font-size:12px;color:var(--t-3);margin-top:2px">Fill in the details below</div>
+      </div>
+      <button onclick="revCloseCreateSession()" style="background:var(--bg-2);border:0.5px solid var(--b-2);color:var(--t-2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">×</button>
+    </div>
+
+    <!-- Collectors multi-select -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Collectors <span style="color:var(--t-3);font-weight:400">(select one or more)</span></label>
+      <div id="revCollectorPills" style="display:flex;flex-wrap:wrap;gap:6px;min-height:38px;background:var(--bg-2);border:0.5px solid var(--b-2);border-radius:var(--r-md);padding:8px 10px;cursor:pointer" onclick="revToggleCollectorPicker()"></div>
+      <div id="revCollectorPicker" style="display:none;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:var(--r-lg);margin-top:4px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
+    </div>
+
+    <!-- Date + Time -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="field">
+        <label class="input-label">Date</label>
+        <input type="date" id="revSessionDate" class="input" style="font-size:13px"/>
+      </div>
+      <div class="field">
+        <label class="input-label">Time</label>
+        <input type="time" id="revSessionTime" class="input" style="font-size:13px"/>
+      </div>
+    </div>
+
+    <!-- Location type -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Location type</label>
+      <div style="display:flex;gap:8px">
+        <button id="revLocOnline"  onclick="revSetLocType('online')"  class="btn btn-secondary btn-sm" style="flex:1;justify-content:center">🌐 Online</button>
+        <button id="revLocOffline" onclick="revSetLocType('offline')" class="btn btn-ghost btn-sm"     style="flex:1;justify-content:center">🏢 Offline</button>
+      </div>
+    </div>
+
+    <!-- Online section -->
+    <div id="revOnlineSection" style="margin-bottom:14px">
+      <div class="field">
+        <label class="input-label">Google Meet link</label>
+        <div style="display:flex;gap:8px">
+          <input type="url" id="revMeetLink" class="input" placeholder="Paste your Meet link here..." style="font-size:12px;flex:1"/>
+          <button onclick="revOpenGoogleMeet()" class="btn btn-ghost btn-sm" style="flex-shrink:0;white-space:nowrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="margin-right:4px"><path d="M15 10l4.553-2.069A1 1 0 0121 8.845v6.31a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Open Meet
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--t-3);margin-top:4px">Click "Open Meet" → create an instant meeting → copy the link → paste here</div>
+      </div>
+    </div>
+
+    <!-- Offline section -->
+    <div id="revOfflineSection" style="display:none;margin-bottom:14px">
+      <div class="field">
+        <label class="input-label">Office location</label>
+        <div style="display:flex;flex-direction:column;gap:6px" id="revBranchBtns">
+          <button onclick="revSelectBranch('mahmoud','Mahmoud El-Badry Branch','https://maps.app.goo.gl/cMsok4KC12nVuL9C6')" class="btn btn-ghost btn-sm rev-branch-btn" style="justify-content:flex-start;text-align:left">
+            📍 Mahmoud El-Badry Branch
+          </button>
+          <button onclick="revSelectBranch('hassan','Hassan El-Maamoun Branch','https://maps.app.goo.gl/4q1v4UxZNXNpfrj98')" class="btn btn-ghost btn-sm rev-branch-btn" style="justify-content:flex-start;text-align:left">
+            📍 Hassan El-Maamoun Branch
+          </button>
+          <button onclick="revSelectBranch('maadi','El-Maadi Branch','https://maps.app.goo.gl/o5n2JaCHkj2Y4ggR9')" class="btn btn-ghost btn-sm rev-branch-btn" style="justify-content:flex-start;text-align:left">
+            📍 El-Maadi Branch
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Topics -->
+    <div class="field" style="margin-bottom:20px">
+      <label class="input-label">Topics <span style="color:var(--t-3);font-weight:400">(what will be discussed)</span></label>
+      <textarea id="revSessionTopics" class="input" rows="3" placeholder="e.g. Base event errors, pressure events accuracy, general feedback..." style="resize:vertical;font-size:13px;line-height:1.5"></textarea>
+    </div>
+
+    <!-- Submit -->
+    <button class="btn btn-primary btn-full" id="revCreateBtn" onclick="revSubmitSession()" style="font-size:14px;font-weight:600;padding:13px">
+      Create session & notify collectors
+    </button>
+    <div id="revCreateErr" class="alert alert-err" style="margin-top:8px;display:none"></div>
+  </div>
+</div>
+<div id="revPanelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998" onclick="revCloseCreateSession()"></div>
 
 </body>
 </html>
