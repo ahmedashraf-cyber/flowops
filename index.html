@@ -5586,7 +5586,7 @@ function showTraineeTab(tab){
 // ── Collector Dashboard ──────────────────────────────────────────
 // ── Shared Collector Filter State ───────────────────────────────
 const COL_FILTERS = {
-  tf:       'all',    // default: show all data on first load
+  tf:       'all',
   dateFrom: null,
   dateTo:   null,
   matchId:  '',
@@ -5594,6 +5594,8 @@ const COL_FILTERS = {
   nameSearch:'',
   errType:  '',
 };
+
+const COL_STATE = { sessions:[], filtered:[], chartInst:null };
 
 function colApplyTf(tf, btn){
   COL_FILTERS.tf = tf;
@@ -5765,7 +5767,7 @@ function showColTab(tab){
 }
 
 function colSetTimeframe(tf, btn){
-  COL_STATE.tf = tf;
+  COL_FILTERS.tf = tf;
   document.querySelectorAll('.col-tf-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
   colFilterAndRender();
@@ -5854,7 +5856,7 @@ function colRenderOverview(sessions){
   const mes=document.getElementById('colMetricErrorsSub'); if(mes) mes.textContent='total across period';
   const mbm=document.getElementById('colMetricBestModule'); if(mbm) mbm.textContent=bestMod;
   const mbms=document.getElementById('colMetricBestModuleSub'); if(mbms) mbms.textContent=bestModScore?Math.round(bestModScore)+'% avg':'';
-  const tf=COL_STATE.tf;
+  const tf=COL_FILTERS.tf;
   const label=tf==='week'?'last 7 days':tf==='month'?'last 30 days':tf==='quarter'?'last 3 months':'all time';
   if(sub) sub.textContent=`${sessions.length} session${sessions.length!==1?'s':''} · ${label}`;
   colRenderTrendChart(sessions);
