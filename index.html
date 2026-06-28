@@ -5647,7 +5647,7 @@ function colApplyFilters(){
   // Re-render current page
   colFilterAndRender();
   if(COL_EVT_STATE.events.length) colRenderAnalysis();
-  colRenderHistory();
+  if(COL_STATE.sessions.length) colRenderHistory();
 }
 
 // Override colFilterSessions to use shared filter state
@@ -5764,6 +5764,7 @@ function showColTab(tab){
     if(nav) nav.classList.toggle('active', t===tab);
   });
   if(tab==='analysis') colInitAnalysis();
+  if(tab==='history' && COL_STATE.sessions.length) colRenderHistory();
 }
 
 function colSetTimeframe(tf, btn){
@@ -6205,6 +6206,11 @@ function colHistSort(key){
 }
 
 function colRenderHistory(){
+  if(!COL_STATE.sessions.length){
+    const sub=document.getElementById('colHistorySub');
+    if(sub && sub.textContent==='Loading...') return; // still loading
+    return;
+  }
   const sessions = colFilterSessions(COL_STATE.sessions, COL_FILTERS.tf);
   const isSuperAdmin = A.user && A.user.email==='ahmed.ashraf@hudl.com';
   const search = (document.getElementById('colHistSearch')?.value||'').toLowerCase().trim();
@@ -6295,6 +6301,7 @@ async function initCollectorDashboard(){
     COL_STATE.sessions=await colLoadSheetData();
     colBuildFilterOptions(COL_STATE.sessions, []);
     colFilterAndRender();
+    colRenderHistory();
   } catch(e){
     console.error('[COL] Sheet load failed:',e);
     if(sub) sub.textContent='Failed to load data. Please refresh.';
