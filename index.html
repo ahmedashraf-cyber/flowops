@@ -10810,13 +10810,18 @@ const SB_MATCHES_SHEET_ID  = '1ErfY2R9_OANNY715geNyCd-e0bttEvhIRyJ3DVBL3Ek'
 const REVIEW_TYPES = ['A-review','B-review','C-review','D-review','Pressures','Full match','Hyper care','Academies','Customer']
 
 function qtlShowTab(tab){
-  ['overview','assignments','feedback','tasks'].forEach(t=>{
+  ['overview','assignments','feedback','tasks','qoverview','qdetails'].forEach(t=>{
     const p=document.getElementById('qtlPage_'+t); if(p)p.style.display=t===tab?'':'none';
     const n=document.getElementById('qtlNav_'+t); if(n)n.classList.toggle('active',t===tab);
   });
   if(tab==='assignments') qtlRenderAssignments();
   if(tab==='feedback')    qtlRenderFeedbackTasks();
   if(tab==='tasks')       qtlRenderTasks();
+  if(tab==='qoverview')   qtlRenderQOverview();
+  if(tab==='qdetails'){
+    const empty=document.getElementById('qtlQDetailEmpty');
+    if(empty) empty.style.display='block';
+  }
 }
 
 async function initQTLDashboard(){
@@ -11563,6 +11568,149 @@ function qtlRenderTasks(){
       ${t.due?`<div style="font-size:11px;color:var(--t-3);margin-top:4px">Due: ${t.due}</div>`:''}
     </div>`;
   }).join('');
+}
+
+// ── Quality Overview & Details ────────────────────────────────────
+let qtlQChart = null
+
+function qtlRenderQOverview(){
+  const sessions = QTL.sessions
+  const collMap = {}
+  sessions.forEach(s=>{
+    const hr=s.hrCode||''; if(!hr)return
+    if(!collMap[hr]) collMap[hr]={hr,name:s.collectorName||hr,sessions:[],errors:0}
+    collMap[hr].sessions.push(s)
+    collMap[hr].errors+=(s.totalErrors||0)
+  })
+  const colls=Object.values(collMap)
+  const withScore=sessions.filter(s=>s.score!=null)
+  const avg=withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score,0)/withScore.length):null
+  const totalErrors=sessions.reduce((a,s)=>a+s.totalErrors,0)
+  const sub=document.getElementById('qtlQOverviewSub')
+  document.getElementById('qtlQMetricCollectors').textContent=colls.length
+  document.getElementById('qtlQMetricSessions').textContent=sessions.length
+  document.getElementById('qtlQMetricSessionsSub').textContent=withScore.length+' scored'
+  document.getElementById('qtlQMetricAvg').textContent=avg!=null?avg+'%':'—'
+  document.getElementById('qtlQMetricErrors').textContent=totalErrors
+  if(sub) sub.textContent=`${sessions.length} sessions · ${colls.length} collectors`
+  // Trend chart
+  const sorted=[...withScore].sort((a,b)=>new Date(a.completedAt)-new Date(b.completedAt))
+  const ctx=document.getElementById('qtlQTrendChart')
+  if(ctx&&typeof Chart!=='undefined'){
+    if(qtlQChart){qtlQChart.destroy();qtlQChart=null}
+    const tl=document.getElementById('qtlQTrendLabel'); if(tl)tl.textContent=sorted.length+' sessions'
+    qtlQChart=new Chart(ctx,{type:'line',
+      data:{labels:sorted.map(s=>{const d=new Date(s.completedAt);return(isNaN(d)?'':d.toLocaleDateString('en-GB',{day:'numeric',month:'short'}))+' '+s.half}),
+        datasets:[{data:sorted.map(s=>s.score),borderColor:'#E8590C',borderWidth:2,pointBackgroundColor:'#E8590C',pointRadius:3,tension:0.3,fill:true,backgroundColor:'rgba(232,89,12,0.06)'}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y}%`}}},
+        scales:{x:{ticks:{color:'#555',font:{size:9},maxRotation:30,autoSkip:true,maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{min:0,max:100,ticks:{color:'#555',font:{size:9},callback:v=>v+'%'},grid:{color:'rgba(255,255,255,0.04)'}}}}})
+  }
+  // Collector bars
+  const bars=document.getElementById('qtlQCollectorBars')
+  if(bars){
+    if(!colls.length){bars.innerHTML='<div style="font-size:12px;color:var(--t-3)">No session data yet.</div>';return}
+    const ranked=colls.map(c=>{
+      const sc=c.sessions.filter(s=>s.score!=null)
+      return {...c,avg:sc.length?Math.round(sc.reduce((a,s)=>a+s.score,0)/sc.length):null}
+    }).sort((a,b)=>(b.avg||0)-(a.avg||0))
+    bars.innerHTML=ranked.map(c=>{
+      const col=c.avg==null?'var(--t-3)':c.avg>=90?'var(--green)':c.avg>=80?'var(--warn)':'var(--red)'
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer" onclick="qtlQSelectCollector('${c.hr}','${c.name.replace(/'/g,"\\'")} ')">
+        <div style="min-width:150px;font-size:12px;color:var(--t-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+        <div style="flex:1;height:6px;background:var(--bg-2);border-radius:3px;overflow:hidden"><div style="height:100%;border-radius:3px;background:${col};width:${c.avg||0}%"></div></div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:36px;text-align:right;color:${col}">${c.avg!=null?c.avg+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--t-3);min-width:68px">${c.sessions.length} session${c.sessions.length!==1?'s':''}</div>
+      </div>`
+    }).join('')
+  }
+}
+
+function qtlQShowColDropdown(){
+  qtlQFilterCollectors()
+  setTimeout(()=>document.addEventListener('click',qtlQHideColDropdown),150)
+}
+function qtlQHideColDropdown(e){
+  const d=document.getElementById('qtlQColDropdown'),i=document.getElementById('qtlQColSearch')
+  if(!d||!i)return
+  if(!d.contains(e.target)&&e.target!==i){d.style.display='none';document.removeEventListener('click',qtlQHideColDropdown)}
+}
+function qtlQFilterCollectors(){
+  const q=(document.getElementById('qtlQColSearch')?.value||'').toLowerCase()
+  const d=document.getElementById('qtlQColDropdown'); if(!d)return
+  const collMap={}
+  QTL.sessions.forEach(s=>{if(s.hrCode)collMap[s.hrCode]={hr:s.hrCode,name:s.collectorName||s.hrCode}})
+  const all=Object.values(collMap)
+  const results=q.length<2?all.slice(0,30):all.filter(c=>c.name.toLowerCase().includes(q)||c.hr.toLowerCase().includes(q)).slice(0,30)
+  if(!results.length){d.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No collectors found</div>';d.style.display='block';return}
+  d.innerHTML=results.map(c=>`<div onclick="qtlQSelectCollector('${c.hr}','${c.name.replace(/'/g,"\\'")} ')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(232,89,12,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0;min-width:56px">${c.hr}</span><span>${c.name}</span></div>`).join('')
+  d.style.display='block'
+}
+function qtlQSelectCollector(hr,name){
+  const inp=document.getElementById('qtlQColSearch'); if(inp)inp.value=name+' ('+hr+')'
+  const d=document.getElementById('qtlQColDropdown'); if(d)d.style.display='none'
+  // If on overview, switch to details
+  qtlShowTab('qdetails')
+  qtlQRenderDetails(hr)
+}
+
+function qtlQRenderDetails(hr){
+  const sessions=QTL.sessions.filter(s=>s.hrCode===hr)
+  const events=QTL.events.filter(r=>(r[3]||'')===hr)
+  const withScore=sessions.filter(s=>s.score!=null)
+  const avg=withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score,0)/withScore.length):null
+  const totalErrs=sessions.reduce((a,s)=>a+s.totalErrors,0)
+  const info=document.getElementById('qtlQDetailCollectorInfo')
+  const colName=sessions[0]?.collectorName||hr
+  document.getElementById('qtlQDetailScore').textContent=avg!=null?avg+'%':'—'
+  document.getElementById('qtlQDetailSessions').textContent=sessions.length
+  document.getElementById('qtlQDetailErrors').textContent=totalErrs
+  if(info)info.textContent=colName+' · '+sessions.length+' session'+(sessions.length!==1?'s':'')+' · '+withScore.length+' scored'
+  // Error type bars (col index 9 = ERROR_TYPE)
+  const errCounts={}
+  events.forEach(r=>{const t=r[9]||'';if(t)errCounts[t]=(errCounts[t]||0)+1})
+  const errSorted=Object.entries(errCounts).sort((a,b)=>b[1]-a[1])
+  const errMax=errSorted[0]?errSorted[0][1]:1
+  document.getElementById('qtlQDetailTopErr').textContent=errSorted[0]?errSorted[0][0]:'—'
+  const errBars=document.getElementById('qtlQDetailErrBars')
+  if(errBars)errBars.innerHTML=errSorted.slice(0,6).map(([t,v],i)=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--t-3);min-width:70px;text-transform:capitalize">${t}</div>
+      <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden"><div style="height:100%;border-radius:3px;background:rgba(232,89,12,${1-i*0.12});width:${Math.round(v/errMax*100)}%"></div></div>
+      <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:24px;text-align:right;color:var(--t-3)">${v}</div>
+    </div>`).join('')||'<div style="font-size:12px;color:var(--t-3)">No error data</div>'
+  // Event bars (col index 8 = EVENT_NAME)
+  const evtCounts={}
+  events.forEach(r=>{const e=r[8]||'';if(e)evtCounts[e]=(evtCounts[e]||0)+1})
+  const evtSorted=Object.entries(evtCounts).sort((a,b)=>b[1]-a[1])
+  const evtMax=evtSorted[0]?evtSorted[0][1]:1
+  const evtBars=document.getElementById('qtlQDetailEventBars')
+  if(evtBars)evtBars.innerHTML=evtSorted.slice(0,6).map(([e,v])=>`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--t-3);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e}</div>
+      <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden"><div style="height:100%;border-radius:3px;background:#2277DD;width:${Math.round(v/evtMax*100)}%"></div></div>
+      <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:24px;text-align:right;color:var(--t-3)">${v}</div>
+    </div>`).join('')||'<div style="font-size:12px;color:var(--t-3)">No event data</div>'
+  // Sessions table
+  const table=document.getElementById('qtlQDetailTable')
+  const empty=document.getElementById('qtlQDetailEmpty')
+  if(table){
+    if(!sessions.length){if(empty)empty.style.display='block';table.innerHTML='';return}
+    if(empty)empty.style.display='none'
+    const sorted=[...sessions].sort((a,b)=>new Date(b.completedAt)-new Date(a.completedAt))
+    table.innerHTML=sorted.map(s=>{
+      const sc=s.score,col=sc==null?'var(--t-3)':sc>=90?'var(--green)':sc>=80?'var(--warn)':'var(--red)'
+      const dt=s.completedAt?new Date(s.completedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'
+      return `<tr style="border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
+        <td style="padding:9px 16px;font-size:11px;color:var(--t-3);white-space:nowrap">${dt}</td>
+        <td style="padding:9px 10px;color:var(--t-1);font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.matchName||'—'}</td>
+        <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--bg-2);color:var(--t-3);padding:2px 7px;border-radius:4px">${s.half||'—'}</span></td>
+        <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${col}">${sc!=null?sc+'%':'—'}</span></td>
+        <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--t-3)">${s.totalErrors||0}</td>
+        <td style="padding:9px 10px;font-size:11px;color:var(--t-3)">${s.reviewerEmail||'—'}</td>
+      </tr>`
+    }).join('')
+  }
 }
 
 // ── Role switcher: QTL test mode ──────────────────────────────────
@@ -13888,6 +14036,15 @@ function qtlRenderTasks(){
         <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 4h9M3 7.5h9M3 11h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity=".6"/></svg></span>
         Team Tasks
       </div>
+      <div class="sidebar-section-label" style="margin-top:10px">QUALITY ANALYTICS</div>
+      <div class="sidebar-item" id="qtlNav_qoverview" onclick="qtlShowTab('qoverview')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".75"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg></span>
+        Quality Overview
+      </div>
+      <div class="sidebar-item" id="qtlNav_qdetails" onclick="qtlShowTab('qdetails')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M7.5 4v3.5l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+        Quality Details
+      </div>
     </div>
 
     <!-- CONTENT -->
@@ -14007,6 +14164,64 @@ function qtlRenderTasks(){
         </div>
         <div style="font-size:13px;color:var(--t-3);margin-bottom:20px">Create and manage tasks for your review team</div>
         <div id="qtlTaskList"></div>
+      </div>
+
+      <!-- ── QUALITY OVERVIEW PAGE ── -->
+      <div id="qtlPage_qoverview" style="display:none;padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">Quality Overview</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="qtlQOverviewSub">Quality scores across all collectors reviewed by your team</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+          <div class="card" style="padding:16px"><div style="font-size:11px;color:var(--t-3);margin-bottom:8px">COLLECTORS</div><div style="font-size:28px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="qtlQMetricCollectors">—</div><div style="font-size:11px;color:var(--t-3);margin-top:5px">unique</div></div>
+          <div class="card" style="padding:16px"><div style="font-size:11px;color:var(--t-3);margin-bottom:8px">SESSIONS</div><div style="font-size:28px;font-weight:700;color:var(--t-1);letter-spacing:-1px;line-height:1" id="qtlQMetricSessions">—</div><div style="font-size:11px;color:var(--t-3);margin-top:5px" id="qtlQMetricSessionsSub"></div></div>
+          <div class="card" style="padding:16px"><div style="font-size:11px;color:var(--t-3);margin-bottom:8px">AVG QUALITY</div><div style="font-size:28px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="qtlQMetricAvg">—</div><div style="font-size:11px;color:var(--t-3);margin-top:5px">all collectors</div></div>
+          <div class="card" style="padding:16px"><div style="font-size:11px;color:var(--t-3);margin-bottom:8px">TOTAL ERRORS</div><div style="font-size:28px;font-weight:700;color:var(--red);letter-spacing:-1px;line-height:1" id="qtlQMetricErrors">—</div><div style="font-size:11px;color:var(--t-3);margin-top:5px">flagged</div></div>
+        </div>
+        <div class="card" style="padding:20px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">Quality score trend<span style="font-size:11px;color:var(--t-3);font-weight:400" id="qtlQTrendLabel"></span></div>
+          <div style="height:100px;position:relative"><canvas id="qtlQTrendChart"></canvas></div>
+        </div>
+        <div class="card" style="padding:20px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Collector performance (team-wide)</div>
+          <div id="qtlQCollectorBars"></div>
+        </div>
+      </div>
+
+      <!-- ── QUALITY DETAILS PAGE ── -->
+      <div id="qtlPage_qdetails" style="display:none;padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">Quality Details</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:16px">Deep dive into any collector's sessions and error breakdown</div>
+        <div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">
+          <div style="position:relative;max-width:320px;flex:1">
+            <input type="text" id="qtlQColSearch" class="input" placeholder="Search collector by name or HR code..." style="font-size:13px" oninput="qtlQFilterCollectors()" onfocus="qtlQShowColDropdown()" autocomplete="off"/>
+            <div id="qtlQColDropdown" style="display:none;position:absolute;left:0;right:0;margin-top:4px;background:#1C1C1C;border:1px solid rgba(232,89,12,0.3);border-radius:10px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 8px 32px rgba(0,0,0,0.9)"></div>
+          </div>
+          <span style="font-size:12px;color:var(--t-3)" id="qtlQDetailCollectorInfo"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          <div class="card" style="padding:14px 16px"><div style="font-size:10px;color:var(--t-3);margin-bottom:6px">AVG QUALITY</div><div style="font-size:22px;font-weight:700;color:#E8590C;letter-spacing:-0.5px;line-height:1" id="qtlQDetailScore">—</div></div>
+          <div class="card" style="padding:14px 16px"><div style="font-size:10px;color:var(--t-3);margin-bottom:6px">SESSIONS</div><div style="font-size:22px;font-weight:700;color:var(--t-1);letter-spacing:-0.5px;line-height:1" id="qtlQDetailSessions">—</div></div>
+          <div class="card" style="padding:14px 16px"><div style="font-size:10px;color:var(--t-3);margin-bottom:6px">TOTAL ERRORS</div><div style="font-size:22px;font-weight:700;color:var(--warn);letter-spacing:-0.5px;line-height:1" id="qtlQDetailErrors">—</div></div>
+          <div class="card" style="padding:14px 16px"><div style="font-size:10px;color:var(--t-3);margin-bottom:6px">TOP ERROR</div><div style="font-size:13px;font-weight:700;color:var(--red);margin-top:4px;line-height:1" id="qtlQDetailTopErr">—</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <div class="card" style="padding:20px"><div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Error breakdown</div><div id="qtlQDetailErrBars"></div></div>
+          <div class="card" style="padding:20px"><div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Top error events</div><div id="qtlQDetailEventBars"></div></div>
+        </div>
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="padding:14px 18px;border-bottom:0.5px solid var(--b-1);font-size:13px;font-weight:600;color:var(--t-2)">Sessions history</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:0.5px solid var(--b-1)">
+              <th style="text-align:left;padding:9px 16px;font-size:10px;color:var(--t-3)">DATE</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">MATCH</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">HALF</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:#E8590C">QUALITY</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">ERRORS</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">REVIEWER</th>
+            </tr></thead>
+            <tbody id="qtlQDetailTable"></tbody>
+          </table>
+          <div id="qtlQDetailEmpty" style="display:none;padding:32px;text-align:center;font-size:13px;color:var(--t-3)">Select a collector above to view their sessions.</div>
+        </div>
       </div>
 
     </div>
