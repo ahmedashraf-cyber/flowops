@@ -11113,11 +11113,22 @@ async function qtlPreloadMatchCache(){
   QTL_MATCH_CACHE_LOADING = false
 }
 
+function qtlEnsureDropdownsInBody(){
+  // Move dropdowns to body to escape CSS transform stacking context
+  ['qtlRevDropdown','qtlColDropdown'].forEach(id=>{
+    const el=document.getElementById(id)
+    if(el&&el.parentElement&&el.parentElement.id!=='body'&&el.parentElement!==document.body){
+      document.body.appendChild(el)
+    }
+  })
+}
+
 function qtlOpenAssignPanel(){
   const panel=document.getElementById('qtlAssignPanel')
   const overlay=document.getElementById('qtlAssignOverlay')
   if(panel){panel.style.display='block';setTimeout(()=>panel.style.transform='translateX(0)',10)}
   if(overlay)overlay.style.display='block'
+  qtlEnsureDropdownsInBody()
   QTL_SELECTED_REVIEW_TYPES=[];QTL_SELECTED_HALVES=[];QTL_SELECTED_MATCHES={}
   QTL_SELECTED_REVIEWER=null;QTL_SELECTED_COLLECTOR=null
   const mid=document.getElementById('qtlMatchIds'); if(mid)mid.value=''
@@ -11175,22 +11186,24 @@ function qtlRemoveMatch(id){
   qtlResolveMatches()
 }
 
+function qtlPosDropdown(d, input){
+  const rect = input.getBoundingClientRect()
+  d.style.top  = (rect.bottom + window.scrollY + 4) + 'px'
+  d.style.left = (rect.left + window.scrollX) + 'px'
+  d.style.width = Math.max(rect.width, 280) + 'px'
+  d.style.position = 'absolute'
+}
+
 function qtlFilterReviewers(){
   const q=(document.getElementById('qtlRevSearch').value||'').toLowerCase()
   const d=document.getElementById('qtlRevDropdown'); if(!d)return
   const input=document.getElementById('qtlRevSearch'); if(!input)return
   const results=q.length<1?QTL_REVIEWERS_LIST.slice(0,40):QTL_REVIEWERS_LIST.filter(r=>r.name.toLowerCase().includes(q)||r.hr_code.toLowerCase().includes(q)).slice(0,40)
   d.innerHTML = results.length
-    ? results.map(r=>`<div onclick="qtlSelectReviewer('${r.hr_code}','${r.name.replace(/'/g,"\\'")}','${r.email||''}')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(232,89,12,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0">${r.hr_code}</span><span>${r.name}</span></div>`).join('')
+    ? results.map(r=>`<div onclick="qtlSelectReviewer('${r.hr_code}','${r.name.replace(/'/g,"\'")}','${r.email||''}')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(232,89,12,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0;min-width:56px">${r.hr_code}</span><span>${r.name}</span></div>`).join('')
     : '<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>'
+  qtlPosDropdown(d, input)
   d.style.display='block'
-  // Position after content set and display:block
-  requestAnimationFrame(()=>{
-    const rect=input.getBoundingClientRect()
-    d.style.top=(rect.bottom+4)+'px'
-    d.style.left=rect.left+'px'
-    d.style.width=Math.max(rect.width,280)+'px'
-  })
 }
 function qtlShowRevDropdown(){
   qtlFilterReviewers()
@@ -11230,19 +11243,15 @@ function qtlFilterCollectors(){
   const q=(document.getElementById('qtlColSearch').value||'').toLowerCase()
   const d=document.getElementById('qtlColDropdown'); if(!d)return
   const input=document.getElementById('qtlColSearch'); if(!input)return
-  const doPosition=()=>requestAnimationFrame(()=>{
-    const rect=input.getBoundingClientRect()
-    d.style.top=(rect.bottom+4)+'px';d.style.left=rect.left+'px';d.style.width=Math.max(rect.width,280)+'px'
-  })
   if(q.length<2){
     d.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">Type at least 2 characters to search...</div>'
-    d.style.display='block'; doPosition(); return
+    qtlPosDropdown(d,input); d.style.display='block'; return
   }
   const results=QTL_COLLECTORS_LIST.filter(c=>c.name.toLowerCase().includes(q)||c.hr_code.toLowerCase().includes(q)).slice(0,25)
   d.innerHTML=results.length
     ? results.map(c=>`<div onclick="qtlSelectCollector('${c.hr_code}','${c.name.replace(/'/g,"\'")} ')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(34,119,221,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4499FF;font-weight:700;flex-shrink:0;min-width:56px">${c.hr_code}</span><span>${c.name}</span></div>`).join('')
     : '<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>'
-  d.style.display='block'; doPosition()
+  qtlPosDropdown(d,input); d.style.display='block'
 }
 function qtlShowColDropdown(){
   qtlFilterCollectors()
@@ -14002,7 +14011,7 @@ function qtlRenderTasks(){
       <div style="position:relative">
         <input type="text" id="qtlRevSearch" class="input" placeholder="Search by name or HR code..."
           style="font-size:13px" oninput="qtlFilterReviewers()" onfocus="qtlShowRevDropdown()" autocomplete="off"/>
-        <div id="qtlRevDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:220px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7)"></div>
+        <div id="qtlRevDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:220px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7);min-width:280px"></div>
       </div>
       <div id="qtlRevSelected" style="display:none;margin-top:6px;background:rgba(232,89,12,0.1);border:0.5px solid rgba(232,89,12,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#E8590C;display:flex;align-items:center;justify-content:space-between">
         <span id="qtlRevSelectedLabel"></span>
@@ -14056,7 +14065,7 @@ function qtlRenderTasks(){
       <div style="position:relative">
         <input type="text" id="qtlColSearch" class="input" placeholder="Search by name or HR code..."
           style="font-size:13px" oninput="qtlFilterCollectors()" onfocus="qtlShowColDropdown()" autocomplete="off"/>
-        <div id="qtlColDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:200px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7)"></div>
+        <div id="qtlColDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:200px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7);min-width:280px"></div>
       </div>
       <div id="qtlColSelected" style="display:none;margin-top:6px;background:rgba(34,119,221,0.1);border:0.5px solid rgba(34,119,221,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#4499FF;display:flex;align-items:center;justify-content:space-between">
         <span id="qtlColSelectedLabel"></span>
