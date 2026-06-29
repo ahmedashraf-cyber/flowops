@@ -11188,10 +11188,10 @@ function qtlRemoveMatch(id){
 
 function qtlPosDropdown(d, input){
   const rect = input.getBoundingClientRect()
-  d.style.top  = (rect.bottom + window.scrollY + 4) + 'px'
-  d.style.left = (rect.left + window.scrollX) + 'px'
+  d.style.position = 'fixed'
+  d.style.top  = (rect.bottom + 4) + 'px'
+  d.style.left = rect.left + 'px'
   d.style.width = Math.max(rect.width, 280) + 'px'
-  d.style.position = 'absolute'
 }
 
 function qtlFilterReviewers(){
@@ -14011,7 +14011,7 @@ function qtlRenderTasks(){
       <div style="position:relative">
         <input type="text" id="qtlRevSearch" class="input" placeholder="Search by name or HR code..."
           style="font-size:13px" oninput="qtlFilterReviewers()" onfocus="qtlShowRevDropdown()" autocomplete="off"/>
-        <div id="qtlRevDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:220px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7);min-width:280px"></div>
+        <div id="qtlRevDropdown" style="display:none;position:absolute;background:#1C1C1C;border:1px solid rgba(232,89,12,0.4);border-radius:10px;max-height:220px;overflow-y:auto;z-index:99999;box-shadow:0 16px 48px rgba(0,0,0,0.9);min-width:280px"></div>
       </div>
       <div id="qtlRevSelected" style="display:none;margin-top:6px;background:rgba(232,89,12,0.1);border:0.5px solid rgba(232,89,12,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#E8590C;display:flex;align-items:center;justify-content:space-between">
         <span id="qtlRevSelectedLabel"></span>
@@ -14065,7 +14065,7 @@ function qtlRenderTasks(){
       <div style="position:relative">
         <input type="text" id="qtlColSearch" class="input" placeholder="Search by name or HR code..."
           style="font-size:13px" oninput="qtlFilterCollectors()" onfocus="qtlShowColDropdown()" autocomplete="off"/>
-        <div id="qtlColDropdown" style="display:none;position:fixed;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:10px;max-height:200px;overflow-y:auto;z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,0.7);min-width:280px"></div>
+        <div id="qtlColDropdown" style="display:none;position:absolute;background:#1C1C1C;border:1px solid rgba(34,119,221,0.4);border-radius:10px;max-height:200px;overflow-y:auto;z-index:99999;box-shadow:0 16px 48px rgba(0,0,0,0.9);min-width:280px"></div>
       </div>
       <div id="qtlColSelected" style="display:none;margin-top:6px;background:rgba(34,119,221,0.1);border:0.5px solid rgba(34,119,221,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#4499FF;display:flex;align-items:center;justify-content:space-between">
         <span id="qtlColSelectedLabel"></span>
