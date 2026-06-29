@@ -11178,21 +11178,28 @@ function qtlRemoveMatch(id){
 function qtlFilterReviewers(){
   const q=(document.getElementById('qtlRevSearch').value||'').toLowerCase()
   const d=document.getElementById('qtlRevDropdown'); if(!d)return
-  const input=document.getElementById('qtlRevSearch')
+  const input=document.getElementById('qtlRevSearch'); if(!input)return
   const results=q.length<1?QTL_REVIEWERS_LIST.slice(0,40):QTL_REVIEWERS_LIST.filter(r=>r.name.toLowerCase().includes(q)||r.hr_code.toLowerCase().includes(q)).slice(0,40)
-  if(!results.length){d.innerHTML='<div style="padding:12px;font-size:12px;color:var(--t-3)">No results</div>';return}
-  d.innerHTML=results.map(r=>`<div onclick="qtlSelectReviewer('${r.hr_code}','${r.name.replace(/'/g,"\\'")}','${r.email||''}')" style="padding:10px 14px;font-size:12px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#E8590C;min-width:54px;font-weight:700">${r.hr_code}</span><span>${r.name}</span></div>`).join('')
-  // Position fixed relative to input to escape overflow:hidden
-  const rect=input.getBoundingClientRect()
-  d.style.position='fixed'
-  d.style.top=(rect.bottom+4)+'px'
-  d.style.left=rect.left+'px'
-  d.style.width=rect.width+'px'
+  d.innerHTML = results.length
+    ? results.map(r=>`<div onclick="qtlSelectReviewer('${r.hr_code}','${r.name.replace(/'/g,"\\'")}','${r.email||''}')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(232,89,12,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0">${r.hr_code}</span><span>${r.name}</span></div>`).join('')
+    : '<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>'
   d.style.display='block'
+  // Position after content set and display:block
+  requestAnimationFrame(()=>{
+    const rect=input.getBoundingClientRect()
+    d.style.top=(rect.bottom+4)+'px'
+    d.style.left=rect.left+'px'
+    d.style.width=Math.max(rect.width,280)+'px'
+  })
 }
 function qtlShowRevDropdown(){
   qtlFilterReviewers()
-  setTimeout(()=>document.addEventListener('click',qtlHideRevDropdown),100)
+  setTimeout(()=>document.addEventListener('click',qtlHideRevDropdown),150)
+}
+function qtlHideRevDropdown(e){
+  const d=document.getElementById('qtlRevDropdown'),i=document.getElementById('qtlRevSearch')
+  if(!d||!i)return
+  if(!d.contains(e.target)&&e.target!==i){d.style.display='none';document.removeEventListener('click',qtlHideRevDropdown)}
 }
 function qtlSelectReviewer(hr,name,email){
   QTL_SELECTED_REVIEWER={hr_code:hr,name,email}
@@ -11222,21 +11229,29 @@ function qtlToggleHalf(btn,half){
 function qtlFilterCollectors(){
   const q=(document.getElementById('qtlColSearch').value||'').toLowerCase()
   const d=document.getElementById('qtlColDropdown'); if(!d)return
-  const input=document.getElementById('qtlColSearch')
-  if(q.length<2){d.innerHTML='<div style="padding:12px;font-size:12px;color:var(--t-3)">Type at least 2 chars to search...</div>'
+  const input=document.getElementById('qtlColSearch'); if(!input)return
+  const doPosition=()=>requestAnimationFrame(()=>{
     const rect=input.getBoundingClientRect()
-    d.style.position='fixed';d.style.top=(rect.bottom+4)+'px';d.style.left=rect.left+'px';d.style.width=rect.width+'px'
-    return}
-  const results=QTL_COLLECTORS_LIST.filter(c=>c.name.toLowerCase().includes(q)||c.hr_code.toLowerCase().includes(q)).slice(0,20)
-  if(!results.length){d.innerHTML='<div style="padding:12px;font-size:12px;color:var(--t-3)">No results</div>';return}
-  d.innerHTML=results.map(c=>`<div onclick="qtlSelectCollector('${c.hr_code}','${c.name.replace(/'/g,"\\'")}' )" style="padding:10px 14px;font-size:12px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#4499FF;min-width:54px;font-weight:700">${c.hr_code}</span><span>${c.name}</span></div>`).join('')
-  const rect=input.getBoundingClientRect()
-  d.style.position='fixed';d.style.top=(rect.bottom+4)+'px';d.style.left=rect.left+'px';d.style.width=rect.width+'px'
-  d.style.display='block'
+    d.style.top=(rect.bottom+4)+'px';d.style.left=rect.left+'px';d.style.width=Math.max(rect.width,280)+'px'
+  })
+  if(q.length<2){
+    d.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">Type at least 2 characters to search...</div>'
+    d.style.display='block'; doPosition(); return
+  }
+  const results=QTL_COLLECTORS_LIST.filter(c=>c.name.toLowerCase().includes(q)||c.hr_code.toLowerCase().includes(q)).slice(0,25)
+  d.innerHTML=results.length
+    ? results.map(c=>`<div onclick="qtlSelectCollector('${c.hr_code}','${c.name.replace(/'/g,"\'")} ')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(34,119,221,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4499FF;font-weight:700;flex-shrink:0;min-width:56px">${c.hr_code}</span><span>${c.name}</span></div>`).join('')
+    : '<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>'
+  d.style.display='block'; doPosition()
 }
 function qtlShowColDropdown(){
   qtlFilterCollectors()
-  setTimeout(()=>document.addEventListener('click',qtlHideColDropdown),100)
+  setTimeout(()=>document.addEventListener('click',qtlHideColDropdown),150)
+}
+function qtlHideColDropdown(e){
+  const d=document.getElementById('qtlColDropdown'),i=document.getElementById('qtlColSearch')
+  if(!d||!i)return
+  if(!d.contains(e.target)&&e.target!==i){d.style.display='none';document.removeEventListener('click',qtlHideColDropdown)}
 }
 function qtlSelectCollector(hr,name){
   QTL_SELECTED_COLLECTOR={hr_code:hr,name}
