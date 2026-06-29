@@ -1838,6 +1838,16 @@ function initFirebaseAuth(){
         const profile = doc.exists ? doc.data() : {};
         const name = profile.displayName || user.displayName || user.email.split('@')[0];
         const role = profile.role || 'coordinator';
+
+        // ── Quality Team Leader check — before training routing ──
+        const qtlDoc = await fbDb.collection('quality_leaders').doc(user.email).get();
+        if(qtlDoc.exists){
+          const qtl = qtlDoc.data();
+          A.user = { uid:user.uid, email:user.email, name:qtl.fullName||name, role:'qtl', hrCode:qtl.hrCode||'', qtlData:qtl };
+          showScreen('qtlScreen');
+          setTimeout(()=>{ initQTLDashboard(); }, 300);
+          return;
+        }
         // Enrich with TEAM_ROSTER data if available
         const rosterMember = TEAM_ROSTER.find(m => m.email === user.email);
         A.user = {
@@ -5621,7 +5631,7 @@ const REV_STATE = {
 };
 
 function showRevTab(tab){
-  ['overview','details','feedback'].forEach(t=>{
+  ['overview','details','feedback','assignments'].forEach(t=>{
     const page = document.getElementById('revPage_'+t);
     if(page) page.style.display = t===tab ? '' : 'none';
     const nav = document.getElementById('revNav_'+t);
@@ -5629,6 +5639,64 @@ function showRevTab(tab){
   });
   if(tab==='details' && !document.getElementById('revCollectorSelect').options.length>1) revBuildCollectorDropdown();
   if(tab==='feedback') revLoadFeedbackSessions();
+  if(tab==='assignments') revLoadMyAssignments();
+}
+
+async function revLoadMyAssignments(){
+  const list = document.getElementById('revAssignList');
+  if(!list) return;
+  list.innerHTML='<div style="text-align:center;padding:24px;color:var(--t-3);font-size:13px">Loading...</div>';
+  try {
+    const myHrCode = A.user.hrCode || '';
+    const snap = await fbDb.collection('qtl_assignments')
+      .where('reviewerHrCode','==',myHrCode)
+      .orderBy('createdAt','desc').limit(50).get();
+
+    // Update badge
+    const open = snap.docs.filter(d=>d.data().status==='open').length;
+    const badge = document.getElementById('revAssignBadge');
+    if(badge){ badge.textContent=open; badge.style.display=open>0?'':'none'; }
+
+    if(snap.empty){ list.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No assignments from your team leader yet.</div>'; return; }
+
+    list.innerHTML = snap.docs.map(doc=>{
+      const a = doc.data(), id = doc.id;
+      const isOpen = a.status==='open';
+      const isPast = a.etaDate && new Date(a.etaDate)<new Date();
+      return `<div class="card" style="padding:16px 20px;margin-bottom:10px;border-left:2px solid ${isOpen?'#E8590C':'var(--b-2)'}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+              <div style="font-size:13px;font-weight:600;color:var(--t-1)">${a.matchName||'Match '+a.matchId}</div>
+              <span style="font-size:10px;background:rgba(232,89,12,0.12);color:#E8590C;padding:2px 8px;border-radius:4px;font-weight:700">${a.reviewType||'—'}</span>
+              <span style="font-size:10px;background:var(--bg-2);color:var(--t-3);padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace">${a.half||'—'}</span>
+            </div>
+            <div style="font-size:11px;color:var(--t-3)">Match ID: <span style="font-family:'JetBrains Mono',monospace">${a.matchId}</span> · ${a.competition||''} · ${a.matchDate||''}</div>
+            ${a.collectorName?`<div style="font-size:11px;color:var(--t-3);margin-top:3px">Collector: ${a.collectorName} (${a.collectorHrCode})</div>`:''}
+            ${a.note?`<div style="font-size:11px;color:var(--t-3);margin-top:4px;font-style:italic;border-left:2px solid var(--b-2);padding-left:8px">${a.note}</div>`:''}
+            <div style="font-size:11px;color:${isOpen&&isPast?'var(--red)':'var(--t-3)'};margin-top:6px">
+              ETA: ${a.etaDate||'—'}${a.etaTime?' at '+a.etaTime:''}${isOpen&&isPast?' ⚠️ Overdue':''}
+              · From: ${a.leaderName||a.leaderEmail}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+            <span style="font-size:10px;background:${isOpen?'rgba(232,89,12,0.15)':'rgba(30,215,96,0.1)'};color:${isOpen?'#E8590C':'var(--green)'};padding:2px 8px;border-radius:4px">${isOpen?'Open':'Done'}</span>
+            ${isOpen?`<button onclick="revMarkAssignmentDone('${id}')" style="font-size:10px;background:rgba(30,215,96,0.1);border:0.5px solid rgba(30,215,96,0.3);color:var(--green);padding:4px 10px;border-radius:6px;cursor:pointer;font-weight:600">✓ Mark Done</button>`:''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e){
+    list.innerHTML='<div style="padding:24px;color:var(--t-3);font-size:13px">Failed to load assignments.</div>';
+    console.error('[REV assignments]',e);
+  }
+}
+
+async function revMarkAssignmentDone(id){
+  try {
+    await fbDb.collection('qtl_assignments').doc(id).update({status:'done',doneAt:new Date().toISOString()});
+    revLoadMyAssignments();
+  } catch(e){ alert('Error: '+e.message); }
 }
 
 function revGetMySessions(){
@@ -7911,8 +7979,21 @@ function switchRole(role){
       const pill = document.getElementById('colUserPill');
       if(pill) pill.innerHTML = (A.user.hrCode) + ' · Collector <span style="font-size:10px;background:rgba(232,89,12,0.2);color:#E8590C;padding:1px 6px;border-radius:4px;margin-left:4px">ADMIN TEST</span>';
       setTimeout(()=>{ initCollectorDashboard(); }, 100);
+    } else if(role === 'qtl'){
+      A.user.role = 'qtl';
+      if(!A.user.qtlData){
+        fbDb.collection('quality_leaders').doc(A.user.email).get().then(doc=>{
+          if(doc.exists) A.user.qtlData=doc.data();
+          showScreen('qtlScreen');
+          const sw=document.getElementById('roleSwitcher'); if(sw)sw.style.display='block';
+          setTimeout(()=>{ initQTLDashboard(); },100);
+        });
+        return;
+      }
+      showScreen('qtlScreen');
+      const swQ=document.getElementById('roleSwitcher'); if(swQ)swQ.style.display='block';
+      setTimeout(()=>{ initQTLDashboard(); },100);
     } else if(role === 'reviewer'){
-      // Super admin reviewer test mode
       const prevRole   = A.user.role;
       const prevHrCode = A.user.hrCode;
       A.user.role   = 'reviewer';
@@ -10709,7 +10790,599 @@ function btQuickAssignAll(){
   btRenderMatches();
 }
 
-// ── Role switcher drag to move ────────────────────────────────────
+// ── Quality Team Leader Dashboard ────────────────────────────────
+const QTL = {
+  sessions: [], events: [], assignments: [], feedbackTasks: [], tasks: [],
+  reviewers: [], collectors: [], selectedReviewType: '', selectedHalf: '',
+  fbSelectedCollectors: [], assignFilter: 'all', assignReviewerFilter: '',
+  resolvedMatch: null,
+}
+
+const MATCHES_SHEET_ID  = '1ErfY2R9_OANNY715geNyCd-e0bttEvhIRyJ3DVBL3Ek'
+const REVIEW_TYPES = ['A-review','B-review','C-review','D-review','Pressures','Full match','Hyper care','Academies','Customer']
+
+function qtlShowTab(tab){
+  ['overview','assignments','feedback','tasks'].forEach(t=>{
+    const p=document.getElementById('qtlPage_'+t); if(p)p.style.display=t===tab?'':'none';
+    const n=document.getElementById('qtlNav_'+t); if(n)n.classList.toggle('active',t===tab);
+  });
+  if(tab==='assignments') qtlRenderAssignments();
+  if(tab==='feedback')    qtlRenderFeedbackTasks();
+  if(tab==='tasks')       qtlRenderTasks();
+}
+
+async function initQTLDashboard(){
+  if(!A.user) return;
+  const qtl = A.user.qtlData || {};
+  QTL.reviewers = qtl.reviewers || [];
+  document.getElementById('qtlUserPill').textContent = (A.user.name||'QTL') + ' · Quality Team Leader';
+  document.getElementById('qtlWelcome').textContent  = 'Good day, '+(A.user.name||'QTL').split(' ')[0];
+  qtlShowTab('overview');
+  qtlBuildReviewerDropdowns();
+  await qtlLoadData();
+}
+
+function qtlBuildReviewerDropdowns(){
+  // Assign panel reviewer selector
+  const assignSel = document.getElementById('qtlAssignToSel');
+  if(assignSel){
+    assignSel.innerHTML = '<option value="">Select reviewer</option>';
+    QTL.reviewers.forEach(r=>{
+      const o=document.createElement('option'); o.value=r.hrCode; o.textContent=`${r.fullName} (${r.hrCode})`; assignSel.appendChild(o);
+    });
+    const wrap=document.getElementById('nx_qtlAssignTo'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
+  }
+  // Feedback task reviewer selector
+  const fbSel = document.getElementById('qtlFbReviewerSel');
+  if(fbSel){
+    fbSel.innerHTML = '<option value="">Select reviewer</option>';
+    QTL.reviewers.forEach(r=>{
+      const o=document.createElement('option'); o.value=r.hrCode; o.textContent=`${r.fullName} (${r.hrCode})`; fbSel.appendChild(o);
+    });
+    const wrap=document.getElementById('nx_qtlFbReviewer'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
+  }
+  // Assignment filter reviewer
+  const filterSel = document.getElementById('qtlAssignReviewerFilter');
+  if(filterSel){
+    filterSel.innerHTML = '<option value="">All Reviewers</option>';
+    QTL.reviewers.forEach(r=>{
+      const o=document.createElement('option'); o.value=r.hrCode; o.textContent=r.fullName; filterSel.appendChild(o);
+    });
+    const wrap=document.getElementById('nx_qtlAssignReviewer'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
+  }
+  // Task assignees buttons
+  const assignees = document.getElementById('qtlTaskAssignees');
+  if(assignees){
+    assignees.innerHTML = '';
+    // All team button
+    const allBtn = document.createElement('button');
+    allBtn.type='button'; allBtn.dataset.rev='all'; allBtn.dataset.on='0';
+    allBtn.textContent='👥 Whole Team';
+    allBtn.style.cssText='padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s';
+    allBtn.onclick=()=>qtlToggleTaskAssignee(allBtn);
+    assignees.appendChild(allBtn);
+    QTL.reviewers.forEach(r=>{
+      const btn=document.createElement('button');
+      btn.type='button'; btn.dataset.rev=r.hrCode; btn.dataset.on='0';
+      btn.textContent=r.fullName.split(' ')[0]+' ('+r.hrCode+')';
+      btn.style.cssText='padding:6px 14px;border-radius:20px;border:1.5px solid var(--b-1);background:transparent;color:var(--t-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s';
+      btn.onclick=()=>qtlToggleTaskAssignee(btn);
+      assignees.appendChild(btn);
+    });
+  }
+}
+
+function qtlToggleTaskAssignee(btn){
+  const on = btn.dataset.on==='1';
+  btn.dataset.on = on?'0':'1';
+  btn.style.background = on?'transparent':'rgba(232,89,12,0.12)';
+  btn.style.borderColor = on?'var(--b-1)':'rgba(232,89,12,0.4)';
+  btn.style.color = on?'var(--t-2)':'var(--p2)';
+}
+
+async function qtlLoadData(){
+  const sub=document.getElementById('qtlOverviewSub');
+  if(sub) sub.textContent='Loading team data...';
+  try {
+    // Load sessions from Sheet
+    const sessUrl=`https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:Z?key=${COLLECTOR_SHEET_KEY}`;
+    const evtUrl =`https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:Q?key=${COLLECTOR_SHEET_KEY}`;
+    const [sRes,eRes]=await Promise.all([fetch(sessUrl),fetch(evtUrl)]);
+    const [sData,eData]=await Promise.all([sRes.json(),eRes.json()]);
+
+    // Filter sessions to this leader's reviewers
+    const myReviewerEmails = QTL.reviewers.map(r=>r.gmail.toLowerCase());
+    const SES={HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,SCORE_OVERALL:6,TOTAL_EVENTS:13,TOTAL_ERRORS:14,REVIEWER_EMAIL:22,COLLECTOR_NAME:25};
+    QTL.sessions = (sData.values||[]).map(r=>({
+      hrCode:r[SES.HR_CODE]||'', sessionId:r[SES.SESSION_ID]||'', matchId:r[SES.MATCH_ID]||'',
+      matchName:r[SES.MATCH_NAME]||'', half:r[SES.HALF]||'', completedAt:r[SES.COMPLETED_AT]||'',
+      score:r[SES.SCORE_OVERALL]?parseFloat(r[SES.SCORE_OVERALL]):null,
+      totalEvents:parseInt(r[SES.TOTAL_EVENTS])||0, totalErrors:parseInt(r[SES.TOTAL_ERRORS])||0,
+      reviewerEmail:r[SES.REVIEWER_EMAIL]||'', collectorName:r[SES.COLLECTOR_NAME]||'',
+    })).filter(s=>s.sessionId&&myReviewerEmails.includes((s.reviewerEmail||'').toLowerCase()));
+
+    // Build collectors list from sessions
+    const collSet={};
+    QTL.sessions.forEach(s=>{ if(s.hrCode&&!collSet[s.hrCode]) collSet[s.hrCode]={hrCode:s.hrCode,name:s.collectorName||s.hrCode}; });
+    QTL.collectors=Object.values(collSet);
+    qtlBuildCollectorDropdowns();
+
+    // Events filtered to team's reviewer sessions
+    const mySessionIds=new Set(QTL.sessions.map(s=>s.sessionId));
+    QTL.events=(eData.values||[]).filter(r=>mySessionIds.has(r[1]||''));
+
+    // Load assignments from Firestore
+    const assignSnap=await fbDb.collection('qtl_assignments').where('leaderEmail','==',A.user.email).orderBy('createdAt','desc').limit(100).get();
+    QTL.assignments=assignSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // Load feedback tasks
+    const fbSnap=await fbDb.collection('qtl_feedback_tasks').where('leaderEmail','==',A.user.email).orderBy('createdAt','desc').limit(50).get();
+    QTL.feedbackTasks=fbSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    // Load team tasks
+    const taskSnap=await fbDb.collection('qtl_tasks').where('leaderEmail','==',A.user.email).orderBy('createdAt','desc').limit(50).get();
+    QTL.tasks=taskSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+    qtlRenderOverview();
+  } catch(e){
+    console.error('[QTL]',e);
+    if(sub) sub.textContent='Failed to load. Please refresh.';
+  }
+}
+
+function qtlBuildCollectorDropdowns(){
+  const collSel=document.getElementById('qtlAssignCollectorSel');
+  if(collSel){
+    collSel.innerHTML='<option value="">No specific collector</option>';
+    QTL.collectors.forEach(c=>{
+      const o=document.createElement('option'); o.value=c.hrCode; o.textContent=`${c.name} (${c.hrCode})`; collSel.appendChild(o);
+    });
+    const wrap=document.getElementById('nx_qtlAssignCollector'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
+  }
+  // Feedback collector picker
+  const picker=document.getElementById('qtlFbCollectorPicker');
+  if(picker){
+    picker.innerHTML=QTL.collectors.map(c=>`
+      <div onclick="qtlToggleFbCollector('${c.hrCode}','${c.name}')" data-hr="${c.hrCode}"
+        style="padding:10px 14px;font-size:13px;color:var(--t-2);cursor:pointer;border-radius:8px;margin:2px 4px;display:flex;align-items:center;gap:8px"
+        onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background=''">
+        <div class="qtlFbDot_${c.hrCode.replace(/[^a-z0-9]/gi,'_')}" style="width:8px;height:8px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);flex-shrink:0"></div>
+        ${c.name} <span style="font-size:10px;color:var(--t-3);margin-left:auto;font-family:'JetBrains Mono',monospace">${c.hrCode}</span>
+      </div>
+    `).join('')||'<div style="padding:16px;font-size:12px;color:var(--t-3)">No collectors in your team sessions yet.</div>';
+  }
+}
+
+function qtlRenderOverview(){
+  const sessions=QTL.sessions;
+  const sub=document.getElementById('qtlOverviewSub');
+  const withScore=sessions.filter(s=>s.score!=null);
+  const avgScore=withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score,0)/withScore.length):null;
+  const totalErrors=sessions.reduce((a,s)=>a+s.totalErrors,0);
+  const openAssigns=QTL.assignments.filter(a=>a.status==='open').length;
+
+  document.getElementById('qtlMetricReviewers').textContent=QTL.reviewers.length;
+  document.getElementById('qtlMetricSessions').textContent=sessions.length;
+  document.getElementById('qtlMetricSessionsSub').textContent=`${withScore.length} scored`;
+  document.getElementById('qtlMetricAvg').textContent=avgScore!=null?avgScore+'%':'—';
+  document.getElementById('qtlMetricAssign').textContent=openAssigns;
+  if(sub) sub.textContent=`${sessions.length} sessions · ${QTL.reviewers.length} reviewers · ${QTL.collectors.length} collectors`;
+
+  // Open assignments badge
+  const badge=document.getElementById('qtlAssignBadge');
+  if(badge){ badge.textContent=openAssigns; badge.style.display=openAssigns>0?'':'none'; }
+
+  // Reviewer performance table
+  const tbody=document.getElementById('qtlReviewerTable');
+  const empty=document.getElementById('qtlReviewerTableEmpty');
+  if(tbody){
+    const rows=QTL.reviewers.map(rev=>{
+      const revSess=sessions.filter(s=>(s.reviewerEmail||'').toLowerCase()===rev.gmail.toLowerCase());
+      const revScored=revSess.filter(s=>s.score!=null);
+      const avg=revScored.length?Math.round(revScored.reduce((a,s)=>a+s.score,0)/revScored.length):null;
+      const errs=revSess.reduce((a,s)=>a+s.totalErrors,0);
+      const collSet=new Set(revSess.map(s=>s.hrCode).filter(Boolean));
+      const col=avg==null?'var(--t-3)':avg>=90?'var(--green)':avg>=80?'var(--warn)':'var(--red)';
+      return `<tr style="border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
+        <td style="padding:9px 16px;font-size:12px;color:var(--t-1);font-weight:500">${rev.fullName}</td>
+        <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--t-3)">${rev.hrCode}</td>
+        <td style="padding:9px 10px;font-size:12px;color:var(--t-2)">${revSess.length}</td>
+        <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${col}">${avg!=null?avg+'%':'—'}</span></td>
+        <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn)">${errs}</td>
+        <td style="padding:9px 10px;font-size:12px;color:var(--t-3)">${collSet.size}</td>
+      </tr>`;
+    }).join('');
+    tbody.innerHTML=rows||'';
+    if(empty) empty.style.display=!rows?'block':'none';
+  }
+
+  // Error type bars from Events tab col H=ERROR_TYPE
+  const errCounts={};
+  QTL.events.forEach(r=>{ const t=r[7]||''; if(t) errCounts[t]=(errCounts[t]||0)+1; });
+  const errBars=document.getElementById('qtlErrBars');
+  if(errBars){
+    const sorted=Object.entries(errCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const max=sorted[0]?sorted[0][1]:1;
+    errBars.innerHTML=sorted.map(([t,c],i)=>{
+      const alpha=1-(i*0.12);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--t-3);min-width:64px;text-transform:capitalize">${t}</div>
+        <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;border-radius:3px;background:rgba(232,89,12,${alpha});width:${Math.round(c/max*100)}%"></div>
+        </div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;color:var(--t-3)">${c}</div>
+      </div>`;
+    }).join('')||'<div style="font-size:12px;color:var(--t-3)">No event data yet</div>';
+  }
+
+  // Top event bars from Events tab col I=EVENT_NAME
+  const evtCounts={};
+  QTL.events.forEach(r=>{ const e=r[8]||''; if(e) evtCounts[e]=(evtCounts[e]||0)+1; });
+  const evtBars=document.getElementById('qtlEventBars');
+  if(evtBars){
+    const sorted=Object.entries(evtCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const max=sorted[0]?sorted[0][1]:1;
+    evtBars.innerHTML=sorted.map(([e,c])=>`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="font-size:11px;color:var(--t-3);min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e}</div>
+        <div style="flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden">
+          <div style="height:100%;border-radius:3px;background:#2277DD;width:${Math.round(c/max*100)}%"></div>
+        </div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;min-width:28px;text-align:right;color:var(--t-3)">${c}</div>
+      </div>`).join('')||'<div style="font-size:12px;color:var(--t-3)">No event data yet</div>';
+  }
+}
+
+// ── Match Assignment ──────────────────────────────────────────────
+let qtlMatchResolveTimer = null;
+
+function qtlOpenAssignPanel(){
+  const panel=document.getElementById('qtlAssignPanel');
+  const overlay=document.getElementById('qtlAssignOverlay');
+  if(panel){panel.style.display='block';setTimeout(()=>panel.style.transform='translateX(0)',10);}
+  if(overlay)overlay.style.display='block';
+  QTL.selectedReviewType=''; QTL.selectedHalf='';
+  document.getElementById('qtlMatchId').value='';
+  document.getElementById('qtlMatchResolved').style.display='none';
+  document.getElementById('qtlMatchNotFound').style.display='none';
+  document.getElementById('qtlAssignNote').value='';
+  document.getElementById('qtlAssignErr').style.display='none';
+  // Reset pills
+  document.querySelectorAll('#qtlReviewTypePills button').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--b-2)';b.style.color='var(--t-3)';
+  });
+  document.querySelectorAll('[data-half]').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--b-2)';b.style.color='var(--t-3)';
+  });
+  // Default today date
+  const today=new Date().toISOString().split('T')[0];
+  document.getElementById('qtlAssignEtaDate').value=today;
+}
+
+function qtlCloseAssignPanel(){
+  const panel=document.getElementById('qtlAssignPanel');
+  const overlay=document.getElementById('qtlAssignOverlay');
+  if(panel){panel.style.transform='translateX(100%)';setTimeout(()=>panel.style.display='none',300);}
+  if(overlay)overlay.style.display='none';
+  QTL.resolvedMatch=null;
+}
+
+function qtlSelectReviewType(btn, type){
+  document.querySelectorAll('#qtlReviewTypePills button').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--b-2)';b.style.color='var(--t-3)';
+  });
+  btn.style.background='rgba(232,89,12,0.15)';btn.style.borderColor='rgba(232,89,12,0.5)';btn.style.color='var(--p2)';
+  QTL.selectedReviewType=type;
+}
+
+function qtlSelectHalf(btn, half){
+  document.querySelectorAll('[data-half]').forEach(b=>{
+    b.style.background='transparent';b.style.borderColor='var(--b-2)';b.style.color='var(--t-3)';
+  });
+  btn.style.background='rgba(232,89,12,0.15)';btn.style.borderColor='rgba(232,89,12,0.5)';btn.style.color='var(--p2)';
+  QTL.selectedHalf=half;
+}
+
+function qtlResolveMatch(){
+  clearTimeout(qtlMatchResolveTimer);
+  const id=(document.getElementById('qtlMatchId').value||'').trim();
+  document.getElementById('qtlMatchResolved').style.display='none';
+  document.getElementById('qtlMatchNotFound').style.display='none';
+  QTL.resolvedMatch=null;
+  if(!id||id.length<3) return;
+  document.getElementById('qtlMatchSpinner').style.display='flex';
+  qtlMatchResolveTimer=setTimeout(async()=>{
+    try {
+      const url=`https://sheets.googleapis.com/v4/spreadsheets/${MATCHES_SHEET_ID}/values/Sheet1!A:J?key=${COLLECTOR_SHEET_KEY}`;
+      const res=await fetch(url);
+      const data=await res.json();
+      const rows=data.values||[];
+      const match=rows.find(r=>String(r[0]||'').trim()===id);
+      document.getElementById('qtlMatchSpinner').style.display='none';
+      if(match){
+        QTL.resolvedMatch={id:match[0],hometeam:match[1],awayteam:match[2],name:match[3],date:match[4],competition:match[7],country:match[8],season:match[9]};
+        document.getElementById('qtlMatchName').textContent=match[3]||`Match ${id}`;
+        document.getElementById('qtlMatchMeta').textContent=`${match[4]||''}  ·  ${match[7]||''}  ·  ${match[8]||''}  ·  ${match[9]||''}`;
+        document.getElementById('qtlMatchResolved').style.display='block';
+      } else {
+        document.getElementById('qtlMatchNotFound').style.display='block';
+      }
+    } catch(e){
+      document.getElementById('qtlMatchSpinner').style.display='none';
+      console.warn('[QTL] Match resolve failed:', e);
+    }
+  }, 600);
+}
+
+async function qtlSubmitAssignment(){
+  const btn=document.getElementById('qtlAssignSubmitBtn');
+  const err=document.getElementById('qtlAssignErr');
+  err.style.display='none';
+
+  if(!QTL.resolvedMatch){err.textContent='Please enter a valid match ID.';err.style.display='block';return;}
+  const reviewerHr=document.getElementById('qtlAssignToSel')?.value;
+  if(!reviewerHr){err.textContent='Please select a reviewer.';err.style.display='block';return;}
+  if(!QTL.selectedReviewType){err.textContent='Please select a review type.';err.style.display='block';return;}
+  if(!QTL.selectedHalf){err.textContent='Please select a half.';err.style.display='block';return;}
+  const etaDate=document.getElementById('qtlAssignEtaDate')?.value;
+  if(!etaDate){err.textContent='Please set an ETA date.';err.style.display='block';return;}
+
+  btn.disabled=true;btn.textContent='Assigning...';
+
+  const reviewer=QTL.reviewers.find(r=>r.hrCode===reviewerHr);
+  const collectorHr=document.getElementById('qtlAssignCollectorSel')?.value||'';
+  const collector=QTL.collectors.find(c=>c.hrCode===collectorHr);
+  const etaTime=document.getElementById('qtlAssignEtaTime')?.value||'';
+  const note=document.getElementById('qtlAssignNote')?.value.trim()||'';
+
+  const assignment={
+    matchId:      QTL.resolvedMatch.id,
+    matchName:    QTL.resolvedMatch.name,
+    matchDate:    QTL.resolvedMatch.date,
+    competition:  QTL.resolvedMatch.competition,
+    country:      QTL.resolvedMatch.country,
+    reviewerHrCode: reviewerHr,
+    reviewerName:   reviewer?.fullName||reviewerHr,
+    reviewerEmail:  reviewer?.gmail||'',
+    reviewType:   QTL.selectedReviewType,
+    half:         QTL.selectedHalf,
+    etaDate,etaTime,
+    collectorHrCode: collectorHr,
+    collectorName:   collector?.name||'',
+    note,
+    leaderEmail:  A.user.email,
+    leaderName:   A.user.name,
+    status:       'open',
+    createdAt:    new Date().toISOString(),
+  };
+
+  try {
+    const ref=await fbDb.collection('qtl_assignments').add(assignment);
+    assignment.id=ref.id;
+    QTL.assignments.unshift(assignment);
+    qtlCloseAssignPanel();
+    qtlRenderAssignments();
+    // Update badge
+    const openCount=QTL.assignments.filter(a=>a.status==='open').length;
+    const badge=document.getElementById('qtlAssignBadge');
+    if(badge){badge.textContent=openCount;badge.style.display=openCount>0?'':'none';}
+    btn.disabled=false;btn.textContent='Assign Match →';
+  } catch(e){
+    err.textContent='Failed: '+e.message;err.style.display='block';
+    btn.disabled=false;btn.textContent='Assign Match →';
+  }
+}
+
+function qtlFilterAssign(f){
+  QTL.assignFilter=f;
+  ['all','open','done'].forEach(k=>{
+    const b=document.getElementById('qtlAF_'+k);
+    if(b)b.className=k===f?'btn btn-primary btn-sm':'btn btn-ghost btn-sm';
+  });
+  qtlRenderAssignments();
+}
+
+function qtlFilterAssignReviewer(){
+  QTL.assignReviewerFilter=document.getElementById('qtlAssignReviewerFilter')?.value||'';
+  qtlRenderAssignments();
+}
+
+function qtlRenderAssignments(){
+  const list=document.getElementById('qtlAssignList');
+  if(!list)return;
+  let items=QTL.assignments;
+  if(QTL.assignFilter==='open') items=items.filter(a=>a.status==='open');
+  if(QTL.assignFilter==='done') items=items.filter(a=>a.status==='done');
+  if(QTL.assignReviewerFilter) items=items.filter(a=>a.reviewerHrCode===QTL.assignReviewerFilter);
+  if(!items.length){list.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No assignments yet. Click "Assign Match" to start.</div>';return;}
+  list.innerHTML=items.map(a=>{
+    const isPast=a.etaDate&&new Date(a.etaDate)<new Date();
+    const isOpen=a.status==='open';
+    const etaColor=isOpen&&isPast?'var(--red)':'var(--t-3)';
+    return `<div class="card" style="padding:16px 20px;margin-bottom:10px;border-left:2px solid ${isOpen?'#E8590C':'var(--b-2)'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <div style="font-size:13px;font-weight:600;color:var(--t-1)">${a.matchName||'Match '+a.matchId}</div>
+            <span style="font-size:10px;background:rgba(232,89,12,0.12);color:#E8590C;padding:2px 8px;border-radius:4px;font-weight:700">${a.reviewType||'—'}</span>
+            <span style="font-size:10px;background:var(--bg-2);color:var(--t-3);padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace">${a.half||'—'}</span>
+          </div>
+          <div style="font-size:12px;color:var(--t-3);margin-bottom:3px">→ <strong style="color:var(--t-2)">${a.reviewerName}</strong> <span style="font-family:'JetBrains Mono',monospace;font-size:10px">(${a.reviewerHrCode})</span></div>
+          ${a.collectorName?`<div style="font-size:11px;color:var(--t-3)">Collector: ${a.collectorName} (${a.collectorHrCode})</div>`:''}
+          ${a.note?`<div style="font-size:11px;color:var(--t-3);margin-top:4px;font-style:italic">"${a.note}"</div>`:''}
+          <div style="font-size:11px;color:${etaColor};margin-top:6px">
+            ETA: ${a.etaDate||'—'}${a.etaTime?' at '+a.etaTime:''}${isOpen&&isPast?' ⚠️ Overdue':''}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+          <span style="font-size:10px;background:${isOpen?'rgba(232,89,12,0.15)':'rgba(30,215,96,0.1)'};color:${isOpen?'#E8590C':'var(--green)'};padding:2px 8px;border-radius:4px">${isOpen?'Open':'Done'}</span>
+          ${isOpen?`<button onclick="qtlCancelAssignment('${a.id}')" style="font-size:10px;background:transparent;border:0.5px solid var(--b-2);color:var(--t-3);padding:3px 8px;border-radius:4px;cursor:pointer">Cancel</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function qtlCancelAssignment(id){
+  if(!confirm('Cancel this assignment?')) return;
+  try {
+    await fbDb.collection('qtl_assignments').doc(id).update({status:'cancelled',cancelledAt:new Date().toISOString()});
+    const a=QTL.assignments.find(x=>x.id===id); if(a) a.status='cancelled';
+    qtlRenderAssignments();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+// ── Feedback Tasks ────────────────────────────────────────────────
+function qtlOpenFeedbackTask(){
+  document.getElementById('qtlFeedbackModal').style.display='flex';
+  QTL.fbSelectedCollectors=[];
+  qtlUpdateFbPills();
+  const picker=document.getElementById('qtlFbCollectorPicker');
+  if(picker) picker.style.display='none';
+  document.getElementById('qtlFbNote').value='';
+}
+
+function qtlToggleFbCollectorPicker(){
+  const p=document.getElementById('qtlFbCollectorPicker');
+  if(p) p.style.display=p.style.display==='none'?'':'none';
+}
+
+function qtlToggleFbCollector(hr,name){
+  const idx=QTL.fbSelectedCollectors.findIndex(c=>c.hr===hr);
+  if(idx>=0)QTL.fbSelectedCollectors.splice(idx,1);
+  else QTL.fbSelectedCollectors.push({hr,name});
+  qtlUpdateFbPills();
+  const dot=document.querySelector(`.qtlFbDot_${hr.replace(/[^a-z0-9]/gi,'_')}`);
+  const sel=QTL.fbSelectedCollectors.some(c=>c.hr===hr);
+  if(dot){dot.style.background=sel?'#E8590C':'transparent';dot.style.borderColor=sel?'#E8590C':'rgba(255,255,255,0.2)';}
+}
+
+function qtlUpdateFbPills(){
+  const c=document.getElementById('qtlFbCollectorPills');
+  if(!c)return;
+  if(!QTL.fbSelectedCollectors.length){c.innerHTML='<span style="font-size:13px;color:var(--t-3)">Click to select collectors...</span>';return;}
+  c.innerHTML=QTL.fbSelectedCollectors.map(col=>`
+    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(232,89,12,0.15);color:#E8590C;border:0.5px solid rgba(232,89,12,0.3);border-radius:6px;padding:3px 8px;font-size:12px">
+      ${col.name}<span onclick="qtlToggleFbCollector('${col.hr}','${col.name}')" style="cursor:pointer;opacity:.6;margin-left:2px">×</span>
+    </span>`).join('');
+}
+
+async function qtlSubmitFeedbackTask(){
+  const revHr=document.getElementById('qtlFbReviewerSel')?.value;
+  if(!revHr){alert('Please select a reviewer.');return;}
+  if(!QTL.fbSelectedCollectors.length){alert('Please select at least one collector.');return;}
+  const week=document.getElementById('qtlFbWeek')?.value;
+  const eta=document.getElementById('qtlFbEta')?.value;
+  if(!week){alert('Please select a week.');return;}
+  const note=document.getElementById('qtlFbNote')?.value.trim()||'';
+  const reviewer=QTL.reviewers.find(r=>r.hrCode===revHr);
+  const task={
+    reviewerHrCode:revHr, reviewerName:reviewer?.fullName||revHr, reviewerEmail:reviewer?.gmail||'',
+    collectors:QTL.fbSelectedCollectors, week, eta:eta||'', note,
+    leaderEmail:A.user.email, leaderName:A.user.name,
+    status:'open', createdAt:new Date().toISOString(),
+  };
+  try {
+    const ref=await fbDb.collection('qtl_feedback_tasks').add(task);
+    task.id=ref.id; QTL.feedbackTasks.unshift(task);
+    document.getElementById('qtlFeedbackModal').style.display='none';
+    qtlShowTab('feedback');
+  } catch(e){alert('Error: '+e.message);}
+}
+
+function qtlRenderFeedbackTasks(){
+  const list=document.getElementById('qtlFeedbackList');
+  if(!list)return;
+  if(!QTL.feedbackTasks.length){list.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No feedback tasks yet.</div>';return;}
+  list.innerHTML=QTL.feedbackTasks.map(t=>`
+    <div class="card" style="padding:16px 20px;margin-bottom:10px;border-left:2px solid ${t.status==='open'?'#E8590C':'var(--b-2)'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:13px;font-weight:600;color:var(--t-1)">Feedback for ${(t.collectors||[]).map(c=>c.name).join(', ')}</div>
+        <span style="font-size:10px;background:${t.status==='open'?'rgba(232,89,12,0.15)':'rgba(30,215,96,0.1)'};color:${t.status==='open'?'#E8590C':'var(--green)'};padding:2px 8px;border-radius:4px">${t.status}</span>
+      </div>
+      <div style="font-size:12px;color:var(--t-3)">→ <strong style="color:var(--t-2)">${t.reviewerName}</strong></div>
+      <div style="font-size:11px;color:var(--t-3);margin-top:4px">Week: ${t.week||'—'} · ETA: ${t.eta||'—'}</div>
+      ${t.note?`<div style="font-size:11px;color:var(--t-3);margin-top:4px;font-style:italic">"${t.note}"</div>`:''}
+    </div>`).join('');
+}
+
+// ── Team Tasks ────────────────────────────────────────────────────
+function qtlOpenTaskModal(){
+  document.getElementById('qtlTaskModal').style.display='flex';
+  document.getElementById('qtlTaskName').value='';
+  document.getElementById('qtlTaskDesc').value='';
+  document.getElementById('qtlTaskDue').value='';
+  document.querySelectorAll('#qtlTaskAssignees button').forEach(b=>{
+    b.dataset.on='0';b.style.background='transparent';b.style.borderColor='var(--b-1)';b.style.color='var(--t-2)';
+  });
+}
+
+async function qtlCreateTask(){
+  const name=document.getElementById('qtlTaskName')?.value.trim();
+  if(!name){alert('Task name is required.');return;}
+  const assignees=Array.from(document.querySelectorAll('#qtlTaskAssignees button')).filter(b=>b.dataset.on==='1').map(b=>b.dataset.rev);
+  if(!assignees.length){alert('Select at least one assignee.');return;}
+  const due=document.getElementById('qtlTaskDue')?.value||'';
+  const desc=document.getElementById('qtlTaskDesc')?.value.trim()||'';
+  const priority=document.getElementById('qtlTaskPriority')?.value||'normal';
+  const task={name,assignees,due,desc,priority,leaderEmail:A.user.email,leaderName:A.user.name,status:'open',createdAt:new Date().toISOString()};
+  try {
+    const ref=await fbDb.collection('qtl_tasks').add(task);
+    task.id=ref.id; QTL.tasks.unshift(task);
+
+    // Send notifications to Firestore for each assignee reviewer
+    for(const rev of (assignees[0]==='all'?QTL.reviewers.map(r=>r.hrCode):assignees)){
+      const reviewer=QTL.reviewers.find(r=>r.hrCode===rev)||{hrCode:rev};
+      await fbDb.collection('reviewer_notifications').add({
+        type:'task', taskId:ref.id, taskName:name, due, priority,
+        leaderName:A.user.name, forReviewerHrCode:reviewer.hrCode,
+        status:'open', createdAt:new Date().toISOString(), seen:false,
+      });
+    }
+    document.getElementById('qtlTaskModal').style.display='none';
+    qtlRenderTasks();
+  } catch(e){alert('Error: '+e.message);}
+}
+
+async function qtlCloseTask(id){
+  if(!confirm('Mark this task as done?'))return;
+  try {
+    await fbDb.collection('qtl_tasks').doc(id).update({status:'done',closedAt:new Date().toISOString()});
+    const t=QTL.tasks.find(x=>x.id===id); if(t)t.status='done';
+    qtlRenderTasks();
+  } catch(e){alert('Error: '+e.message);}
+}
+
+function qtlRenderTasks(){
+  const list=document.getElementById('qtlTaskList');
+  if(!list)return;
+  if(!QTL.tasks.length){list.innerHTML='<div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">No tasks yet. Create one for your team.</div>';return;}
+  list.innerHTML=QTL.tasks.map(t=>{
+    const isOpen=t.status==='open';
+    const priColor=t.priority==='urgent'?'var(--red)':t.priority==='high'?'var(--warn)':'var(--t-3)';
+    const assignLabel=t.assignees?.includes('all')?'👥 Whole Team':t.assignees?.map(hr=>{
+      const r=QTL.reviewers.find(x=>x.hrCode===hr); return r?r.fullName.split(' ')[0]:hr;
+    }).join(', ')||'—';
+    return `<div class="card" style="padding:16px 20px;margin-bottom:10px;border-left:2px solid ${isOpen?'var(--p2)':'var(--b-2)'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:13px;font-weight:600;color:var(--t-1)">${t.name}</div>
+          <span style="font-size:10px;color:${priColor};font-weight:700;text-transform:uppercase">${t.priority||'normal'}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <span style="font-size:10px;background:${isOpen?'rgba(232,89,12,0.15)':'rgba(30,215,96,0.1)'};color:${isOpen?'#E8590C':'var(--green)'};padding:2px 8px;border-radius:4px">${isOpen?'Open':'Done'}</span>
+          ${isOpen?`<button onclick="qtlCloseTask('${t.id}')" style="font-size:10px;background:transparent;border:0.5px solid var(--b-2);color:var(--t-3);padding:3px 8px;border-radius:4px;cursor:pointer">Mark done</button>`:''}
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--t-3)">→ ${assignLabel}</div>
+      ${t.desc?`<div style="font-size:11px;color:var(--t-3);margin-top:4px">${t.desc}</div>`:''}
+      ${t.due?`<div style="font-size:11px;color:var(--t-3);margin-top:4px">Due: ${t.due}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── Role switcher: QTL test mode ──────────────────────────────────
+
 (function(){
   let dragging=false, ox=0, oy=0;
   document.addEventListener('mousedown',function(e){
@@ -12137,6 +12810,7 @@ function btQuickAssignAll(){
     <div style="height:0.5px;background:var(--border);margin:4px 0"></div>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('collector')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">📡 Collector View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('reviewer')" style="justify-content:flex-start;border-color:rgba(34,119,221,0.4);color:#4499FF">🔍 Reviewer View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
+    <button class="btn btn-secondary btn-sm" onclick="switchRole('qtl')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">👑 QTL View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
   </div>
 </div>
 
@@ -12747,6 +13421,11 @@ function btQuickAssignAll(){
         <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M4 6h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg></span>
         Feedback Sessions
       </div>
+      <div class="sidebar-item" id="revNav_assignments" onclick="showRevTab('assignments')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="1.5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M4 7.5h7M4 5h4M4 10h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".7"/></svg></span>
+        My Assignments
+        <span id="revAssignBadge" style="display:none;margin-left:auto;background:#E8590C;color:#fff;border-radius:10px;font-size:9px;padding:1px 6px;font-weight:700"></span>
+      </div>
     </div>
 
     <!-- CONTENT -->
@@ -12883,6 +13562,15 @@ function btQuickAssignAll(){
         </div>
       </div>
 
+      <!-- ── MY ASSIGNMENTS PAGE ── -->
+      <div id="revPage_assignments" style="display:none;padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px">My Assignments</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px">Matches assigned to you by your Quality Team Leader</div>
+        <div id="revAssignList">
+          <div style="text-align:center;padding:40px;color:var(--t-3);font-size:13px">Loading assignments...</div>
+        </div>
+      </div>
+
     </div><!-- /content -->
   </div><!-- /app-shell -->
 </div>
@@ -12974,6 +13662,351 @@ function btQuickAssignAll(){
   </div>
 </div>
 <div id="revPanelOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998" onclick="revCloseCreateSession()"></div>
+
+<!-- ===== QUALITY TEAM LEADER GATE ===== -->
+<div id="qtlScreen" class="screen">
+  <div class="app-shell">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-brand">
+        <div style="display:flex;align-items:center;gap:11px">
+          <svg width="40" height="40" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lgQ" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#E8590C"/><stop offset="100%" stop-color="#9B3A0A"/></linearGradient></defs><polygon points="40,4 72,22 72,58 40,76 8,58 8,22" fill="none" stroke="rgba(232,89,12,0.4)" stroke-width="1.8"/><rect x="16" y="28" width="48" height="24" rx="2" fill="none" stroke="rgba(242,242,242,0.9)" stroke-width="2"/><line x1="16" y1="36" x2="64" y2="36" stroke="rgba(242,242,242,0.5)" stroke-width="1.2"/><line x1="16" y1="44" x2="64" y2="44" stroke="rgba(242,242,242,0.3)" stroke-width="1.2"/><circle cx="58" cy="24" r="8" fill="url(#lgQ)"/><path d="M55 24l2 2 4-4" stroke="#fff" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+          <div style="display:flex;flex-direction:column;line-height:1;gap:3px">
+            <span style="font-family:Inter,sans-serif;font-size:15px;font-weight:700;letter-spacing:3.5px;color:var(--t-1)">FIELD</span>
+            <span style="font-family:Inter,sans-serif;font-size:7px;font-weight:600;letter-spacing:2.5px;color:#E8590C;opacity:.85">QUALITY TEAM LEADER</span>
+          </div>
+        </div>
+      </div>
+      <div class="topbar-r">
+        <span class="badge" style="background:rgba(232,89,12,0.15);color:#E8590C;border:0.5px solid rgba(232,89,12,0.3);font-size:11px;padding:3px 10px;border-radius:6px" id="qtlUserPill">QTL</span>
+        <button class="btn btn-danger btn-sm" onclick="doSignOut()">Sign out</button>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-section-label">QUALITY TEAM</div>
+      <div class="sidebar-item active" id="qtlNav_overview" onclick="qtlShowTab('overview')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".75"/><rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor"/></svg></span>
+        Team Overview
+      </div>
+      <div class="sidebar-item" id="qtlNav_assignments" onclick="qtlShowTab('assignments')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="1.5" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M4 7.5h7M4 5h4M4 10h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".7"/></svg></span>
+        Match Assignments
+        <span id="qtlAssignBadge" style="display:none;margin-left:auto;background:#E8590C;color:#fff;border-radius:10px;font-size:9px;padding:1px 6px;font-weight:700"></span>
+      </div>
+      <div class="sidebar-item" id="qtlNav_feedback" onclick="qtlShowTab('feedback')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="1.5" y="2.5" width="12" height="10" rx="1.5" stroke="currentColor" stroke-width="1.2" opacity=".5"/><path d="M4 6h7M4 8.5h4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg></span>
+        Feedback Tasks
+      </div>
+      <div class="sidebar-item" id="qtlNav_tasks" onclick="qtlShowTab('tasks')">
+        <span class="sidebar-icon"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 4h9M3 7.5h9M3 11h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity=".6"/></svg></span>
+        Team Tasks
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content" id="qtlContent">
+
+      <!-- ── OVERVIEW PAGE ── -->
+      <div id="qtlPage_overview" style="padding:28px 24px">
+        <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px;margin-bottom:4px" id="qtlWelcome">Team Overview</div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px" id="qtlOverviewSub">Loading team data...</div>
+
+        <!-- Metric cards -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">REVIEWERS</div>
+            <div style="font-size:28px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="qtlMetricReviewers">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px">in your team</div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">SESSIONS REVIEWED</div>
+            <div style="font-size:28px;font-weight:700;color:var(--t-1);letter-spacing:-1px;line-height:1" id="qtlMetricSessions">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px" id="qtlMetricSessionsSub"></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">AVG QUALITY</div>
+            <div style="font-size:28px;font-weight:700;color:#E8590C;letter-spacing:-1px;line-height:1" id="qtlMetricAvg">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px">across all collectors</div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div style="font-size:11px;color:var(--t-3);letter-spacing:0.3px;margin-bottom:8px">OPEN ASSIGNMENTS</div>
+            <div style="font-size:28px;font-weight:700;color:var(--warn);letter-spacing:-1px;line-height:1" id="qtlMetricAssign">—</div>
+            <div style="font-size:11px;color:var(--t-3);margin-top:5px">pending completion</div>
+          </div>
+        </div>
+
+        <!-- Reviewer performance table -->
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px">
+          <div style="padding:14px 18px;border-bottom:0.5px solid var(--b-1);font-size:13px;font-weight:600;color:var(--t-2);display:flex;align-items:center;justify-content:space-between">
+            Reviewer Performance
+            <span style="font-size:11px;color:var(--t-3);font-weight:400" id="qtlReviewerTableSub"></span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="border-bottom:0.5px solid var(--b-1)">
+              <th style="text-align:left;padding:9px 16px;font-size:10px;color:var(--t-3)">REVIEWER</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">HR CODE</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">SESSIONS</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:#E8590C">AVG QUALITY</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">ERRORS</th>
+              <th style="text-align:left;padding:9px 10px;font-size:10px;color:var(--t-3)">COLLECTORS</th>
+            </tr></thead>
+            <tbody id="qtlReviewerTable"></tbody>
+          </table>
+          <div id="qtlReviewerTableEmpty" style="display:none;padding:32px;text-align:center;font-size:13px;color:var(--t-3)">No session data yet for your team.</div>
+        </div>
+
+        <!-- Error breakdown -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="card" style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Error type breakdown (team)</div>
+            <div id="qtlErrBars"></div>
+          </div>
+          <div class="card" style="padding:20px">
+            <div style="font-size:13px;font-weight:600;color:var(--t-2);margin-bottom:14px">Top error events (team)</div>
+            <div id="qtlEventBars"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MATCH ASSIGNMENTS PAGE ── -->
+      <div id="qtlPage_assignments" style="display:none;padding:28px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Match Assignments</div>
+          <button class="btn btn-primary btn-sm" onclick="qtlOpenAssignPanel()" style="gap:6px">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Assign Match
+          </button>
+        </div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px">Assign matches to your reviewers and track their progress</div>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+          <div style="font-size:11px;color:var(--t-3);font-weight:600">FILTER:</div>
+          <button onclick="qtlFilterAssign('all')" id="qtlAF_all" class="btn btn-primary btn-sm" style="font-size:11px">All</button>
+          <button onclick="qtlFilterAssign('open')" id="qtlAF_open" class="btn btn-ghost btn-sm" style="font-size:11px">Open</button>
+          <button onclick="qtlFilterAssign('done')" id="qtlAF_done" class="btn btn-ghost btn-sm" style="font-size:11px">Done</button>
+          <div class="nx-select-wrap" id="nx_qtlAssignReviewer" data-onchange="qtlFilterAssignReviewer" style="margin-left:auto">
+            <div class="nx-trigger" style="min-width:160px"><span class="nx-label">All Reviewers</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="qtlAssignReviewerFilter" onchange="qtlFilterAssignReviewer()"><option value="">All Reviewers</option></select>
+          </div>
+        </div>
+
+        <!-- Assignments list -->
+        <div id="qtlAssignList"></div>
+      </div>
+
+      <!-- ── FEEDBACK TASKS PAGE ── -->
+      <div id="qtlPage_feedback" style="display:none;padding:28px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Feedback Tasks</div>
+          <button class="btn btn-primary btn-sm" onclick="qtlOpenFeedbackTask()" style="gap:6px">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            New Feedback Task
+          </button>
+        </div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px">Assign feedback session responsibilities to your reviewers</div>
+        <div id="qtlFeedbackList"></div>
+      </div>
+
+      <!-- ── TEAM TASKS PAGE ── -->
+      <div id="qtlPage_tasks" style="display:none;padding:28px 24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:20px;font-weight:700;color:var(--t-1);letter-spacing:-0.4px">Team Tasks</div>
+          <button class="btn btn-primary btn-sm" onclick="qtlOpenTaskModal()" style="gap:6px">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            New Task
+          </button>
+        </div>
+        <div style="font-size:13px;color:var(--t-3);margin-bottom:20px">Create and manage tasks for your review team</div>
+        <div id="qtlTaskList"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── ASSIGN MATCH PANEL (slide from right) ── -->
+<div id="qtlAssignPanel" style="display:none;position:fixed;top:0;right:0;width:440px;height:100vh;background:var(--bg-surface);border-left:0.5px solid var(--b-2);z-index:9999;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,0.5);transform:translateX(100%);transition:transform .3s cubic-bezier(0.4,0,0.2,1)">
+  <div style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--t-1)">Assign Match</div>
+        <div style="font-size:12px;color:var(--t-3);margin-top:2px">Fill details and assign to a reviewer</div>
+      </div>
+      <button onclick="qtlCloseAssignPanel()" style="background:var(--bg-2);border:0.5px solid var(--b-2);color:var(--t-2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px">×</button>
+    </div>
+
+    <!-- Match ID input -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Match ID</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="qtlMatchId" class="input" placeholder="e.g. 1428695" style="flex:1;font-family:'JetBrains Mono',monospace;font-size:13px" oninput="qtlResolveMatch()"/>
+        <div id="qtlMatchSpinner" style="display:none;width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg style="animation:spin 1s linear infinite" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--t-3)" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-opacity=".3"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+        </div>
+      </div>
+      <!-- Resolved match info -->
+      <div id="qtlMatchResolved" style="display:none;margin-top:8px;background:rgba(30,215,96,0.08);border:0.5px solid rgba(30,215,96,0.25);border-radius:8px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:600;color:#1ED760" id="qtlMatchName"></div>
+        <div style="font-size:11px;color:var(--t-3);margin-top:2px" id="qtlMatchMeta"></div>
+      </div>
+      <div id="qtlMatchNotFound" style="display:none;margin-top:8px;font-size:11px;color:var(--red)">Match ID not found in database.</div>
+    </div>
+
+    <!-- Reviewer -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Assign to Reviewer</label>
+      <div class="nx-select-wrap" id="nx_qtlAssignTo" data-onchange="qtlOnReviewerSelect">
+        <div class="nx-trigger"><span class="nx-label">Select reviewer</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="nx-dropdown" style="display:none"></div>
+        <select class="nx-native" style="display:none" id="qtlAssignToSel"><option value="">Select reviewer</option></select>
+      </div>
+    </div>
+
+    <!-- Review Type -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Review Type</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px" id="qtlReviewTypePills">
+        ${['A-review','B-review','C-review','D-review','Pressures','Full match','Hyper care','Academies','Customer'].map(t=>`
+          <button type="button" onclick="qtlSelectReviewType(this,'${t}')" data-type="${t}" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">${t}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- Half -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Half</label>
+      <div style="display:flex;gap:6px">
+        ${['1H','2H','ET1','ET2','Full'].map(h=>`
+          <button type="button" onclick="qtlSelectHalf(this,'${h}')" data-half="${h}" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">${h}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    <!-- ETA -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div class="field">
+        <label class="input-label">ETA Date</label>
+        <input type="date" id="qtlAssignEtaDate" class="input" style="font-size:13px"/>
+      </div>
+      <div class="field">
+        <label class="input-label">ETA Time</label>
+        <input type="time" id="qtlAssignEtaTime" class="input" style="font-size:13px"/>
+      </div>
+    </div>
+
+    <!-- Collector (optional) -->
+    <div class="field" style="margin-bottom:14px">
+      <label class="input-label">Collector <span style="color:var(--t-3);font-weight:400">(optional)</span></label>
+      <div class="nx-select-wrap" id="nx_qtlAssignCollector">
+        <div class="nx-trigger"><span class="nx-label">Select collector</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="nx-dropdown" style="display:none"></div>
+        <select class="nx-native" style="display:none" id="qtlAssignCollectorSel"><option value="">No specific collector</option></select>
+      </div>
+    </div>
+
+    <!-- Note -->
+    <div class="field" style="margin-bottom:20px">
+      <label class="input-label">Note <span style="color:var(--t-3);font-weight:400">(optional)</span></label>
+      <textarea id="qtlAssignNote" class="input" rows="2" placeholder="Any instructions for the reviewer..." style="resize:vertical;font-size:13px"></textarea>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="qtlAssignSubmitBtn" onclick="qtlSubmitAssignment()" style="font-size:14px;font-weight:600;padding:13px">
+      Assign Match →
+    </button>
+    <div id="qtlAssignErr" class="alert alert-err" style="margin-top:8px;display:none"></div>
+  </div>
+</div>
+<div id="qtlAssignOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9998" onclick="qtlCloseAssignPanel()"></div>
+
+<!-- ── FEEDBACK TASK MODAL ── -->
+<div id="qtlFeedbackModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:480px;max-width:95vw;border:1px solid var(--b-1);max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 20px;font-size:16px;color:var(--t-1)">New Feedback Task</h3>
+    <div style="display:grid;gap:14px">
+      <div class="field">
+        <label class="input-label">Reviewer</label>
+        <div class="nx-select-wrap" id="nx_qtlFbReviewer">
+          <div class="nx-trigger"><span class="nx-label">Select reviewer</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="nx-dropdown" style="display:none"></div>
+          <select class="nx-native" style="display:none" id="qtlFbReviewerSel"><option value="">Select reviewer</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="input-label">Collectors to handle <span style="color:var(--t-3);font-weight:400">(multi-select)</span></label>
+        <div id="qtlFbCollectorPills" style="display:flex;flex-wrap:wrap;gap:6px;min-height:38px;background:var(--bg-2);border:0.5px solid var(--b-2);border-radius:var(--r-md);padding:8px 10px;cursor:pointer" onclick="qtlToggleFbCollectorPicker()">
+          <span style="font-size:13px;color:var(--t-3)">Click to select collectors...</span>
+        </div>
+        <div id="qtlFbCollectorPicker" style="display:none;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:var(--r-lg);margin-top:4px;max-height:160px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field">
+          <label class="input-label">Week</label>
+          <input type="week" id="qtlFbWeek" class="input" style="font-size:13px"/>
+        </div>
+        <div class="field">
+          <label class="input-label">ETA</label>
+          <input type="date" id="qtlFbEta" class="input" style="font-size:13px"/>
+        </div>
+      </div>
+      <div class="field">
+        <label class="input-label">Note <span style="color:var(--t-3);font-weight:400">(optional)</span></label>
+        <textarea id="qtlFbNote" class="input" rows="2" placeholder="Guidance for the reviewer..." style="resize:vertical;font-size:13px"></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('qtlFeedbackModal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">Cancel</button>
+      <button onclick="qtlSubmitFeedbackTask()" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Send Task →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── TEAM TASK MODAL ── -->
+<div id="qtlTaskModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg-surface);border-radius:20px;padding:28px;width:480px;max-width:95vw;border:1px solid var(--b-1)">
+    <h3 style="margin:0 0 20px;font-size:16px;color:var(--t-1)">New Team Task</h3>
+    <div style="display:grid;gap:14px">
+      <div class="field">
+        <label class="input-label">Task Name</label>
+        <input type="text" id="qtlTaskName" class="input" placeholder="e.g. Submit weekly review report" style="font-size:13px"/>
+      </div>
+      <div class="field">
+        <label class="input-label">Assign To</label>
+        <div id="qtlTaskAssignees" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field">
+          <label class="input-label">Due Date</label>
+          <input type="date" id="qtlTaskDue" class="input" style="font-size:13px"/>
+        </div>
+        <div class="field">
+          <label class="input-label">Priority</label>
+          <div class="nx-select-wrap" id="nx_qtlTaskPriority">
+            <div class="nx-trigger"><span class="nx-label">Normal</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="nx-dropdown" style="display:none"></div>
+            <select class="nx-native" style="display:none" id="qtlTaskPriority">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="input-label">Description <span style="color:var(--t-3);font-weight:400">(optional)</span></label>
+        <textarea id="qtlTaskDesc" class="input" rows="3" placeholder="Add more details..." style="resize:vertical;font-size:13px"></textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="document.getElementById('qtlTaskModal').style.display='none'" style="flex:1;padding:10px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;font-weight:700;cursor:pointer">Cancel</button>
+      <button onclick="qtlCreateTask()" style="flex:1;padding:10px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Create Task →</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
