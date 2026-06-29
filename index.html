@@ -10840,15 +10840,7 @@ function qtlBuildReviewerDropdowns(){
     });
     const wrap=document.getElementById('nx_qtlAssignTo'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
   }
-  // Feedback task reviewer selector
-  const fbSel = document.getElementById('qtlFbReviewerSel');
-  if(fbSel){
-    fbSel.innerHTML = '<option value="">Select reviewer</option>';
-    QTL.reviewers.forEach(r=>{
-      const o=document.createElement('option'); o.value=r.hrCode; o.textContent=`${r.fullName} (${r.hrCode})`; fbSel.appendChild(o);
-    });
-    const wrap=document.getElementById('nx_qtlFbReviewer'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
-  }
+  // Feedback task reviewer now uses qtlFbRevSearch search input — no nx-select needed
   // Assignment filter reviewer
   const filterSel = document.getElementById('qtlAssignReviewerFilter');
   if(filterSel){
@@ -11381,16 +11373,51 @@ async function qtlCancelAssignment(id){
   } catch(e){ alert('Error: '+e.message); }
 }
 
-// ── Feedback Tasks ────────────────────────────────────────────────
+// ── Feedback task reviewer search ────────────────────────────────
+let QTL_FB_SELECTED_REVIEWER = null
+
+function qtlFbFilterReviewers(){
+  const q=(document.getElementById('qtlFbRevSearch')?.value||'').toLowerCase()
+  const d=document.getElementById('qtlFbRevDropdown'); if(!d)return
+  const results=q.length<1?QTL_REVIEWERS_LIST.slice(0,30):QTL_REVIEWERS_LIST.filter(r=>r.name.toLowerCase().includes(q)||r.hr_code.toLowerCase().includes(q)).slice(0,30)
+  d.innerHTML=results.length
+    ? results.map(r=>`<div onclick="qtlFbSelectReviewer('${r.hr_code}','${r.name.replace(/'/g,"\\'")}','${r.email||''}')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06)" onmouseover="this.style.background='rgba(232,89,12,0.08)'" onmouseout="this.style.background=''"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0;min-width:56px">${r.hr_code}</span><span>${r.name}</span></div>`).join('')
+    : '<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>'
+  d.style.display='block'
+}
+function qtlFbShowRevDropdown(){
+  qtlFbFilterReviewers()
+  setTimeout(()=>document.addEventListener('click',qtlFbHideRevDropdown),150)
+}
+function qtlFbHideRevDropdown(e){
+  const d=document.getElementById('qtlFbRevDropdown'),i=document.getElementById('qtlFbRevSearch')
+  if(!d||!i)return
+  if(!d.contains(e.target)&&e.target!==i){d.style.display='none';document.removeEventListener('click',qtlFbHideRevDropdown)}
+}
+function qtlFbSelectReviewer(hr,name,email){
+  QTL_FB_SELECTED_REVIEWER={hr_code:hr,name,email}
+  const s=document.getElementById('qtlFbRevSearch'); if(s)s.value=''
+  const d=document.getElementById('qtlFbRevDropdown'); if(d)d.style.display='none'
+  document.getElementById('qtlFbRevSelectedLabel').textContent=`${name} (${hr})`
+  const sel=document.getElementById('qtlFbRevSelected'); if(sel)sel.style.display='flex'
+}
+function qtlFbClearReviewer(){
+  QTL_FB_SELECTED_REVIEWER=null
+  const sel=document.getElementById('qtlFbRevSelected'); if(sel)sel.style.display='none'
+  const s=document.getElementById('qtlFbRevSearch'); if(s)s.value=''
+}
+
+
 function qtlOpenFeedbackTask(){
   document.getElementById('qtlFeedbackModal').style.display='flex';
   QTL.fbSelectedCollectors=[];
+  QTL_FB_SELECTED_REVIEWER=null;
   qtlUpdateFbPills();
-  const picker=document.getElementById('qtlFbCollectorPicker');
-  if(picker) picker.style.display='none';
-  const search=document.getElementById('qtlFbColSearch');
-  if(search) search.value='';
-  document.getElementById('qtlFbNote').value='';
+  const picker=document.getElementById('qtlFbCollectorPicker'); if(picker)picker.style.display='none';
+  const cs=document.getElementById('qtlFbColSearch'); if(cs)cs.value='';
+  const rs=document.getElementById('qtlFbRevSearch'); if(rs)rs.value='';
+  const rsel=document.getElementById('qtlFbRevSelected'); if(rsel)rsel.style.display='none';
+  const note=document.getElementById('qtlFbNote'); if(note)note.value='';
 }
 
 function qtlToggleFbCollectorPicker(){
@@ -11425,16 +11452,16 @@ function qtlUpdateFbPills(){
   if(q.length>=2) qtlFbFilterCollectors()
 }
 async function qtlSubmitFeedbackTask(){
-  const revHr=document.getElementById('qtlFbReviewerSel')?.value;
-  if(!revHr){alert('Please select a reviewer.');return;}
+  if(!QTL_FB_SELECTED_REVIEWER){alert('Please select a reviewer.');return;}
   if(!QTL.fbSelectedCollectors.length){alert('Please select at least one collector.');return;}
   const week=document.getElementById('qtlFbWeek')?.value;
   const eta=document.getElementById('qtlFbEta')?.value;
   if(!week){alert('Please select a week.');return;}
   const note=document.getElementById('qtlFbNote')?.value.trim()||'';
-  const reviewer=QTL.reviewers.find(r=>r.hrCode===revHr);
   const task={
-    reviewerHrCode:revHr, reviewerName:reviewer?.fullName||revHr, reviewerEmail:reviewer?.gmail||'',
+    reviewerHrCode:QTL_FB_SELECTED_REVIEWER.hr_code,
+    reviewerName:QTL_FB_SELECTED_REVIEWER.name,
+    reviewerEmail:QTL_FB_SELECTED_REVIEWER.email||'',
     collectors:QTL.fbSelectedCollectors, week, eta:eta||'', note,
     leaderEmail:A.user.email, leaderName:A.user.name,
     status:'open', createdAt:new Date().toISOString(),
@@ -14102,11 +14129,15 @@ function qtlRenderTasks(){
     <div style="display:grid;gap:14px">
       <div class="field">
         <label class="input-label">Reviewer</label>
-        <div class="nx-select-wrap" id="nx_qtlFbReviewer">
-          <div class="nx-trigger"><span class="nx-label">Select reviewer</span><svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="nx-dropdown" style="display:none"></div>
-          <select class="nx-native" style="display:none" id="qtlFbReviewerSel"><option value="">Select reviewer</option></select>
+        <div style="position:relative">
+          <input type="text" id="qtlFbRevSearch" class="input" placeholder="Search reviewer by name or HR code..."
+            style="font-size:13px" oninput="qtlFbFilterReviewers()" onfocus="qtlFbShowRevDropdown()" autocomplete="off"/>
         </div>
+        <div id="qtlFbRevSelected" style="display:none;margin-top:6px;background:rgba(232,89,12,0.1);border:0.5px solid rgba(232,89,12,0.3);border-radius:8px;padding:8px 12px;font-size:12px;color:#E8590C;display:flex;align-items:center;justify-content:space-between">
+          <span id="qtlFbRevSelectedLabel"></span>
+          <span onclick="qtlFbClearReviewer()" style="cursor:pointer;opacity:.6;font-size:14px">×</span>
+        </div>
+        <div id="qtlFbRevDropdown" style="display:none;background:#1C1C1C;border:1px solid rgba(232,89,12,0.3);border-radius:10px;margin-top:4px;max-height:200px;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.9)"></div>
       </div>
       <div class="field">
         <label class="input-label">Collectors to handle <span style="color:var(--t-3);font-weight:400">(multi-select)</span></label>
