@@ -10930,8 +10930,9 @@ async function qtlLoadData(){
     qtlBuildCollectorDropdowns();
 
     // Events filtered to team's reviewer sessions
-    const mySessionIds=new Set(QTL.sessions.map(s=>s.sessionId));
-    QTL.events=(eData.values||[]).filter(r=>mySessionIds.has(r[1]||''));
+    // Events tab: col 0=MATCH_ID col 3=COLLECTOR_HR_CODE col 8=EVENT_NAME col 9=ERROR_TYPE (no SESSION_ID col)
+    const myCollectorHrCodes=new Set(QTL.sessions.map(s=>s.hrCode).filter(Boolean))
+    QTL.events=(eData.values||[]).filter(r=>myCollectorHrCodes.has(r[3]||''))
 
     // Load assignments from Firestore
     const assignSnap=await fbDb.collection('qtl_assignments').where('leaderEmail','==',A.user.email).orderBy('createdAt','desc').limit(100).get();
@@ -11033,9 +11034,9 @@ function qtlRenderOverview(){
     if(empty) empty.style.display = !rows ? 'block' : 'none'
   }
 
-  // Error type bars from Events tab col H=ERROR_TYPE
+  // Error type bars from Events tab col 9=ERROR_TYPE
   const errCounts={};
-  QTL.events.forEach(r=>{ const t=r[7]||''; if(t) errCounts[t]=(errCounts[t]||0)+1; });
+  QTL.events.forEach(r=>{ const t=r[9]||''; if(t) errCounts[t]=(errCounts[t]||0)+1; });
   const errBars=document.getElementById('qtlErrBars');
   if(errBars){
     const sorted=Object.entries(errCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
@@ -11052,7 +11053,7 @@ function qtlRenderOverview(){
     }).join('')||'<div style="font-size:12px;color:var(--t-3)">No event data yet</div>';
   }
 
-  // Top event bars from Events tab col I=EVENT_NAME
+  // Top event bars from Events tab col 8=EVENT_NAME
   const evtCounts={};
   QTL.events.forEach(r=>{ const e=r[8]||''; if(e) evtCounts[e]=(evtCounts[e]||0)+1; });
   const evtBars=document.getElementById('qtlEventBars');
