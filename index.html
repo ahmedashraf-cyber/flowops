@@ -1845,6 +1845,8 @@ function initFirebaseAuth(){
           const qtl = qtlDoc.data();
           A.user = { uid:user.uid, email:user.email, name:qtl.fullName||name, role:'qtl', hrCode:qtl.hrCode||'', qtlData:qtl };
           showScreen('qtlScreen');
+          const sw = document.getElementById('roleSwitcher');
+          if(sw) sw.style.display = 'block';
           setTimeout(()=>{ initQTLDashboard(); }, 300);
           return;
         }
@@ -10891,15 +10893,32 @@ async function qtlLoadData(){
     const [sData,eData]=await Promise.all([sRes.json(),eRes.json()]);
 
     // Filter sessions to this leader's reviewers
-    const myReviewerEmails = QTL.reviewers.map(r=>r.gmail.toLowerCase());
-    const SES={HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,SCORE_OVERALL:6,TOTAL_EVENTS:13,TOTAL_ERRORS:14,REVIEWER_EMAIL:22,COLLECTOR_NAME:25};
+    const SES={HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,SCORE_OVERALL:6,TOTAL_EVENTS:13,TOTAL_ERRORS:14,REVIEWER_EMAIL:22,COLLECTOR_NAME:25}
+    // Match by reviewer email (gmail OR hudl) or reviewer name
+    const myReviewerEmails = new Set()
+    const myReviewerNames  = new Set()
+    QTL.reviewers.forEach(r => {
+      if(r.gmail)    myReviewerEmails.add(r.gmail.toLowerCase())
+      if(r.hudlEmail) myReviewerEmails.add(r.hudlEmail.toLowerCase())
+      if(r.fullName) myReviewerNames.add(r.fullName.toLowerCase())
+    })
+    // Admin override — if leader email itself is a reviewer, add it too
+    myReviewerEmails.add(A.user.email.toLowerCase())
+
+    const isAdminQTL = A.user.email === 'ahmed.ashraf@hudl.com'
+
     QTL.sessions = (sData.values||[]).map(r=>({
       hrCode:r[SES.HR_CODE]||'', sessionId:r[SES.SESSION_ID]||'', matchId:r[SES.MATCH_ID]||'',
       matchName:r[SES.MATCH_NAME]||'', half:r[SES.HALF]||'', completedAt:r[SES.COMPLETED_AT]||'',
       score:r[SES.SCORE_OVERALL]?parseFloat(r[SES.SCORE_OVERALL]):null,
       totalEvents:parseInt(r[SES.TOTAL_EVENTS])||0, totalErrors:parseInt(r[SES.TOTAL_ERRORS])||0,
       reviewerEmail:r[SES.REVIEWER_EMAIL]||'', collectorName:r[SES.COLLECTOR_NAME]||'',
-    })).filter(s=>s.sessionId&&myReviewerEmails.includes((s.reviewerEmail||'').toLowerCase()));
+    })).filter(s => {
+      if(!s.sessionId) return false
+      if(isAdminQTL) return true // admin sees everything for testing
+      const revEmail = (s.reviewerEmail||'').toLowerCase()
+      return myReviewerEmails.has(revEmail)
+    })
 
     // Build collectors list from sessions
     const collSet={};
@@ -10976,24 +10995,39 @@ function qtlRenderOverview(){
   const tbody=document.getElementById('qtlReviewerTable');
   const empty=document.getElementById('qtlReviewerTableEmpty');
   if(tbody){
-    const rows=QTL.reviewers.map(rev=>{
-      const revSess=sessions.filter(s=>(s.reviewerEmail||'').toLowerCase()===rev.gmail.toLowerCase());
-      const revScored=revSess.filter(s=>s.score!=null);
-      const avg=revScored.length?Math.round(revScored.reduce((a,s)=>a+s.score,0)/revScored.length):null;
-      const errs=revSess.reduce((a,s)=>a+s.totalErrors,0);
-      const collSet=new Set(revSess.map(s=>s.hrCode).filter(Boolean));
-      const col=avg==null?'var(--t-3)':avg>=90?'var(--green)':avg>=80?'var(--warn)':'var(--red)';
+    // Build reviewer list from actual session data + configured team
+    const revMap = {}
+    // From configured team
+    QTL.reviewers.forEach(r => {
+      const key = r.gmail.toLowerCase()
+      revMap[key] = { name: r.fullName, hrCode: r.hrCode, email: r.gmail }
+    })
+    // From actual sessions (discover reviewers not yet in Reviewers tab)
+    sessions.forEach(s => {
+      const email = (s.reviewerEmail||'').toLowerCase()
+      if(email && !revMap[email]) {
+        revMap[email] = { name: s.reviewerEmail.split('@')[0].replace('.','.'), hrCode: '—', email: s.reviewerEmail }
+      }
+    })
+
+    const rows = Object.values(revMap).map(rev => {
+      const revSess = sessions.filter(s => (s.reviewerEmail||'').toLowerCase() === rev.email.toLowerCase())
+      const revScored = revSess.filter(s=>s.score!=null)
+      const avg = revScored.length ? Math.round(revScored.reduce((a,s)=>a+s.score,0)/revScored.length) : null
+      const errs = revSess.reduce((a,s)=>a+s.totalErrors,0)
+      const collSet = new Set(revSess.map(s=>s.hrCode).filter(Boolean))
+      const col = avg==null?'var(--t-3)':avg>=90?'var(--green)':avg>=80?'var(--warn)':'var(--red)'
       return `<tr style="border-bottom:0.5px solid var(--b-1)" onmouseover="this.style.background='var(--bg-2)'" onmouseout="this.style.background=''">
-        <td style="padding:9px 16px;font-size:12px;color:var(--t-1);font-weight:500">${rev.fullName}</td>
+        <td style="padding:9px 16px;font-size:12px;color:var(--t-1);font-weight:500">${rev.name}</td>
         <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--t-3)">${rev.hrCode}</td>
         <td style="padding:9px 10px;font-size:12px;color:var(--t-2)">${revSess.length}</td>
         <td style="padding:9px 10px"><span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:${col}">${avg!=null?avg+'%':'—'}</span></td>
         <td style="padding:9px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn)">${errs}</td>
         <td style="padding:9px 10px;font-size:12px;color:var(--t-3)">${collSet.size}</td>
-      </tr>`;
-    }).join('');
-    tbody.innerHTML=rows||'';
-    if(empty) empty.style.display=!rows?'block':'none';
+      </tr>`
+    }).join('')
+    tbody.innerHTML = rows || ''
+    if(empty) empty.style.display = !rows ? 'block' : 'none'
   }
 
   // Error type bars from Events tab col H=ERROR_TYPE
