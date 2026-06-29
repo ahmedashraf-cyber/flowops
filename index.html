@@ -10956,27 +10956,27 @@ async function qtlLoadData(){
 }
 
 function qtlBuildCollectorDropdowns(){
-  const collSel=document.getElementById('qtlAssignCollectorSel');
-  if(collSel){
-    collSel.innerHTML='<option value="">No specific collector</option>';
-    QTL.collectors.forEach(c=>{
-      const o=document.createElement('option'); o.value=c.hrCode; o.textContent=`${c.name} (${c.hrCode})`; collSel.appendChild(o);
-    });
-    const wrap=document.getElementById('nx_qtlAssignCollector'); if(wrap){delete wrap.dataset.nxInit; initNxSelects();}
-  }
-  // Feedback collector picker
-  const picker=document.getElementById('qtlFbCollectorPicker');
-  if(picker){
-    picker.innerHTML=QTL.collectors.map(c=>`
-      <div onclick="qtlToggleFbCollector('${c.hrCode}','${c.name}')" data-hr="${c.hrCode}"
-        style="padding:10px 14px;font-size:13px;color:var(--t-2);cursor:pointer;border-radius:8px;margin:2px 4px;display:flex;align-items:center;gap:8px"
-        onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background=''">
-        <div class="qtlFbDot_${c.hrCode.replace(/[^a-z0-9]/gi,'_')}" style="width:8px;height:8px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.2);flex-shrink:0"></div>
-        ${c.name} <span style="font-size:10px;color:var(--t-3);margin-left:auto;font-family:'JetBrains Mono',monospace">${c.hrCode}</span>
-      </div>
-    `).join('')||'<div style="padding:16px;font-size:12px;color:var(--t-3)">No collectors in your team sessions yet.</div>';
-  }
+  // Assignment panel collector handled by qtlFilterCollectors() search input
+  // Feedback collector picker populated by qtlFbFilterCollectors() on search
 }
+
+function qtlFbFilterCollectors(){
+  const q=(document.getElementById('qtlFbColSearch')?.value||'').toLowerCase()
+  const picker=document.getElementById('qtlFbCollectorPicker'); if(!picker)return
+  if(q.length<2){
+    picker.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">Type at least 2 characters...</div>'
+    picker.style.display='block'; return
+  }
+  const results=QTL_COLLECTORS_LIST.filter(c=>c.name.toLowerCase().includes(q)||c.hr_code.toLowerCase().includes(q)).slice(0,30)
+  if(!results.length){picker.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No results found</div>';picker.style.display='block';return}
+  picker.innerHTML=results.map(c=>{
+    const sel=QTL.fbSelectedCollectors.some(x=>x.hr===c.hr_code)
+    const bg=sel?'rgba(232,89,12,0.08)':''
+    return `<div onclick="qtlToggleFbCollector('${c.hr_code}','${c.name.replace(/'/g,"\'")} ')" style="padding:10px 14px;font-size:13px;color:var(--t-1);cursor:pointer;display:flex;align-items:center;gap:10px;border-bottom:0.5px solid rgba(255,255,255,0.06);background:${bg}" onmouseover="this.style.background='rgba(232,89,12,0.1)'" onmouseout="this.style.background='${bg}'"><div style="width:10px;height:10px;border-radius:50%;border:1.5px solid ${sel?'#E8590C':'rgba(255,255,255,0.25)'};background:${sel?'#E8590C':'transparent'};flex-shrink:0;transition:all .15s"></div><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#E8590C;font-weight:700;flex-shrink:0;min-width:54px">${c.hr_code}</span><span>${c.name}</span></div>`
+  }).join('')
+  picker.style.display='block'
+}
+
 
 function qtlRenderOverview(){
   const sessions=QTL.sessions;
@@ -11388,6 +11388,8 @@ function qtlOpenFeedbackTask(){
   qtlUpdateFbPills();
   const picker=document.getElementById('qtlFbCollectorPicker');
   if(picker) picker.style.display='none';
+  const search=document.getElementById('qtlFbColSearch');
+  if(search) search.value='';
   document.getElementById('qtlFbNote').value='';
 }
 
@@ -11407,15 +11409,21 @@ function qtlToggleFbCollector(hr,name){
 }
 
 function qtlUpdateFbPills(){
-  const c=document.getElementById('qtlFbCollectorPills');
-  if(!c)return;
-  if(!QTL.fbSelectedCollectors.length){c.innerHTML='<span style="font-size:13px;color:var(--t-3)">Click to select collectors...</span>';return;}
-  c.innerHTML=QTL.fbSelectedCollectors.map(col=>`
-    <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(232,89,12,0.15);color:#E8590C;border:0.5px solid rgba(232,89,12,0.3);border-radius:6px;padding:3px 8px;font-size:12px">
-      ${col.name}<span onclick="qtlToggleFbCollector('${col.hr}','${col.name}')" style="cursor:pointer;opacity:.6;margin-left:2px">×</span>
-    </span>`).join('');
+  const pills=document.getElementById('qtlFbCollectorPills')
+  const ph=document.getElementById('qtlFbPillsPlaceholder')
+  if(!pills)return
+  Array.from(pills.children).forEach(ch=>{ if(ch.id!=='qtlFbPillsPlaceholder') ch.remove() })
+  if(!QTL.fbSelectedCollectors.length){ if(ph)ph.style.display=''; return }
+  if(ph)ph.style.display='none'
+  QTL.fbSelectedCollectors.forEach(col=>{
+    const span=document.createElement('span')
+    span.style.cssText='display:inline-flex;align-items:center;gap:4px;background:rgba(232,89,12,0.15);color:#E8590C;border:0.5px solid rgba(232,89,12,0.3);border-radius:6px;padding:3px 8px;font-size:12px'
+    span.innerHTML=col.name+' <span style="cursor:pointer;opacity:.6;margin-left:2px" onclick="qtlToggleFbCollector(\''+col.hr+'\',\''+col.name.replace(/'/g,"\\'")+' \')">×</span>'
+    pills.appendChild(span)
+  })
+  const q=(document.getElementById('qtlFbColSearch')?.value||'')
+  if(q.length>=2) qtlFbFilterCollectors()
 }
-
 async function qtlSubmitFeedbackTask(){
   const revHr=document.getElementById('qtlFbReviewerSel')?.value;
   if(!revHr){alert('Please select a reviewer.');return;}
@@ -14102,10 +14110,14 @@ function qtlRenderTasks(){
       </div>
       <div class="field">
         <label class="input-label">Collectors to handle <span style="color:var(--t-3);font-weight:400">(multi-select)</span></label>
-        <div id="qtlFbCollectorPills" style="display:flex;flex-wrap:wrap;gap:6px;min-height:38px;background:var(--bg-2);border:0.5px solid var(--b-2);border-radius:var(--r-md);padding:8px 10px;cursor:pointer" onclick="qtlToggleFbCollectorPicker()">
-          <span style="font-size:13px;color:var(--t-3)">Click to select collectors...</span>
+        <!-- Selected pills -->
+        <div id="qtlFbCollectorPills" style="display:flex;flex-wrap:wrap;gap:6px;min-height:32px;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--t-3)" id="qtlFbPillsPlaceholder">No collectors selected yet</span>
         </div>
-        <div id="qtlFbCollectorPicker" style="display:none;background:var(--bg-surface);border:0.5px solid var(--b-2);border-radius:var(--r-lg);margin-top:4px;max-height:160px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4)"></div>
+        <!-- Search input -->
+        <input type="text" id="qtlFbColSearch" class="input" placeholder="Search collector by name or HR code..."
+          style="font-size:13px" oninput="qtlFbFilterCollectors()" autocomplete="off"/>
+        <div id="qtlFbCollectorPicker" style="display:none;background:#1C1C1C;border:1px solid rgba(232,89,12,0.3);border-radius:10px;margin-top:4px;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.8)"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="field">
