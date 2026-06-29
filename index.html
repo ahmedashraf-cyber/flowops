@@ -13871,9 +13871,15 @@ function qtlRenderTasks(){
     <div class="field" style="margin-bottom:14px">
       <label class="input-label">Review Type</label>
       <div style="display:flex;flex-wrap:wrap;gap:6px" id="qtlReviewTypePills">
-        ${['A-review','B-review','C-review','D-review','Pressures','Full match','Hyper care','Academies','Customer'].map(t=>`
-          <button type="button" onclick="qtlSelectReviewType(this,'${t}')" data-type="${t}" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">${t}</button>
-        `).join('')}
+        <button type="button" onclick="qtlSelectReviewType(this,'A-review')" data-type="A-review" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">A-review</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'B-review')" data-type="B-review" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">B-review</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'C-review')" data-type="C-review" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">C-review</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'D-review')" data-type="D-review" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">D-review</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'Pressures')" data-type="Pressures" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">Pressures</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'Full match')" data-type="Full match" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">Full match</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'Hyper care')" data-type="Hyper care" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">Hyper care</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'Academies')" data-type="Academies" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">Academies</button>
+        <button type="button" onclick="qtlSelectReviewType(this,'Customer')" data-type="Customer" style="padding:5px 12px;border-radius:20px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s">Customer</button>
       </div>
     </div>
 
@@ -13881,9 +13887,11 @@ function qtlRenderTasks(){
     <div class="field" style="margin-bottom:14px">
       <label class="input-label">Half</label>
       <div style="display:flex;gap:6px">
-        ${['1H','2H','ET1','ET2','Full'].map(h=>`
-          <button type="button" onclick="qtlSelectHalf(this,'${h}')" data-half="${h}" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">${h}</button>
-        `).join('')}
+        <button type="button" onclick="qtlSelectHalf(this,'1H')" data-half="1H" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">1H</button>
+        <button type="button" onclick="qtlSelectHalf(this,'2H')" data-half="2H" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">2H</button>
+        <button type="button" onclick="qtlSelectHalf(this,'ET1')" data-half="ET1" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">ET1</button>
+        <button type="button" onclick="qtlSelectHalf(this,'ET2')" data-half="ET2" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">ET2</button>
+        <button type="button" onclick="qtlSelectHalf(this,'Full')" data-half="Full" style="flex:1;padding:7px 4px;border-radius:8px;border:1.5px solid var(--b-2);background:transparent;color:var(--t-3);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center">Full</button>
       </div>
     </div>
 
