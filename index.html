@@ -5729,7 +5729,7 @@ async function initReviewerDashboard(){
   try {
     if(sub) sub.textContent = 'Loading your collectors data...';
     // Load sessions and events from Sheet
-    const sessUrl = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:Z?key=${COLLECTOR_SHEET_KEY}`;
+    const sessUrl = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:AB?key=${COLLECTOR_SHEET_KEY}`;
     const evtUrl  = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:K?key=${COLLECTOR_SHEET_KEY}`;
     const [sessRes, evtRes] = await Promise.all([fetch(sessUrl), fetch(evtUrl)]);
     const [sessData, evtData] = await Promise.all([sessRes.json(), evtRes.json()]);
@@ -6423,6 +6423,27 @@ function freshHalfRaw(half){
 }
 
 // Convert a Firestore mark_audit_sessions doc into the same shape colParseSession() produces
+// Resolves the real QA reviewer (not the MARK operator) for a session doc.
+// v7.5.15+ sessions already have the correct reviewerEmail/reviewerName/reviewerHrCode
+// written by MARK itself. Older sessions only have qaReviewerIds — resolve via roster.
+function freshResolveReviewer(d, rosterMap){
+  if(d.reviewerHrCode){
+    // Already resolved by MARK v7.5.15+
+    return { email: d.reviewerEmail||'', name: d.reviewerName||'', hrCode: d.reviewerHrCode }
+  }
+  const qaIds = (d.qaReviewerIds && d.qaReviewerIds.length) ? d.qaReviewerIds
+              : (d.qaReviewerId != null ? [d.qaReviewerId] : [])
+  if(qaIds.length){
+    const firstId = String(qaIds[0])
+    const entry = rosterMap[firstId]
+    if(entry && (entry.hrCode || entry.name)){
+      return { email: entry.email||d.reviewerEmail||'', name: entry.name||d.reviewerName||'', hrCode: entry.hrCode||'' }
+    }
+  }
+  // Fallback: whatever was on the doc already (likely the MARK operator)
+  return { email: d.reviewerEmail||'', name: d.reviewerName||'', hrCode: '' }
+}
+
 function freshSessionToColShape(d, rosterMap){
   const legacy = String(d.collectorId||'')
   const rosterEntry = rosterMap[legacy] || {}
@@ -6439,6 +6460,7 @@ function freshSessionToColShape(d, rosterMap){
   const scoreLocation = mod.location    != null ? mod.location    : (d.qualityScoreE != null ? d.qualityScoreE : null)
   const scoreExtras   = mod.extras      != null ? mod.extras      : (d.qualityScoreC != null ? d.qualityScoreC : null)
   const scoreFreeze   = mod.freezeFrame != null ? mod.freezeFrame : null
+  const reviewer = freshResolveReviewer(d, rosterMap)
 
   return {
     hr_code:        rosterEntry.hrCode || legacy,
@@ -6463,7 +6485,9 @@ function freshSessionToColShape(d, rosterMap){
     err_deletion:   at.deletion  || 0,
     err_camera:     at.camera    || 0,
     err_added:      at.added     || 0,
-    reviewer_email: d.reviewerEmail || '',
+    reviewer_email: reviewer.email,
+    reviewer_name:  reviewer.name,
+    reviewer_hr_code: reviewer.hrCode,
     collector_name: rosterEntry.name || '',
     _fresh: true, // internal flag, not displayed
   }
@@ -6476,6 +6500,7 @@ function freshSessionToQtlShape(d, rosterMap){
   let completedAt = ''
   if(d.completedAt?._seconds) completedAt = new Date(d.completedAt._seconds*1000).toISOString()
   else if(d.completedAt) completedAt = String(d.completedAt)
+  const reviewer = freshResolveReviewer(d, rosterMap)
   return {
     hrCode:        rosterEntry.hrCode || legacy,
     sessionId:     d.sessionId || '',
@@ -6486,7 +6511,9 @@ function freshSessionToQtlShape(d, rosterMap){
     score:         d.qualityScore != null ? d.qualityScore : null,
     totalEvents:   d.totalBaseEvents || 0,
     totalErrors:   d.uniqueEditedEvents || d.totalAmendments || 0,
-    reviewerEmail: d.reviewerEmail || '',
+    reviewerEmail: reviewer.email,
+    reviewerName:  reviewer.name,
+    reviewerHrCode: reviewer.hrCode,
     collectorName: rosterEntry.name || '',
     _fresh: true,
   }
@@ -6586,11 +6613,13 @@ function colParseSession(row){
     err_added:      parseInt(row[SES.ERR_ADDED])      ||0,
     reviewer_email: row[SES.REVIEWER_EMAIL] ||'',
     collector_name: row[SES.COLLECTOR_NAME] ||'',
+    reviewer_name:    row[SES.REVIEWER_NAME]    ||'',
+    reviewer_hr_code: row[SES.REVIEWER_HR_CODE] ||'',
   };
 }
 
 async function colLoadSheetData(){
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:Z?key=${COLLECTOR_SHEET_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:AB?key=${COLLECTOR_SHEET_KEY}`;
   const res  = await fetch(url);
   const data = await res.json();
   if(data.error) throw new Error(data.error.message);
@@ -9565,6 +9594,7 @@ const SES = {
   ERR_BASE:15, ERR_LOCATION:16, ERR_EXTRAS:17, ERR_PLAYERS:18,
   ERR_DELETION:19, ERR_CAMERA:20, ERR_ADDED:21,
   REVIEWER_EMAIL:22, COLLECTOR_DISPLAY:23, MARK_VERSION:24, COLLECTOR_NAME:25,
+  REVIEWER_NAME:26, REVIEWER_HR_CODE:27,
 };
 const ROS = {
   HR_CODE:0, FULL_NAME:1, GMAIL:2, TEAM_CODE:3, JOIN_DATE:4, STATUS:5, LEGACY_ID:6,
@@ -11105,13 +11135,12 @@ async function qtlLoadData(){
   if(sub) sub.textContent='Loading team data...';
   try {
     // Load sessions from Sheet
-    const sessUrl=`https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:Z?key=${COLLECTOR_SHEET_KEY}`;
+    const sessUrl=`https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Sessions!A2:AB?key=${COLLECTOR_SHEET_KEY}`;
     const evtUrl =`https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:Q?key=${COLLECTOR_SHEET_KEY}`;
     const [sRes,eRes]=await Promise.all([fetch(sessUrl),fetch(evtUrl)]);
     const [sData,eData]=await Promise.all([sRes.json(),eRes.json()]);
 
     // Filter sessions to this leader's reviewers
-    const SES={HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,SCORE_OVERALL:6,TOTAL_EVENTS:13,TOTAL_ERRORS:14,REVIEWER_EMAIL:22,COLLECTOR_NAME:25}
     // Match by reviewer email (gmail OR hudl) or reviewer name
     const myReviewerEmails = new Set()
     const myReviewerNames  = new Set()
@@ -11131,11 +11160,13 @@ async function qtlLoadData(){
       score:r[SES.SCORE_OVERALL]?parseFloat(r[SES.SCORE_OVERALL]):null,
       totalEvents:parseInt(r[SES.TOTAL_EVENTS])||0, totalErrors:parseInt(r[SES.TOTAL_ERRORS])||0,
       reviewerEmail:r[SES.REVIEWER_EMAIL]||'', collectorName:r[SES.COLLECTOR_NAME]||'',
+      reviewerName:r[SES.REVIEWER_NAME]||'', reviewerHrCode:r[SES.REVIEWER_HR_CODE]||'',
     })).filter(s => {
       if(!s.sessionId) return false
       if(isAdminQTL) return true // admin sees everything for testing
       const revEmail = (s.reviewerEmail||'').toLowerCase()
-      return myReviewerEmails.has(revEmail)
+      const revName  = (s.reviewerName||'').toLowerCase()
+      return myReviewerEmails.has(revEmail) || (revName && myReviewerNames.has(revName))
     })
 
     // Instant-fresh catch-up — merge Firestore sessions newer than what's in the Sheet
