@@ -6373,16 +6373,19 @@ let FRESH_ROSTER_CACHE = null
 async function freshLoadRosterMap(){
   if(FRESH_ROSTER_CACHE) return FRESH_ROSTER_CACHE
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Roster!A2:G?key=${COLLECTOR_SHEET_KEY}`
-    const res = await fetch(url)
-    const data = await res.json()
+    // Read from Firestore 'roster' collection — authoritative and complete,
+    // unlike the Sheet's Roster tab which is sparsely populated.
     const map = {}
-    ;(data.values||[]).forEach(r=>{
-      const legacyId = (r[6]||'').trim() // col G = legacy_id
-      const hrCode   = (r[0]||'').trim() // col A = hr_code
-      const name     = (r[1]||'').trim() // col B = full_name
-      if(legacyId) map[legacyId] = { hrCode, name }
-    })
+    if(fbDb){
+      const snap = await fbDb.collection('roster').get()
+      snap.forEach(doc=>{
+        const d = doc.data()
+        const legacyId = String(d.legacyId||'').trim()
+        if(legacyId){
+          map[legacyId] = { hrCode: d.hrcode||d.hrCode||legacyId, name: d.name||d.fullName||'' }
+        }
+      })
+    }
     FRESH_ROSTER_CACHE = map
     return map
   } catch(e){
