@@ -5798,7 +5798,15 @@ function revRenderOverview(){
       const cSess = sessions.filter(s=>s.hr_code===hr||s.hr_code.split(',').map(c=>c.trim()).includes(hr));
       const cScores = cSess.filter(s=>s.score_overall!==null).map(s=>s.score_overall);
       const avg = cScores.length ? Math.round(cScores.reduce((a,v)=>a+v,0)/cScores.length) : null;
-      const name = cSess[0]?.collector_name || hr;
+      // Resolve this specific collector's name by matching index within the comma-joined fields
+      let name = hr;
+      const firstSess = cSess[0];
+      if(firstSess){
+        const codes = (firstSess.hr_code||'').split(',').map(c=>c.trim());
+        const names = (firstSess.collector_name||'').split(',').map(n=>n.trim());
+        const idx = codes.indexOf(hr);
+        name = (idx>=0 && names[idx]) ? names[idx] : (names[0] || hr);
+      }
       collData[hr] = { name, avg, sessions: cSess.length };
     });
     const sorted2 = Object.entries(collData).sort((a,b)=>(b[1].avg||0)-(a[1].avg||0));
@@ -5822,9 +5830,9 @@ function revBuildCollectorDropdown(){
   const collectors = {};
   sessions.forEach(s=>{
     if(!s.hr_code) return;
-    s.hr_code.split(',').forEach(hr=>{
-      hr=hr.trim(); if(hr) collectors[hr]=(s.collector_name||hr);
-    });
+    const codes = s.hr_code.split(',').map(c=>c.trim()).filter(Boolean);
+    const names = (s.collector_name||'').split(',').map(n=>n.trim()).filter(Boolean);
+    codes.forEach((hr, i) => { if(!collectors[hr]) collectors[hr] = names[i] || names[0] || hr; });
   });
   const sel = document.getElementById('revCollectorSelect');
   if(!sel) return;
@@ -6238,6 +6246,13 @@ function colApplyFilters(){
 }
 
 // Override colFilterSessions to use shared filter state
+// Shared helper: checks if a (possibly comma-joined) hr_code field contains a target code
+function colHrCodeMatches(fieldValue, targetCode){
+  if(!fieldValue || !targetCode) return false;
+  if(fieldValue === targetCode) return true;
+  return fieldValue.split(',').map(c=>c.trim()).includes(targetCode);
+}
+
 function colFilterSessions(sessions, tf){
   return sessions.filter(s=>{
     if(!s.completed_at) return false;
@@ -6255,8 +6270,8 @@ function colFilterSessions(sessions, tf){
     }
     // Match filter
     if(COL_FILTERS.matchId && s.match_id !== COL_FILTERS.matchId) return false;
-    // HR code filter (super admin)
-    if(COL_FILTERS.hrCode && s.hr_code !== COL_FILTERS.hrCode) return false;
+    // HR code filter (super admin) — handles multi-collector sessions
+    if(COL_FILTERS.hrCode && !colHrCodeMatches(s.hr_code, COL_FILTERS.hrCode)) return false;
     // Name search (super admin)
     if(COL_FILTERS.nameSearch && !(s.collector_name||'').toLowerCase().includes(COL_FILTERS.nameSearch)) return false;
     return true;
@@ -6277,7 +6292,7 @@ function colFilterEvents(events, tf){
       if(d < cutoff) return false;
     }
     if(COL_FILTERS.matchId && e.match_id !== COL_FILTERS.matchId) return false;
-    if(COL_FILTERS.hrCode  && e.hr_code  !== COL_FILTERS.hrCode)  return false;
+    if(COL_FILTERS.hrCode  && !colHrCodeMatches(e.hr_code, COL_FILTERS.hrCode))  return false;
     if(COL_FILTERS.errType && e.error_type !== COL_FILTERS.errType) return false;
     if(COL_FILTERS.nameSearch){
       const sessMatch = COL_EVT_STATE.sessions.find(s=>s.session_id===e.session_id);
@@ -6315,11 +6330,18 @@ function colBuildFilterOptions(sessions, events){
   if(etWrap)  etWrap.style.display  = '';
 
   // Build HR code dropdown
+  // IMPORTANT: hr_code and collector_name can both be comma-joined for
+  // multi-collector sessions (e.g. "A-2453, A-2420" / "Ahmed X, Mohamed Y").
+  // Must split BOTH in parallel by index, never assign the full joined
+  // name string to each individual code.
   const hrs = {};
   sessions.forEach(s=>{
     if(!s.hr_code) return;
-    s.hr_code.split(',').forEach(c=>{
-      c=c.trim(); if(c) hrs[c]=(s.collector_name||c);
+    const codes = s.hr_code.split(',').map(c=>c.trim()).filter(Boolean);
+    const names = (s.collector_name||'').split(',').map(n=>n.trim()).filter(Boolean);
+    codes.forEach((c, i) => {
+      // Use the matching name by index; fall back to the code itself if no name at that index
+      if(!hrs[c]) hrs[c] = names[i] || names[0] || c;
     });
   });
   const hSel = document.getElementById('colHRFilter');
@@ -11782,10 +11804,15 @@ function qtlRenderQOverview(){
   const sessions = QTL.sessions
   const collMap = {}
   sessions.forEach(s=>{
-    const hr=s.hrCode||''; if(!hr)return
-    if(!collMap[hr]) collMap[hr]={hr,name:s.collectorName||hr,sessions:[],errors:0}
-    collMap[hr].sessions.push(s)
-    collMap[hr].errors+=(s.totalErrors||0)
+    if(!s.hrCode) return
+    const codes = s.hrCode.split(',').map(c=>c.trim()).filter(Boolean)
+    const names = (s.collectorName||'').split(',').map(n=>n.trim()).filter(Boolean)
+    codes.forEach((hr, i) => {
+      const name = names[i] || names[0] || hr
+      if(!collMap[hr]) collMap[hr]={hr,name,sessions:[],errors:0}
+      collMap[hr].sessions.push(s)
+      collMap[hr].errors+=(s.totalErrors||0)
+    })
   })
   const colls=Object.values(collMap)
   const withScore=sessions.filter(s=>s.score!=null)
@@ -11844,7 +11871,12 @@ function qtlQFilterCollectors(){
   const q=(document.getElementById('qtlQColSearch')?.value||'').toLowerCase()
   const d=document.getElementById('qtlQColDropdown'); if(!d)return
   const collMap={}
-  QTL.sessions.forEach(s=>{if(s.hrCode)collMap[s.hrCode]={hr:s.hrCode,name:s.collectorName||s.hrCode}})
+  QTL.sessions.forEach(s=>{
+    if(!s.hrCode) return
+    const codes = s.hrCode.split(',').map(c=>c.trim()).filter(Boolean)
+    const names = (s.collectorName||'').split(',').map(n=>n.trim()).filter(Boolean)
+    codes.forEach((hr, i) => { if(!collMap[hr]) collMap[hr]={hr, name: names[i] || names[0] || hr} })
+  })
   const all=Object.values(collMap)
   const results=q.length<2?all.slice(0,30):all.filter(c=>c.name.toLowerCase().includes(q)||c.hr.toLowerCase().includes(q)).slice(0,30)
   if(!results.length){d.innerHTML='<div style="padding:12px 14px;font-size:12px;color:var(--t-3)">No collectors found</div>';d.style.display='block';return}
@@ -11860,8 +11892,8 @@ function qtlQSelectCollector(hr,name){
 }
 
 function qtlQRenderDetails(hr){
-  const sessions=QTL.sessions.filter(s=>s.hrCode===hr)
-  const events=QTL.events.filter(r=>(r[3]||'')===hr)
+  const sessions=QTL.sessions.filter(s=>colHrCodeMatches(s.hrCode, hr))
+  const events=QTL.events.filter(r=>colHrCodeMatches(r[3]||'', hr))
   const withScore=sessions.filter(s=>s.score!=null)
   const avg=withScore.length?Math.round(withScore.reduce((a,s)=>a+s.score,0)/withScore.length):null
   const totalErrs=sessions.reduce((a,s)=>a+s.totalErrors,0)
