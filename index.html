@@ -5712,9 +5712,13 @@ function revGetMySessions(){
 }
 
 function revGetMyEvents(){
-  const email = A.user?.email || '';
-  const mySessions = revGetMySessions().map(s=>s.session_id);
-  return REV_STATE.events.filter(e=> mySessions.includes(e.session_id));
+  const mySessions = revGetMySessions();
+  const myKeys = new Set();
+  mySessions.forEach(s=>{
+    const codes = (s.hr_code||'').split(',').map(c=>c.trim()).filter(Boolean);
+    codes.forEach(hr => myKeys.add(colEventJoinKey(s.match_id, s.half, hr)));
+  });
+  return REV_STATE.events.filter(e=> myKeys.has(colEventJoinKey(e.match_id, e.half, e.hr_code)));
 }
 
 async function initReviewerDashboard(){
@@ -6278,10 +6282,33 @@ function colFilterSessions(sessions, tf){
   });
 }
 
+// Builds a lookup key shared between a session and its events: match+half+collector
+function colEventJoinKey(matchId, half, hrCode){
+  const firstHr = (hrCode||'').split(',')[0].trim();
+  return `${matchId}__${colNormalizeHalf(half)}__${firstHr}`;
+}
+
+// Builds match_id+half+hrCode -> session lookup map (sessions list is small)
+function colBuildSessionJoinMap(sessions){
+  const map = {};
+  sessions.forEach(s=>{
+    const codes = (s.hr_code||'').split(',').map(c=>c.trim()).filter(Boolean);
+    codes.forEach(hr=>{
+      const key = colEventJoinKey(s.match_id, s.half, hr);
+      if(!map[key]) map[key] = s; // first session wins if duplicates
+    });
+  });
+  return map;
+}
+
 function colFilterEvents(events, tf){
+  const joinMap = colBuildSessionJoinMap(COL_EVT_STATE.sessions);
+
   return events.filter(e=>{
-    if(!e.completed_at) return false;
-    const d = new Date(e.completed_at);
+    const joinedSession = joinMap[colEventJoinKey(e.match_id, e.half, e.hr_code)];
+    const completedAt = joinedSession?.completed_at || '';
+    if(!completedAt) return false; // no matching session found — can't date-filter it
+    const d = new Date(completedAt);
     if(COL_FILTERS.dateFrom && d < COL_FILTERS.dateFrom) return false;
     if(COL_FILTERS.dateTo   && d > COL_FILTERS.dateTo)   return false;
     if(!COL_FILTERS.dateFrom && !COL_FILTERS.dateTo && COL_FILTERS.tf !== 'all' && COL_FILTERS.tf !== 'custom'){
@@ -6295,8 +6322,7 @@ function colFilterEvents(events, tf){
     if(COL_FILTERS.hrCode  && !colHrCodeMatches(e.hr_code, COL_FILTERS.hrCode))  return false;
     if(COL_FILTERS.errType && e.error_type !== COL_FILTERS.errType) return false;
     if(COL_FILTERS.nameSearch){
-      const sessMatch = COL_EVT_STATE.sessions.find(s=>s.session_id===e.session_id);
-      if(sessMatch && !(sessMatch.collector_name||'').toLowerCase().includes(COL_FILTERS.nameSearch)) return false;
+      if(joinedSession && !(joinedSession.collector_name||'').toLowerCase().includes(COL_FILTERS.nameSearch)) return false;
     }
     return true;
   });
@@ -6746,7 +6772,27 @@ function colRenderErrorBars(sessions){
 }
 
 // ── Event Analysis page ──────────────────────────────────────────
-const EVT = { HR_CODE:0,SESSION_ID:1,MATCH_ID:2,MATCH_NAME:3,HALF:4,COMPLETED_AT:5,EVENT_NAME:6,ERROR_TYPE:7,AMENDMENT_ID:8,VIDEO_TS:9,MARK_VERSION:10 };
+// Events tab actual schema (17 cols, no SESSION_ID — joined via MATCH_ID+HALF+HR_CODE):
+// MATCH_ID,MATCH_NAME,HALF,COLLECTOR_HR_CODE,COLLECTOR_NAME,REVIEWER_HR_CODE,REVIEWER_NAME,
+// MODULE,EVENT_NAME,ERROR_TYPE,VIDEO_TS,EDIT_TYPE,BEFORE_CHANGE,AFTER_CHANGE,TEAM_NAME,MARK_VERSION,SOURCE
+const EVT = {
+  MATCH_ID:0, MATCH_NAME:1, HALF:2, HR_CODE:3, COLLECTOR_NAME:4,
+  REVIEWER_HR_CODE:5, REVIEWER_NAME:6, MODULE:7, EVENT_NAME:8, ERROR_TYPE:9,
+  VIDEO_TS:10, EDIT_TYPE:11, BEFORE_CHANGE:12, AFTER_CHANGE:13, TEAM_NAME:14,
+  MARK_VERSION:15, SOURCE:16,
+};
+
+// The Events tab stores half as "1st Half"/"2nd Half" but Sessions stores "1H"/"2H".
+// Normalize both to the same short form so the join key matches.
+function colNormalizeHalf(h){
+  const v = String(h||'').trim();
+  if(/^1st/i.test(v) || v==='1H') return '1H';
+  if(/^2nd/i.test(v) || v==='2H') return '2H';
+  if(/^ET ?1/i.test(v) || v==='ET1') return 'ET1';
+  if(/^ET ?2/i.test(v) || v==='ET2') return 'ET2';
+  if(/^Full/i.test(v)) return 'Full';
+  return v;
+}
 const COL_EVT_STATE = { events:[], sessions:[], tf:'week', sortCol:2, sortDir:-1, expanded:null, sparkChart:null, ringChart:null, matchChart:null };
 
 function colSetTimeframe2(tf, btn){
@@ -6758,21 +6804,32 @@ function colSetTimeframe2(tf, btn){
 
 function colParseEvent(row){
   return {
-    hr_code:      row[EVT.HR_CODE]      ||'',
-    session_id:   row[EVT.SESSION_ID]   ||'',
-    match_id:     row[EVT.MATCH_ID]     ||'',
-    match_name:   row[EVT.MATCH_NAME]   ||'',
-    half:         row[EVT.HALF]         ||'',
-    completed_at: row[EVT.COMPLETED_AT] ||'',
-    event_name:   row[EVT.EVENT_NAME]   ||'',
-    error_type:   row[EVT.ERROR_TYPE]   ||'',
-    amendment_id: row[EVT.AMENDMENT_ID] ||'',
-    video_ts:     row[EVT.VIDEO_TS]     ||'',
+    hr_code:          row[EVT.HR_CODE]          ||'',
+    collector_name:   row[EVT.COLLECTOR_NAME]   ||'',
+    match_id:         row[EVT.MATCH_ID]         ||'',
+    match_name:       row[EVT.MATCH_NAME]       ||'',
+    half:             colNormalizeHalf(row[EVT.HALF]),
+    reviewer_hr_code: row[EVT.REVIEWER_HR_CODE] ||'',
+    reviewer_name:    row[EVT.REVIEWER_NAME]    ||'',
+    module:           row[EVT.MODULE]           ||'',
+    event_name:       row[EVT.EVENT_NAME]       ||'',
+    error_type:       row[EVT.ERROR_TYPE]       ||'',
+    video_ts:         row[EVT.VIDEO_TS]         ||'',
+    edit_type:        row[EVT.EDIT_TYPE]        ||'',
+    before_change:    row[EVT.BEFORE_CHANGE]    ||'',
+    after_change:     row[EVT.AFTER_CHANGE]     ||'',
+    team_name:        row[EVT.TEAM_NAME]        ||'',
+    mark_version:     row[EVT.MARK_VERSION]     ||'',
+    source:           row[EVT.SOURCE]           ||'',
+    // No session_id or completed_at in this sheet — joined to sessions
+    // via match_id + half + hr_code when a date context is needed.
+    session_id:       '',
+    completed_at:     '',
   };
 }
 
 async function colLoadEventsData(){
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:K?key=${COLLECTOR_SHEET_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Events!A2:Q?key=${COLLECTOR_SHEET_KEY}`;
   const res  = await fetch(url);
   const data = await res.json();
   if(data.error) throw new Error(data.error.message);
@@ -6781,7 +6838,7 @@ async function colLoadEventsData(){
   const isSuperAdmin = A.user && A.user.email === 'ahmed.ashraf@hudl.com';
   if(isSuperAdmin) return allEvts;
   const hrCode = (A.user.hrCode||'').trim();
-  return allEvts.filter(e => e.hr_code===hrCode || e.hr_code.split(',').map(c=>c.trim()).includes(hrCode));
+  return allEvts.filter(e => colHrCodeMatches(e.hr_code, hrCode));
 }
 
 function colRenderAnalysis(){
@@ -6823,7 +6880,7 @@ function colRenderAnalysis(){
   const worst=sorted[0]?sorted[0][0]:'—';
   const worstCount=sorted[0]?sorted[0][1]:0;
   const best=sorted.length>1?sorted[sorted.length-1][0]:'—';
-  const matchSet=new Set(filtered.map(e=>e.session_id));
+  const matchSet=new Set(filtered.map(e=>e.match_id+'__'+e.half));
 
   const su=document.getElementById('colStatUnique'); if(su) su.textContent=sorted.length;
   const sus=document.getElementById('colStatUniqueSub'); if(sus) sus.textContent=filtered.length+' total errors';
@@ -6908,7 +6965,7 @@ function colRenderEvtTable(events, sessions){
     if(!evtMap[e.event_name]) evtMap[e.event_name]={name:e.event_name,errors:0,sessions:new Set(),topType:{},detail:[]};
     const em=evtMap[e.event_name];
     em.errors++;
-    em.sessions.add(e.session_id);
+    em.sessions.add(e.match_id+'__'+e.half);
     em.topType[e.error_type]=(em.topType[e.error_type]||0)+1;
     em.detail.push(e);
   });
