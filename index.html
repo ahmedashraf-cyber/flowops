@@ -5734,6 +5734,9 @@ async function initReviewerDashboard(){
     const [sessRes, evtRes] = await Promise.all([fetch(sessUrl), fetch(evtUrl)]);
     const [sessData, evtData] = await Promise.all([sessRes.json(), evtRes.json()]);
     REV_STATE.sessions = (sessData.values||[]).map(colParseSession).filter(s=>s.session_id);
+    REV_STATE.sessions = await freshMergeNewSessions(REV_STATE.sessions, {
+      dateField: 'completed_at', idField: 'session_id', mapFn: freshSessionToColShape
+    });
     REV_STATE.events   = (evtData.values||[]).map(colParseEvent).filter(e=>e.event_name);
     revRenderOverview();
     revBuildCollectorDropdown();
@@ -6358,6 +6361,171 @@ function colSetTimeframe(tf, btn){
   colFilterAndRender();
 }
 
+// ── Instant-fresh data helper ──────────────────────────────────────
+// On first load, after reading the Sheet, do one Firestore catch-up query
+// for sessions completed AFTER the latest timestamp already in the Sheet.
+// This makes brand-new Mark Audit sessions appear instantly without
+// waiting for the 30-min cron or MARK's GitHub trigger.
+// Used by Collector, Reviewer, and QTL dashboards alike.
+
+let FRESH_ROSTER_CACHE = null
+
+async function freshLoadRosterMap(){
+  if(FRESH_ROSTER_CACHE) return FRESH_ROSTER_CACHE
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${COLLECTOR_SHEET_ID}/values/Roster!A2:G?key=${COLLECTOR_SHEET_KEY}`
+    const res = await fetch(url)
+    const data = await res.json()
+    const map = {}
+    ;(data.values||[]).forEach(r=>{
+      const legacyId = (r[6]||'').trim() // col G = legacy_id
+      const hrCode   = (r[0]||'').trim() // col A = hr_code
+      const name     = (r[1]||'').trim() // col B = full_name
+      if(legacyId) map[legacyId] = { hrCode, name }
+    })
+    FRESH_ROSTER_CACHE = map
+    return map
+  } catch(e){
+    console.warn('[FRESH] Roster load failed:', e.message)
+    FRESH_ROSTER_CACHE = {}
+    return {}
+  }
+}
+
+function freshHalfRaw(half){
+  // Sheet stores '1H','2H' etc — Firestore session.half already matches
+  return String(half||'')
+}
+
+// Convert a Firestore mark_audit_sessions doc into the same shape colParseSession() produces
+function freshSessionToColShape(d, rosterMap){
+  const legacy = String(d.collectorId||'')
+  const rosterEntry = rosterMap[legacy] || {}
+  let completedAt = ''
+  if(d.completedAt?._seconds) completedAt = new Date(d.completedAt._seconds*1000).toISOString()
+  else if(d.completedAt) completedAt = String(d.completedAt)
+
+  const at = d.amendmentTypes || {}
+  return {
+    hr_code:        rosterEntry.hrCode || legacy,
+    session_id:     d.sessionId || '',
+    match_id:       String(d.matchId||''),
+    match_name:     d.matchName || '',
+    half:           freshHalfRaw(d.half),
+    completed_at:   completedAt,
+    score_overall:  d.qualityScore   != null ? d.qualityScore   : null,
+    score_base:     d.qualityScoreA  != null ? d.qualityScoreA  : null,
+    score_pressure: null,
+    score_players:  null,
+    score_location: null,
+    score_extras:   null,
+    score_freeze:   null,
+    total_events:   d.totalBaseEvents || 0,
+    total_errors:   d.totalAmendments || 0,
+    err_base:       at.base      || 0,
+    err_location:   at.location  || 0,
+    err_extras:     at.extras    || 0,
+    err_players:    at.players   || 0,
+    err_deletion:   at.deletion  || 0,
+    err_camera:     at.camera    || 0,
+    err_added:      at.added     || 0,
+    reviewer_email: d.reviewerEmail || '',
+    collector_name: rosterEntry.name || '',
+    _fresh: true, // internal flag, not displayed
+  }
+}
+
+// Same shape but for QTL's lighter session object (hrCode, score, totalErrors, etc.)
+function freshSessionToQtlShape(d, rosterMap){
+  const legacy = String(d.collectorId||'')
+  const rosterEntry = rosterMap[legacy] || {}
+  let completedAt = ''
+  if(d.completedAt?._seconds) completedAt = new Date(d.completedAt._seconds*1000).toISOString()
+  else if(d.completedAt) completedAt = String(d.completedAt)
+  return {
+    hrCode:        rosterEntry.hrCode || legacy,
+    sessionId:     d.sessionId || '',
+    matchId:       String(d.matchId||''),
+    matchName:     d.matchName || '',
+    half:          freshHalfRaw(d.half),
+    completedAt,
+    score:         d.qualityScore != null ? d.qualityScore : null,
+    totalEvents:   d.totalBaseEvents || 0,
+    totalErrors:   d.totalAmendments || 0,
+    reviewerEmail: d.reviewerEmail || '',
+    collectorName: rosterEntry.name || '',
+    _fresh: true,
+  }
+}
+
+/**
+ * Fetches Firestore sessions completed after `sinceIso` (exclusive).
+ * Returns raw Firestore docs (caller maps to the shape they need).
+ * Caps at 200 docs as a safety limit (more than enough for a catch-up window).
+ */
+async function freshFetchNewSessions(sinceIso){
+  if(!fbDb) return []
+  try {
+    let query = fbDb.collection('mark_audit_sessions').where('status','==','completed')
+    if(sinceIso){
+      const sinceDate = new Date(sinceIso)
+      if(!isNaN(sinceDate)){
+        query = query.where('completedAt','>', sinceDate)
+      }
+    }
+    const snap = await query.orderBy('completedAt','desc').limit(200).get()
+    return snap.docs.map(doc=>doc.data())
+  } catch(e){
+    // Likely missing composite index on first run — fail silently, Sheet data still shows
+    console.warn('[FRESH] Firestore catch-up query failed:', e.message)
+    return []
+  }
+}
+
+/**
+ * Finds the latest completed_at timestamp already present in a list of
+ * Sheet-shaped session objects (works for both col_ and camelCase shapes).
+ */
+function freshLatestTimestamp(sheetSessions, dateField){
+  let latest = null
+  sheetSessions.forEach(s=>{
+    const raw = s[dateField]
+    if(!raw) return
+    const d = new Date(raw)
+    if(isNaN(d)) return
+    if(!latest || d > latest) latest = d
+  })
+  return latest ? latest.toISOString() : null
+}
+
+/**
+ * Main entry point: given sheet sessions already loaded + the date field name
+ * + a mapper function, fetches fresh Firestore sessions newer than the Sheet's
+ * latest timestamp and merges them in (deduped by session_id/sessionId).
+ */
+async function freshMergeNewSessions(sheetSessions, opts){
+  const { dateField, idField, mapFn } = opts
+  try {
+    const sinceIso = freshLatestTimestamp(sheetSessions, dateField)
+    const newDocs  = await freshFetchNewSessions(sinceIso)
+    if(!newDocs.length) return sheetSessions
+
+    const rosterMap = await freshLoadRosterMap()
+    const existingIds = new Set(sheetSessions.map(s=>s[idField]).filter(Boolean))
+    const freshOnes = newDocs
+      .map(d=>mapFn(d, rosterMap))
+      .filter(s=>s[idField] && !existingIds.has(s[idField]))
+
+    if(freshOnes.length){
+      console.log(`[FRESH] Merged ${freshOnes.length} new session(s) from Firestore (not yet in Sheet)`)
+    }
+    return [...freshOnes, ...sheetSessions]
+  } catch(e){
+    console.warn('[FRESH] Merge failed, showing Sheet data only:', e.message)
+    return sheetSessions
+  }
+}
+
 function colParseSession(row){
   return {
     hr_code:        row[SES.HR_CODE]        ||'',
@@ -6882,7 +7050,20 @@ async function initCollectorDashboard(){
   const sub=document.getElementById('colSubtitle');
   try {
     if(sub) sub.textContent='Loading review data...';
-    COL_STATE.sessions=await colLoadSheetData();
+    let sessions = await colLoadSheetData();
+    sessions = await freshMergeNewSessions(sessions, {
+      dateField: 'completed_at', idField: 'session_id', mapFn: freshSessionToColShape
+    });
+    // Re-apply collector filter to fresh-merged sessions too (super admin sees all)
+    const isSuperAdminFresh = A.user && A.user.email === 'ahmed.ashraf@hudl.com';
+    if(!isSuperAdminFresh){
+      const hrCode = (A.user.hrCode||'').trim();
+      sessions = sessions.filter(s=>{
+        if(!s.hr_code) return false;
+        return s.hr_code===hrCode || s.hr_code.split(',').map(c=>c.trim()).includes(hrCode);
+      });
+    }
+    COL_STATE.sessions = sessions;
     colBuildFilterOptions(COL_STATE.sessions, []);
     colFilterAndRender();
     colRenderHistory();
@@ -10922,6 +11103,17 @@ async function qtlLoadData(){
       const revEmail = (s.reviewerEmail||'').toLowerCase()
       return myReviewerEmails.has(revEmail)
     })
+
+    // Instant-fresh catch-up — merge Firestore sessions newer than what's in the Sheet
+    QTL.sessions = await freshMergeNewSessions(QTL.sessions, {
+      dateField: 'completedAt', idField: 'sessionId', mapFn: freshSessionToQtlShape
+    })
+    if(!isAdminQTL){
+      QTL.sessions = QTL.sessions.filter(s=>{
+        const revEmail=(s.reviewerEmail||'').toLowerCase()
+        return myReviewerEmails.has(revEmail)
+      })
+    }
 
     // Build collectors list from sessions
     const collSet={};
