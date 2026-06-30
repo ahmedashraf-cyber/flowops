@@ -6408,7 +6408,16 @@ function freshSessionToColShape(d, rosterMap){
   if(d.completedAt?._seconds) completedAt = new Date(d.completedAt._seconds*1000).toISOString()
   else if(d.completedAt) completedAt = String(d.completedAt)
 
-  const at = d.amendmentTypes || {}
+  const at  = d.amendmentTypes || {}
+  const mod = d.moduleScores   || {}
+  // Matches backfill_hr_codes.js exactly: moduleScores.X ?? qualityScoreY (legacy fallback)
+  const scoreBase     = mod.base        != null ? mod.base        : (d.qualityScoreA != null ? d.qualityScoreA : null)
+  const scorePressure = mod.pressure    != null ? mod.pressure    : (d.qualityScoreB != null ? d.qualityScoreB : null)
+  const scorePlayers  = mod.players     != null ? mod.players     : (d.qualityScoreD != null ? d.qualityScoreD : null)
+  const scoreLocation = mod.location    != null ? mod.location    : (d.qualityScoreE != null ? d.qualityScoreE : null)
+  const scoreExtras   = mod.extras      != null ? mod.extras      : (d.qualityScoreC != null ? d.qualityScoreC : null)
+  const scoreFreeze   = mod.freezeFrame != null ? mod.freezeFrame : null
+
   return {
     hr_code:        rosterEntry.hrCode || legacy,
     session_id:     d.sessionId || '',
@@ -6416,15 +6425,15 @@ function freshSessionToColShape(d, rosterMap){
     match_name:     d.matchName || '',
     half:           freshHalfRaw(d.half),
     completed_at:   completedAt,
-    score_overall:  d.qualityScore   != null ? d.qualityScore   : null,
-    score_base:     d.qualityScoreA  != null ? d.qualityScoreA  : null,
-    score_pressure: null,
-    score_players:  null,
-    score_location: null,
-    score_extras:   null,
-    score_freeze:   null,
+    score_overall:  d.qualityScore != null ? d.qualityScore : null,
+    score_base:     scoreBase,
+    score_pressure: scorePressure,
+    score_players:  scorePlayers,
+    score_location: scoreLocation,
+    score_extras:   scoreExtras,
+    score_freeze:   scoreFreeze,
     total_events:   d.totalBaseEvents || 0,
-    total_errors:   d.totalAmendments || 0,
+    total_errors:   d.uniqueEditedEvents || d.totalAmendments || 0,
     err_base:       at.base      || 0,
     err_location:   at.location  || 0,
     err_extras:     at.extras    || 0,
@@ -6454,7 +6463,7 @@ function freshSessionToQtlShape(d, rosterMap){
     completedAt,
     score:         d.qualityScore != null ? d.qualityScore : null,
     totalEvents:   d.totalBaseEvents || 0,
-    totalErrors:   d.totalAmendments || 0,
+    totalErrors:   d.uniqueEditedEvents || d.totalAmendments || 0,
     reviewerEmail: d.reviewerEmail || '',
     collectorName: rosterEntry.name || '',
     _fresh: true,
