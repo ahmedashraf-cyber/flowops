@@ -1,4 +1,69 @@
 <!-- ============================================================= -->
+<!-- SESSION 2026-07-11 — MARK v7.5.20→v7.5.28 + FIELD pipeline  -->
+<!-- ============================================================= -->
+
+## Latest Session: 2026-07-11 — MARK scoring overhaul + FIELD pipeline impact
+
+### TL;DR for FIELD
+- **No FIELD HTML code changed this session.** All changes are in MARK v7.5.20→v7.5.28.
+- **Critical upstream change: audit scoring is now correct.**
+  Previous MARK scores were wrong by up to 15 percentage points due to the specialist
+  collector being misidentified as a reviewer. All sessions audited before MARK v7.5.20
+  have inflated error counts and deflated quality scores.
+- **MARK now exports 12 specific error types** (was: Aspect + Edit Type).
+  If FIELD ever reads the Events Sheet error columns, `colParseEvent` will need updating.
+- **Reviewer identity now correct.** `reviewerName`/`reviewerHrCode` in the Sheet now
+  reflect the real QA reviewer (from Tag Once's `EventHistory.authorInfo`), not the
+  machine operator running MARK.
+- **Half labels now correct.** MARK now exports `'1st Half'`/`'2nd Half'` consistently
+  (was showing `'1H'`/`'2H'` in the Sheet due to a missing mapping in `fmtHalf()`).
+- **FIELD pending work unchanged:** Training Supervisor role, Trainee role.
+- Full details in `FIELD_SESSION_2026_07_11.md`.
+
+### MARK changes that affect FIELD data (v7.5.20–v7.5.28)
+
+**Correct error rule (the biggest change):**
+Error = amendment by the QA reviewer only. Reviewer = person with amendments only,
+zero base events, zero refinements (`diagnostics.work` from bridge). Previously, the
+specialist collector (players+location person) was misidentified as a reviewer via
+telemetry, inflating error counts by ~200 events per half. Correct score for test
+half: 92% (was 77% — 15pp difference). All pre-v7.5.20 audit scores are wrong.
+
+**New error type taxonomy in MARK export (15 CSV columns now):**
+```
+Match ID | Match Name | Half | Timestamp | Event Name | Team |
+Error Type | Module | Before | After |
+Collector HR | Collector Name | Reviewer HR | Reviewer Name | Captured At
+```
+Error types: Deleted | Wrong event | Replaced | Wrong timestamp | Wrong extras |
+Wrong location | Wrong player | Freeze frame | Goal location | Squad | Missed event
+
+**ASAR_MARKER + BRIDGE_VERSION bug (v7.5.25):**
+Both were stuck at `'7.5.4'` for 20 builds (v7.5.5–v7.5.24). Every "Embed Bridge"
+click silently did nothing. All bridge improvements from 7.5.5 onward were never
+delivered to users until this was fixed. Rule: both must match the app version on
+every bump.
+
+**Bridge now sends refinements directly:**
+Bridge sends `refinements: { key_type: payload }` for all reviewed events.
+Previously MARK tried to read these from Tag Once's Apollo cache — which could be
+empty or have the wrong match. This was the root cause of all Before fields being
+empty in the errors table.
+
+**Export fixes:**
+- "Open in Drive" button now works (was a no-op in Tauri WebView — fixed to use `rundll32`)
+- Drive link now points to the session folder, not the CSV file
+- Session sheet uploaded as native Google Sheet (converted from CSV on upload)
+- Clip filenames: `{event}_{MM-SS.mmm}_{errorType}.mp4` (milliseconds in timestamp)
+
+### Pending (next FIELD session)
+- Training Supervisor role
+- Trainee role
+- Consider displaying "pre-v7.5.20" data caveat on historical audit scores in FIELD dashboards
+
+---
+
+<!-- ============================================================= -->
 <!-- SESSION 2026-06-24 — MARK v7.5.x + ecosystem handoff          -->
 <!-- ============================================================= -->
 
