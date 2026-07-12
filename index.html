@@ -4738,11 +4738,19 @@ async function runSetup(){
   log.innerHTML += '<div style="color:var(--t-3)">Found '+sheetTrainers.length+' trainers in sheet</div>';
   log.scrollTop = log.scrollHeight;
 
-  // Merge: TEAM_ROSTER + sheet trainers (skip duplicates by email)
+  // Fetch supervisors/quality team from Supervisors tab
+  log.innerHTML += '<div style="color:var(--t-3)">📋 Fetching supervisors from sheet...</div>';
+  log.scrollTop = log.scrollHeight;
+  const sheetSupervisors = await fetchSupervisorsFromSheet();
+  log.innerHTML += '<div style="color:var(--t-3)">Found '+sheetSupervisors.length+' supervisors in sheet</div>';
+  log.scrollTop = log.scrollHeight;
+
+  // Merge: TEAM_ROSTER + sheet trainers + sheet supervisors (skip duplicates by email)
   const rosterEmails = new Set(TEAM_ROSTER.map(m => m.email));
   const allMembers = [
     ...TEAM_ROSTER,
-    ...sheetTrainers.filter(t => t.email && !rosterEmails.has(t.email))
+    ...sheetTrainers.filter(t => t.email && !rosterEmails.has(t.email)),
+    ...sheetSupervisors.filter(s => s.email && !rosterEmails.has(s.email) && !sheetTrainers.some(t => t.email === s.email))
   ];
 
   btn.textContent = 'Creating...';
@@ -4798,7 +4806,7 @@ async function runSetup(){
     await new Promise(r => setTimeout(r, 300));
   }
   bar.style.width = '100%';
-  txt.textContent = '✅ Complete — '+done+' accounts processed ('+TEAM_ROSTER.length+' roster + '+(allMembers.length-TEAM_ROSTER.length)+' trainers from sheet)';
+  txt.textContent = '✅ Complete — '+done+' accounts processed ('+TEAM_ROSTER.length+' roster + '+sheetTrainers.length+' trainers + '+sheetSupervisors.length+' supervisors from sheet)';
   btn.textContent = '✅ Done'; btn.disabled = false;
   if(A.user && A.user.email){
     log.innerHTML += '<div style="color:var(--t-3)">Session intact — you are still signed in as '+A.user.email+'</div>';
@@ -7519,6 +7527,37 @@ async function fetchTrainersFromSheet(){
     } catch(e){ /* try next */ }
   }
   console.warn('fetchTrainersFromSheet: no matching tab found');
+  return [];
+}
+
+// Reads the Supervisors tab — columns: A=HR code, B=Name, C=Role, D=Email, E=Password
+let _supervisorsCache = null;
+async function fetchSupervisorsFromSheet(){
+  if(_supervisorsCache) return _supervisorsCache;
+  const tabNames = ['Supervisors','supervisors','SUPERVISORS','Supervisor'];
+  for(const tab of tabNames){
+    try {
+      const url = 'https://sheets.googleapis.com/v4/spreadsheets/'+TEAM_SHEET_ID+'/values/'+encodeURIComponent(tab)+'!A2:E?key='+TEAM_SHEET_API;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.values && data.values.length){
+        const sups = data.values
+          .filter(r => r[0] && String(r[0]).trim())
+          .map(r => ({
+            code:     String(r[0]||'').replace(/\s+/g,'').trim(),
+            name:     String(r[1]||'').trim(),
+            role:     String(r[2]||'').replace(/\s+/g,'').trim().toLowerCase() || 'trainingsup',
+            email:    String(r[3]||'').replace(/\s+/g,'').trim().toLowerCase(),
+            password: String(r[4]||'').trim(),
+          }))
+          .filter(s => s.code && s.email && s.email.includes('@') && s.email.includes('.'));
+        _supervisorsCache = sups;
+        console.log('Supervisors loaded from tab "'+tab+'":', sups.length);
+        return sups;
+      }
+    } catch(e){ /* try next */ }
+  }
+  console.warn('fetchSupervisorsFromSheet: no matching tab found');
   return [];
 }
 
@@ -13468,6 +13507,8 @@ function qtlQRenderDetails(hr){
     <button class="btn btn-secondary btn-sm" onclick="switchRole('collector')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">📡 Collector View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('reviewer')" style="justify-content:flex-start;border-color:rgba(34,119,221,0.4);color:#4499FF">🔍 Reviewer View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
     <button class="btn btn-secondary btn-sm" onclick="switchRole('qtl')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">👑 QTL View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
+    <div style="height:0.5px;background:var(--border);margin:4px 0"></div>
+    <button class="btn btn-ghost btn-sm" onclick="showSetupScreen()" style="justify-content:flex-start;width:100%;font-size:11px">⚙️ Team Account Setup</button>
   </div>
 </div>
 
