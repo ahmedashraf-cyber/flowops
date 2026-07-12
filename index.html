@@ -4904,14 +4904,25 @@ async function runSetupReviewers(){
     bar.style.width = pct + '%';
     txt.textContent = 'Processing ' + r.code + ' (' + done + '/' + reviewers.length + ')...';
     try {
-      // Check if already registered — query reviewer_profiles by hrCode
-      const existing = await fbDb.collection('reviewer_profiles').where('hrCode','==',r.code).limit(1).get();
-      if(!existing.empty){
-        log.innerHTML += '<div style="color:#30D158">✅ ' + r.code + ' · ' + r.email + ' — already registered</div>';
-        done++; log.scrollTop = log.scrollHeight; continue;
+      // ── Step 1: Create Firebase Auth account (email+password) for MARK access ──
+      let uid = null;
+      try {
+        const cred = await firebase.auth().createUserWithEmailAndPassword(r.email, r.password);
+        uid = cred.user.uid;
+        log.innerHTML += '<div style="color:#30D158">✅ ' + r.code + ' · ' + r.email + ' — Auth account created</div>';
+      } catch(authErr){
+        if(authErr.code === 'auth/email-already-in-use'){
+          // Already has Auth account — fetch uid via Firestore preregister or profiles
+          const preDoc = await fbDb.collection('reviewer_preregister').doc(r.email).get();
+          if(preDoc.exists && preDoc.data().uid) uid = preDoc.data().uid;
+          log.innerHTML += '<div style="color:#FFD60A">⚠️ ' + r.code + ' · ' + r.email + ' — Auth already exists, skipping creation</div>';
+        } else {
+          throw authErr;
+        }
       }
-      // Write pre-registration record — when they Google sign-in it will be found immediately
-      await fbDb.collection('reviewer_preregister').doc(r.email).set({
+
+      // ── Step 2: Write preregister doc (for FIELD Google sign-in) ──
+      const preregData = {
         hrCode:      r.code,
         fullName:    r.name,
         gmail:       r.email,
@@ -4919,20 +4930,38 @@ async function runSetupReviewers(){
         registeredAt: new Date().toISOString(),
         registeredBy: (A.user && A.user.email) || 'setup',
         status:      'active'
-      });
-      log.innerHTML += '<div style="color:#30D158">✅ ' + r.code + ' · ' + r.name + ' · ' + r.email + ' — pre-registered</div>';
+      };
+      if(uid) preregData.uid = uid;
+      await fbDb.collection('reviewer_preregister').doc(r.email).set(preregData);
+
+      // ── Step 3: Write reviewer_profiles if uid known (for returning Google sign-in) ──
+      if(uid){
+        const profSnap = await fbDb.collection('reviewer_profiles').doc(uid).get();
+        if(!profSnap.exists){
+          await fbDb.collection('reviewer_profiles').doc(uid).set({
+            uid,
+            gmail:    r.email,
+            hrCode:   r.code,
+            fullName: r.name,
+            linkedAt: new Date().toISOString(),
+            status:   'active'
+          });
+        }
+      }
+
+      log.innerHTML += '<div style="color:#30D158">✅ ' + r.code + ' · ' + r.name + ' — fully registered (FIELD + MARK)</div>';
     } catch(e){
-      log.innerHTML += '<div style="color:#FF453A">❌ ' + r.code + ' — ' + e.message + '</div>';
+      log.innerHTML += '<div style="color:#FF453A">❌ ' + r.code + ' · ' + r.email + ' — ' + e.message + '</div>';
     }
     done++;
     log.scrollTop = log.scrollHeight;
-    await new Promise(res => setTimeout(res, 200));
+    await new Promise(res => setTimeout(res, 300));
   }
 
   bar.style.width = '100%';
   txt.textContent = '✅ Done — ' + done + ' reviewers processed';
   btn.textContent = '✅ Done'; btn.disabled = false;
-  log.innerHTML += '<div style="color:var(--t-3);margin-top:8px">ℹ️ Reviewers can now sign in with Google — they will land on their dashboard immediately without needing to enter an HR code.</div>';
+  log.innerHTML += '<div style="color:var(--t-3);margin-top:8px">ℹ️ FIELD: sign in with Google · MARK: sign in with Gmail + password from sheet</div>';
   log.scrollTop = log.scrollHeight;
 }
 
