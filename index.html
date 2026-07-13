@@ -4871,6 +4871,46 @@ async function runSetup(){
 }
 
 // ── Register Gmail Reviewers into reviewer_profiles ──────────────
+// ── Save MARK sender refresh token to Firestore ──────────────────────────────
+async function saveSenderToken(){
+  const input   = document.getElementById('sender_token_input');
+  const btn     = document.getElementById('save_token_btn');
+  const status  = document.getElementById('sender_token_status');
+  const card    = document.getElementById('sender_token_card');
+  const token   = (input.value || '').trim();
+
+  if(!token || !token.startsWith('1//')){
+    status.style.display = 'block';
+    status.innerHTML = '<div style="color:#FF453A;font-size:12px">❌ Invalid token — must start with 1//</div>';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Saving...';
+  status.style.display = 'block';
+  status.innerHTML = '<div style="color:var(--t-3);font-size:12px">Saving to Firestore...</div>';
+
+  try {
+    await fbDb.collection('system_config').doc('gmail_sender').set({
+      refresh_token: token,
+      sender_email:  'hudl.quality.egypt@gmail.com',
+      updated_at:    new Date().toISOString(),
+      updated_by:    (A.user && A.user.email) || 'unknown',
+    });
+
+    // Success — hide the card permanently and show success
+    input.value = '';
+    status.innerHTML = '<div style="color:#30D158;font-size:12px">✅ Token saved! MARK will now send emails automatically. This section is no longer needed.</div>';
+    btn.textContent = '✅ Saved';
+
+    // Hide card after 3 seconds — it's done forever
+    setTimeout(() => { card.style.display = 'none'; }, 3000);
+
+  } catch(e) {
+    status.innerHTML = '<div style="color:#FF453A;font-size:12px">❌ Save failed: ' + e.message + '</div>';
+    btn.disabled = false; btn.textContent = '💾 Save Token to Firestore';
+  }
+}
+
 async function runSetupReviewers(){
   const btn = document.getElementById('setup_rev_btn');
   const progress = document.getElementById('setup_progress');
@@ -13885,16 +13925,12 @@ function qtlQRenderDetails(hr){
       <p style="margin:12px 0 0;font-size:11px;color:var(--t-3)">⚠️ Safe to run multiple times — skips accounts that already exist</p>
     </div>
 
-    <div class="card" style="padding:24px;margin-bottom:16px;border-color:rgba(232,89,12,0.2)">
-      <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:var(--t-1)">📧 MARK Email Sender</p>
-      <p style="margin:0 0 14px;font-size:12px;color:var(--t-3)">If MARK stops sending emails, reconnect the sender account from inside MARK.</p>
-      <div style="background:var(--bg-3);border-radius:10px;padding:14px;font-size:12px;color:var(--t-3);line-height:1.8">
-        1. Open <strong style="color:var(--t-2)">MARK</strong> on your computer<br>
-        2. Go to <strong style="color:var(--t-2)">History</strong><br>
-        3. Click the subtle <strong style="color:var(--t-2)">"↺ Sender"</strong> button<br>
-        4. Sign in as <strong style="color:var(--p2)">hudl.quality.egypt@gmail.com</strong><br>
-        5. Token saved automatically to Firestore — no rebuild needed ✅
-      </div>
+    <div class="card" style="padding:24px;margin-bottom:16px;border-color:rgba(232,89,12,0.2)" id="sender_token_card">
+      <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:var(--t-1)">📧 MARK Email Sender</p>
+      <p style="margin:0 0 14px;font-size:12px;color:var(--t-3)">Paste the refresh token from MARK to enable automatic quality report emails.</p>
+      <div id="sender_token_status" style="display:none;margin-bottom:12px"></div>
+      <textarea id="sender_token_input" placeholder="Paste refresh token here (starts with 1//...)" style="width:100%;padding:10px;border-radius:10px;background:var(--bg-3);border:1px solid var(--b-1);color:var(--t-1);font-family:JetBrains Mono,monospace;font-size:11px;resize:vertical;min-height:72px;box-sizing:border-box"></textarea>
+      <button onclick="saveSenderToken()" id="save_token_btn" style="width:100%;margin-top:10px;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">💾 Save Token to Firestore</button>
     </div>
   </div>
 </div>
