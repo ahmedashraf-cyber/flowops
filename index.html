@@ -4872,6 +4872,40 @@ async function runSetup(){
 
 // ── Register Gmail Reviewers into reviewer_profiles ──────────────
 // ── Save MARK sender refresh token to Firestore ──────────────────────────────
+function showResetPasswordModal(){
+  document.getElementById('resetPwModal').style.display = 'flex';
+  document.getElementById('resetpw_new').value = '';
+  document.getElementById('resetpw_confirm').value = '';
+  document.getElementById('resetpw_msg').style.display = 'none';
+}
+
+async function doResetPassword(){
+  const newPw  = document.getElementById('resetpw_new').value;
+  const confPw = document.getElementById('resetpw_confirm').value;
+  const msg    = document.getElementById('resetpw_msg');
+
+  if(!newPw || newPw.length < 6){
+    msg.style.display='block'; msg.style.background='rgba(255,69,58,0.1)'; msg.style.color='#FF453A';
+    msg.textContent = 'Password must be at least 6 characters'; return;
+  }
+  if(newPw !== confPw){
+    msg.style.display='block'; msg.style.background='rgba(255,69,58,0.1)'; msg.style.color='#FF453A';
+    msg.textContent = 'Passwords do not match'; return;
+  }
+
+  try {
+    const user = fbAuth.currentUser;
+    if(!user) throw new Error('Not signed in');
+    await user.updatePassword(newPw);
+    msg.style.display='block'; msg.style.background='rgba(48,209,88,0.1)'; msg.style.color='#30D158';
+    msg.textContent = '✅ Password updated! You can now use this password in MARK.';
+    setTimeout(()=>{ document.getElementById('resetPwModal').style.display='none'; }, 3000);
+  } catch(e) {
+    msg.style.display='block'; msg.style.background='rgba(255,69,58,0.1)'; msg.style.color='#FF453A';
+    msg.textContent = '❌ ' + (e.message || e);
+  }
+}
+
 async function saveSenderToken(){
   const input   = document.getElementById('sender_token_input');
   const btn     = document.getElementById('save_token_btn');
@@ -13701,6 +13735,7 @@ function qtlQRenderDetails(hr){
     <button class="btn btn-secondary btn-sm" onclick="switchRole('qtl')" style="justify-content:flex-start;border-color:rgba(232,89,12,0.4);color:#E8590C">👑 QTL View <span style="margin-inline-start:auto;font-size:9px;opacity:.6">Test</span></button>
     <div style="height:0.5px;background:var(--border);margin:4px 0"></div>
     <button class="btn btn-ghost btn-sm" onclick="showSetupScreen()" style="justify-content:flex-start;width:100%;font-size:11px">⚙️ Team Account Setup</button>
+    <button class="btn btn-ghost btn-sm" onclick="showResetPasswordModal()" style="justify-content:flex-start;width:100%;font-size:11px;color:#FF453A;opacity:.7">🔑 Reset My Password</button>
   </div>
 </div>
 
@@ -13934,6 +13969,29 @@ function qtlQRenderDetails(hr){
     </div>
   </div>
 </div>
+<!-- Reset Password Modal -->
+<div id="resetPwModal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg-1);border:1px solid var(--b-1);border-radius:20px;padding:28px;width:100%;max-width:380px">
+    <h3 style="margin:0 0 6px;font-size:16px;font-weight:700">🔑 Reset My Password</h3>
+    <p style="margin:0 0 20px;font-size:13px;color:var(--t-3)">Enter your new password below. You'll use this to sign into MARK.</p>
+    <div style="display:grid;gap:12px">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">New Password</label>
+        <input type="password" id="resetpw_new" class="input" placeholder="New password"/>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--t-3);text-transform:uppercase;letter-spacing:.07em;display:block;margin-bottom:6px">Confirm Password</label>
+        <input type="password" id="resetpw_confirm" class="input" placeholder="Confirm password"/>
+      </div>
+      <div id="resetpw_msg" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="doResetPassword()" style="flex:1;padding:12px;border-radius:12px;background:var(--p2);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">Reset Password</button>
+        <button onclick="document.getElementById('resetPwModal').style.display='none'" style="padding:12px 16px;border-radius:12px;background:var(--bg-3);color:var(--t-2);border:1px solid var(--b-1);font-size:13px;cursor:pointer">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Role Fix Modal -->
 <div id="roleFix_modal" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--bg-1);border:1px solid var(--b-1);border-radius:20px;padding:28px;width:100%;max-width:420px">
